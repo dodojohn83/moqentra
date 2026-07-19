@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moqentra.io/schemas/WorkerCapabilities/v1",
+  "title": "WorkerCapabilities",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "const": "moqentra.io/v1" },
+    "kind": { "const": "WorkerCapabilities" },
+    "metadata": { "$ref": "#/definitions/Metadata" },
+    "spec": {
+      "type": "object",
+      "required": ["nodeId"],
+      "properties": {
+        "nodeId": { "type": "string" },
+        "agentVersion": { "type": "string" },
+        "frameworkName": { "type": "string" },
+        "frameworkVersion": { "type": "string" },
+        "hardwareLabel": { "type": "string" },
+        "supportsGpu": { "type": "boolean" },
+        "supportsNpu": { "type": "boolean" },
+        "capacity": { "$ref": "#/definitions/ResourceQuantity" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "definitions": {
+    "Metadata": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "projectId": { "type": "string" },
+        "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "ResourceQuantity": {
+      "type": "object",
+      "properties": {
+        "cpuCores": { "type": "integer", "minimum": 0 },
+        "memoryGib": { "type": "integer", "minimum": 0 },
+        "gpuCount": { "type": "integer", "minimum": 0 },
+        "npuCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

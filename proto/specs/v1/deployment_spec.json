@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moqentra.io/schemas/DeploymentSpec/v1",
+  "title": "DeploymentSpec",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "const": "moqentra.io/v1" },
+    "kind": { "const": "DeploymentSpec" },
+    "metadata": { "$ref": "#/definitions/Metadata" },
+    "spec": {
+      "type": "object",
+      "required": ["applicationVersionId"],
+      "properties": {
+        "applicationVersionId": { "type": "string" },
+        "environment": { "type": "string" },
+        "routing": { "$ref": "#/definitions/RoutingPolicy" },
+        "rollout": { "$ref": "#/definitions/RolloutPolicy" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "definitions": {
+    "Metadata": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "projectId": { "type": "string" },
+        "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "RoutingPolicy": {
+      "type": "object",
+      "properties": {
+        "host": { "type": "string" },
+        "pathPrefix": { "type": "string" },
+        "weight": { "type": "integer", "minimum": 0, "maximum": 100 }
+      },
+      "additionalProperties": false
+    },
+    "RolloutPolicy": {
+      "type": "object",
+      "properties": {
+        "strategy": { "type": "string", "enum": ["recreate", "canary", "blue-green"] },
+        "canaryPercent": { "type": "integer", "minimum": 0, "maximum": 100 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

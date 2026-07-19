@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moqentra.io/schemas/AnnotationProjectSpec/v1",
+  "title": "AnnotationProjectSpec",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "const": "moqentra.io/v1" },
+    "kind": { "const": "AnnotationProjectSpec" },
+    "metadata": { "$ref": "#/definitions/Metadata" },
+    "spec": {
+      "type": "object",
+      "required": ["datasetId", "taskType"],
+      "properties": {
+        "datasetId": { "type": "string" },
+        "taskType": { "type": "string", "enum": ["classification", "bounding_box", "segmentation", "text_span"] },
+        "instructions": { "type": "string" },
+        "labelSchema": { "type": "object" },
+        "assignees": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    }
+  },
+  "definitions": {
+    "Metadata": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "projectId": { "type": "string" },
+        "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

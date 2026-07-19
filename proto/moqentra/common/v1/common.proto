@@ -2,17 +2,97 @@ syntax = "proto3";
 
 package moqentra.common.v1;
 
-option go_package = "github.com/dodojohn83/moqentra/proto/moqentra/common/v1;commonv1";
+import "google/protobuf/timestamp.proto";
 
-// Common identifiers and metadata used across Moqentra services.
-message TenantId {
-  string value = 1;
+// Pagination parameters for list requests.
+message Pagination {
+  uint32 limit = 1;
+  uint32 offset = 2;
 }
 
-message ProjectId {
-  string value = 1;
+// Paginated response envelope.
+message Page {
+  repeated bytes items = 1;
+  uint64 total = 2;
+  uint32 offset = 3;
+  uint32 limit = 4;
 }
 
-message UserId {
-  string value = 1;
+// Caller context carried in every request.
+message RequestContext {
+  string tenant_id = 1;
+  string project_id = 2;
+  string principal = 3;
+  string request_id = 4;
+  string correlation_id = 5;
+  google.protobuf.Timestamp deadline = 6;
+}
+
+// Typed resource reference.
+message ResourceRef {
+  string resource_type = 1;
+  string id = 2;
+}
+
+// Requested compute resources.
+message ResourceQuantity {
+  uint32 cpu_cores = 1;
+  uint32 memory_gib = 2;
+  uint32 gpu_count = 3;
+  uint32 npu_count = 4;
+}
+
+// Stable error kind.
+enum ErrorKind {
+  ERROR_KIND_UNSPECIFIED = 0;
+  ERROR_KIND_INVALID_ARGUMENT = 1;
+  ERROR_KIND_UNAUTHENTICATED = 2;
+  ERROR_KIND_PERMISSION_DENIED = 3;
+  ERROR_KIND_NOT_FOUND = 4;
+  ERROR_KIND_ALREADY_EXISTS = 5;
+  ERROR_KIND_CONFLICT = 6;
+  ERROR_KIND_STALE_REVISION = 7;
+  ERROR_KIND_STALE_FENCE = 8;
+  ERROR_KIND_BUSY = 9;
+  ERROR_KIND_QUOTA_EXCEEDED = 10;
+  ERROR_KIND_RATE_LIMITED = 11;
+  ERROR_KIND_TIMEOUT = 12;
+  ERROR_KIND_CANCELLED = 13;
+  ERROR_KIND_UNAVAILABLE = 14;
+  ERROR_KIND_UNSUPPORTED = 15;
+  ERROR_KIND_VERSION_MISMATCH = 16;
+  ERROR_KIND_EXTERNAL_FAILED = 17;
+  ERROR_KIND_INTERNAL = 18;
+}
+
+// Field-level validation violation.
+message FieldViolation {
+  string field = 1;
+  string description = 2;
+}
+
+// Platform error returned by API and gRPC handlers.
+message Error {
+  ErrorKind kind = 1;
+  string code = 2;
+  string message = 3;
+  bool retryable = 4;
+  repeated FieldViolation violations = 5;
+  string request_id = 6;
+  string correlation_id = 7;
+}
+
+// Generic command/event envelope used across services.
+message Envelope {
+  string message_id = 1;
+  string tenant_id = 2;
+  string correlation_id = 3;
+  string causation_id = 4;
+  string operation_id = 5;
+  google.protobuf.Timestamp occurred_at = 6;
+  google.protobuf.Timestamp deadline = 7;
+  string source = 8;
+  string fencing_token = 9;
+  map<string, string> trace_context = 10;
+  bytes payload = 11;
 }

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moqentra.io/schemas/DyunGraphBundle/v1",
+  "title": "DyunGraphBundle",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "const": "moqentra.io/v1" },
+    "kind": { "const": "DyunGraphBundle" },
+    "metadata": { "$ref": "#/definitions/Metadata" },
+    "spec": {
+      "type": "object",
+      "required": ["nodes", "edges"],
+      "properties": {
+        "nodes": { "type": "array", "items": { "$ref": "#/definitions/DyunNode" } },
+        "edges": { "type": "array", "items": { "$ref": "#/definitions/DyunEdge" } },
+        "resources": { "type": "array", "items": { "$ref": "#/definitions/ResourceRef" } }
+      },
+      "additionalProperties": false
+    }
+  },
+  "definitions": {
+    "Metadata": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "projectId": { "type": "string" },
+        "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "DyunNode": {
+      "type": "object",
+      "required": ["nodeId", "operator"],
+      "properties": {
+        "nodeId": { "type": "string" },
+        "operator": { "type": "string" },
+        "attrs": { "type": "object", "additionalProperties": { "type": "string" } },
+        "inputs": { "type": "array", "items": { "type": "string" } },
+        "outputs": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "DyunEdge": {
+      "type": "object",
+      "required": ["fromNode", "toNode"],
+      "properties": {
+        "fromNode": { "type": "string" },
+        "fromOutput": { "type": "string" },
+        "toNode": { "type": "string" },
+        "toInput": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "ResourceRef": {
+      "type": "object",
+      "required": ["resourceType", "id"],
+      "properties": {
+        "resourceType": { "type": "string" },
+        "id": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
