@@ -1,11 +1,30 @@
-//! Moqentra `moqentra-types` crate.
+//! Moqentra shared foundation types.
 //!
-//! This crate is part of the Moqentra workspace. Domain logic and public APIs
-//! are documented in the `dev-docs/002_vibe_coding_plan` chapters.
+//! This crate contains identifiers, timestamps, pagination, request context,
+//! configuration, and the platform-wide error taxonomy. It must not depend on
+//! transport, storage, or runtime crates.
 
-#![warn(missing_docs)]
+#![allow(missing_docs)]
 
-/// Placeholder module until domain types are added in subsequent tasks.
+pub mod config;
+pub mod error;
+pub mod id;
+pub mod pagination;
+pub mod request;
+pub mod time;
+
+pub use config::Configuration;
+pub use error::{Error, ErrorKind, FieldViolation};
+pub use id::{
+    AnnotationTaskId, ApplicationVersionId, ArtifactDigest, AssetId, AttemptId, DatasetId,
+    DatasetVersionId, DeploymentId, IdGenerator, ModelVersionId, NodeId, OperationId, ProjectId,
+    RandomIdGenerator, StaticIdGenerator, TenantId, TrainingJobId, UserId,
+};
+pub use pagination::{Page, PageRequest};
+pub use request::{Principal, RequestContext, ResourceQuantity, ResourceRef};
+pub use time::{Clock, Deadline, FencingToken, Revision, StaticClock, SystemClock, UtcTimestamp};
+
+/// Crate version placeholder.
 pub mod placeholder {
     /// Returns the crate version.
     pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -13,7 +32,7 @@ pub mod placeholder {
 
 #[cfg(test)]
 mod tests {
-    use super::placeholder;
+    use super::*;
 
     #[test]
     fn workspace_sanity() {
