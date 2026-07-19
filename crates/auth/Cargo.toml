@@ -7,3 +7,11 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+moqentra-types = { path = "../types" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+jsonwebtoken = "9"
+tracing = { workspace = true }
+
+[dev-dependencies]
+moqentra-types = { path = "../types" }
