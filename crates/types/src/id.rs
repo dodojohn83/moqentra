@@ -125,7 +125,9 @@ define_id!(UserId, "User identity.");
 define_id!(DatasetId, "Dataset within a project.");
 define_id!(DatasetVersionId, "Immutable version of a dataset.");
 define_id!(AssetId, "Object within a dataset version.");
+define_id!(AnnotationProjectId, "Annotation project within a project.");
 define_id!(AnnotationTaskId, "Annotation task assignment.");
+define_id!(AnnotationId, "Individual annotation record.");
 define_id!(TrainingJobId, "Training job.");
 define_id!(
     AttemptId,
