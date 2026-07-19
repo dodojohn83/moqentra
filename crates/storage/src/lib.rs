@@ -1,12 +1,20 @@
-//! Moqentra `moqentra-storage` crate.
-//!
-//! This crate is part of the Moqentra workspace. Domain logic and public APIs
-//! are documented in the `dev-docs/002_vibe_coding_plan` chapters.
+//! Moqentra PostgreSQL storage adapter.
 
-#![warn(missing_docs)]
+#![allow(missing_docs)]
 
-/// Placeholder module until domain types are added in subsequent tasks.
+pub mod idempotency;
+pub mod outbox;
+pub mod pool;
+pub mod unit_of_work;
+
+pub use idempotency::{
+    IdempotencyEntry, IdempotencyResult, IdempotencyScope, IdempotencyStatus, IdempotencyStore,
+    InMemoryIdempotencyStore,
+};
+pub use outbox::{InMemoryOutbox, OutboxEvent, OutboxStatus, OutboxStore};
+pub use pool::{ConnectionPool, ScopedConnection};
+pub use unit_of_work::{pagination_clause, Cursor, Paginated, UnitOfWork};
+
 pub mod placeholder {
-    /// Returns the crate version.
     pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 }
