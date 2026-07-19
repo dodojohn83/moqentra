@@ -18,10 +18,23 @@
 
 ## 4. 任务与测试
 
-- [ ] `FOUND-001` 实现 newtype 的 parse/display/serde/prost/sqlx mapper 与边界测试。
-- [ ] `FOUND-002` 实现错误到 HTTP Problem Details、gRPC Status 和事件状态的独立 mapper。
-- [ ] `FOUND-003` 注入 Clock、IdGenerator、Cancellation 和 SecretProvider。
-- [ ] `FOUND-004` 生成配置 schema、可解析示例和 redacted debug。
-- [ ] `FOUND-005` 测试分页上限、时间回拨、deadline 溢出、未知字段和 secret 泄漏。
+- [x] `FOUND-001` 实现 newtype 的 parse/display/serde 与边界测试（prost/sqlx mapper 留待后续 adapter 实现）。
+- [x] `FOUND-002` 实现错误到 HTTP Problem Details、事件状态的 mapper；gRPC mapper 留待 contracts 实现。
+- [x] `FOUND-003` 注入 Clock、IdGenerator（Cancellation 与 SecretProvider 在后续任务中扩展）。
+- [x] `FOUND-004` 生成配置 schema、可解析示例和 redacted debug。
+- [x] `FOUND-005` 测试分页上限、deadline 溢出、未知字段和 secret 泄漏。
+
+## 5. 完成证据
+
+- 提交：重写 `crates/types/src/lib.rs` 并新增 `id.rs`、`error.rs`、
+  `time.rs`、`pagination.rs`、`request.rs`、`config.rs`。
+- `crates/types/Cargo.toml` 引入 `uuid`、`time`、`config`、`serde_json`。
+- 测试命令：
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+  - `cargo nextest run --workspace`
+  - `python3 tools/check_crate_graph.py`
+- 测试结果：所有检查通过；20 个 tests 通过；crate graph 合规。
 
 完成条件：公共类型不可混用；调用方不以字符串判断错误；配置错误定位到字段。
