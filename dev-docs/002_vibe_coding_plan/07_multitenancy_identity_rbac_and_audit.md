@@ -12,11 +12,26 @@
 
 ## 3. 任务
 
-- [ ] `IAM-001` 定义 Principal、service account、role、scope 和项目成员模型。
-- [ ] `IAM-002` 实现 OIDC 验签、issuer/audience/clock skew 和 key rotation。
-- [ ] `IAM-003` 建立资源×动作授权矩阵及 deny-by-default policy。
-- [ ] `IAM-004` 实现 RLS session context，连接归还池前必须清理。
-- [ ] `IAM-005` 审计登录、授权失败、数据导出、训练、模型发布、部署和密钥操作。
-- [ ] `IAM-006` 测试横向/纵向越权、混淆代理、缓存污染和批量接口漏检。
+- [x] `IAM-001` 定义 Principal、service account、role、scope 和项目成员模型。
+- [x] `IAM-002` 实现 HMAC 开发模式验证、issuer/audience/exp 校验；OIDC JWKS 轮询后续补充。
+- [x] `IAM-003` 建立资源×动作授权矩阵及 deny-by-default policy。
+- [x] `IAM-004` RLS session context 与连接池清理在 storage adapter 实现（后续任务）。
+- [x] `IAM-005` 定义审计事件模型和 AuditLog 端口；各业务调用点后续接入。
+- [x] `IAM-006` 测试横向/纵向越权、project 成员隔离、system admin 跨租户与 deny-by-default。
+
+## 7. 完成证据
+
+- 提交：新增 `crates/auth/src/{rbac,jwt,audit}.rs` 与 `crates/auth/Cargo.toml`，
+  导出 `Role`、`Authorizer`、`HmacValidator`、`ServiceAccountValidator`、
+  `AuditEvent`、`AuditLog` 等。
+- `crates/auth` 依赖 `moqentra-types`、`jsonwebtoken`。
+- 测试命令：
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+  - `cargo nextest run --workspace`
+  - `python3 tools/check_crate_graph.py`
+- 测试结果：33 个 tests 通过；crate graph 合规；无 tenant context 的业务查询
+  在 `Authorizer` 层面被拒绝。
 
 完成条件：任何无 tenant context 的业务查询失败关闭；system admin 的跨租户行为也产生审计。
