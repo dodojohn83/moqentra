@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moqentra.io/schemas/DatasetManifest/v1",
+  "title": "DatasetManifest",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "const": "moqentra.io/v1" },
+    "kind": { "const": "DatasetManifest" },
+    "metadata": { "$ref": "#/definitions/Metadata" },
+    "spec": {
+      "type": "object",
+      "required": ["format", "source", "checksum"],
+      "properties": {
+        "format": { "type": "string", "enum": ["parquet", "arrow", "jsonl", "csv"] },
+        "source": { "type": "string" },
+        "checksum": { "type": "string" },
+        "schema": { "type": "object" },
+        "labels": { "type": "object", "additionalProperties": { "type": "string" } }
+      },
+      "additionalProperties": false
+    }
+  },
+  "definitions": {
+    "Metadata": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "projectId": { "type": "string" },
+        "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

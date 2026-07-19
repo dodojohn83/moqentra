@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package moqentra.cluster.v1;
+
+import "google/protobuf/timestamp.proto";
+import "moqentra/common/v1/common.proto";
+
+// Node in the compute cluster.
+message Node {
+  string node_id = 1;
+  string agent_version = 2;
+  repeated string labels = 3;
+  moqentra.common.v1.ResourceQuantity capacity = 4;
+}
+
+// Node runtime status reported by the agent.
+message NodeStatus {
+  string node_id = 1;
+  NodeState state = 2;
+  google.protobuf.Timestamp last_heartbeat = 3;
+  moqentra.common.v1.ResourceQuantity available = 4;
+}
+
+enum NodeState {
+  NODE_STATE_UNSPECIFIED = 0;
+  NODE_STATE_ONLINE = 1;
+  NODE_STATE_BUSY = 2;
+  NODE_STATE_DRAINING = 3;
+  NODE_STATE_OFFLINE = 4;
+}
+
+// Lease record for a task on a node.
+message TaskLease {
+  string lease_id = 1;
+  string node_id = 2;
+  string task_id = 3;
+  google.protobuf.Timestamp acquired_at = 4;
+  google.protobuf.Timestamp deadline = 5;
+}

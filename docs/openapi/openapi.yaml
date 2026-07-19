@@ -1,0 +1,276 @@
+openapi: 3.1.0
+info:
+  title: Moqentra API
+  version: 0.1.0
+  description: Northbound HTTP API for Moqentra.
+
+servers:
+  - url: /api/v1
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+
+  /tenants/{tenantId}/projects:
+    get:
+      operationId: listProjects
+      summary: List projects
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Paginated project list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
+
+    post:
+      operationId: createProject
+      summary: Create project
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectSpec'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /tenants/{tenantId}/projects/{projectId}/datasets:
+    post:
+      operationId: createDataset
+      summary: Create dataset
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DatasetManifest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetManifest'
+
+  /tenants/{tenantId}/projects/{projectId}/training-jobs:
+    post:
+      operationId: createTrainingJob
+      summary: Create training job
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainingJobSpec'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+
+  /operations/{operationId}:
+    get:
+      operationId: getOperation
+      summary: Get operation status
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Operation status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+
+components:
+  schemas:
+    Page:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+
+    ProjectSpec:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    DatasetManifest:
+      type: object
+      properties:
+        apiVersion:
+          type: string
+        kind:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+        spec:
+          type: object
+
+    TrainingJobSpec:
+      type: object
+      properties:
+        apiVersion:
+          type: string
+        kind:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+        spec:
+          type: object
+
+    Operation:
+      type: object
+      required: [id, state]
+      properties:
+        id:
+          type: string
+        state:
+          type: string
+          enum: [pending, running, succeeded, failed, cancelled]
+        resourceRef:
+          type: string
+        error:
+          $ref: '#/components/schemas/ProblemDetails'
+
+    Metadata:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        tenantId:
+          type: string
+        projectId:
+          type: string
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        code:
+          type: string
+        violations:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              description:
+                type: string
