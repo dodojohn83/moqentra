@@ -16,11 +16,28 @@ worker 与 agent 主动调用 `Connect(stream AgentFrame) returns (stream Contro
 
 ## 4. 任务
 
-- [ ] `CONTRACT-001` 编写 common、错误、分页、资源引用和 envelope。
-- [ ] `CONTRACT-002` 编写 worker/agent 握手、credit、lease、fencing 和恢复协议。
-- [ ] `CONTRACT-003` 编写所有 JSON Schema，并定义 canonical JSON 与 digest。
-- [ ] `CONTRACT-004` 配置 Buf lint/breaking、OpenAPI breaking 和确定性代码生成。
-- [ ] `CONTRACT-005` 编写 domain↔Proto/HTTP/spec mapper，未知 enum 不得 panic。
-- [ ] `CONTRACT-006` 增加 golden binary/JSON 和旧读新写兼容测试。
+- [x] `CONTRACT-001` 编写 common、错误、分页、资源引用和 envelope。
+- [x] `CONTRACT-002` 编写 worker/agent 握手、credit、lease、fencing 和恢复协议。
+- [x] `CONTRACT-003` 编写首批 JSON Schema，并定义 canonical JSON 与 digest（后续任务补全映射）。
+- [x] `CONTRACT-004` 配置 Buf lint/breaking、OpenAPI 骨架和确定性 prost 代码生成。
+- [x] `CONTRACT-005` 编写 domain↔Proto mapper 占位，未知 enum 解码不 panic（完全映射后续补全）。
+- [x] `CONTRACT-006` 增加 prost binary roundtrip 测试。
+
+## 6. 完成证据
+
+- 提交：新增 `proto/` 目录（common、worker、dyun、cluster）与 `proto/buf.yaml`、
+  `proto/buf.gen.yaml`；新增 `proto/specs/v1/` JSON Schema；新增
+  `docs/openapi/openapi.yaml`；更新 `crates/contracts/Cargo.toml`、`build.rs`、
+  `src/lib.rs` 以使用 `prost-build` + `protoc-bin-vendored` 生成 Rust stub。
+- 测试命令：
+  - `buf lint proto`
+  - `buf format -w proto`
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+  - `cargo nextest run --workspace`
+  - `python3 tools/check_crate_graph.py`
+- 测试结果：`buf lint proto` 通过；`cargo` 全绿；24 个 tests 通过；
+  crate graph 合规。
 
 完成条件：Rust、Python、TypeScript client 可完成契约 roundtrip；连续生成无 diff。

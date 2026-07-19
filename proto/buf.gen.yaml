@@ -1,8 +1,13 @@
 version: v1
 managed:
   enabled: true
+  go_package_prefix: github.com/dodojohn83/moqentra/gen/go
 plugins:
-  - plugin: rust
-    out: ../crates/contracts/src/gen
-  - plugin: python
-    out: ../python/moqentra_worker/src/moqentra_worker/gen
+  - plugin: prost
+    out: ../crates/contracts/src/generated
+    opt:
+      - compile_well_known_types
+  - plugin: prost-crate
+    out: ../crates/contracts/src/generated
+    opt:
+      - no_features

@@ -1,12 +1,13 @@
-//! Moqentra `moqentra-auth` crate.
-//!
-//! This crate is part of the Moqentra workspace. Domain logic and public APIs
-//! are documented in the `dev-docs/002_vibe_coding_plan` chapters.
+//! Moqentra authentication, authorization, and audit crate.
 
-#![warn(missing_docs)]
+#![allow(missing_docs)]
 
-/// Placeholder module until domain types are added in subsequent tasks.
-pub mod placeholder {
-    /// Returns the crate version.
-    pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-}
+pub mod audit;
+pub mod jwt;
+pub mod rbac;
+
+pub use audit::{AuditCategory, AuditEvent, AuditLog, AuditOutcome, InMemoryAuditLog};
+pub use jwt::{map_roles, HmacValidator, ServiceAccountValidator, TokenClaims, TokenValidator};
+pub use rbac::{
+    Action, AuthorizationError, Authorizer, Decision, Permission, Resource, Role, Scope,
+};

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moqentra.io/schemas/DeploymentStatus/v1",
+  "title": "DeploymentStatus",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "status"],
+  "properties": {
+    "apiVersion": { "const": "moqentra.io/v1" },
+    "kind": { "const": "DeploymentStatus" },
+    "metadata": { "$ref": "#/definitions/Metadata" },
+    "status": {
+      "type": "object",
+      "required": ["deploymentId", "state"],
+      "properties": {
+        "deploymentId": { "type": "string" },
+        "state": { "type": "string", "enum": ["pending", "scheduling", "running", "succeeded", "failed", "terminating"] },
+        "message": { "type": "string" },
+        "replicas": { "type": "integer", "minimum": 0 },
+        "readyReplicas": { "type": "integer", "minimum": 0 },
+        "observedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "definitions": {
+    "Metadata": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "projectId": { "type": "string" },
+        "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

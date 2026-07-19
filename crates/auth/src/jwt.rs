@@ -1,0 +1,185 @@
+//! JWT/OIDC validation and principal extraction.
+
+use jsonwebtoken::{decode, decode_header, DecodingKey, TokenData, Validation};
+use moqentra_types::{Error, Principal, UserId};
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+
+/// Claims expected in a Moqentra-issued or upstream OIDC token.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenClaims {
+    pub sub: String,
+    pub iss: String,
+    pub aud: String,
+    pub exp: usize,
+    #[serde(default)]
+    pub iat: usize,
+    #[serde(default)]
+    pub roles: Vec<String>,
+    #[serde(default)]
+    pub tenant_ids: Vec<String>,
+}
+
+/// Validator for bearer tokens.
+pub trait TokenValidator: Send + Sync {
+    /// Validates a token and returns the authenticated principal.
+    fn validate(&self, token: &str) -> Result<Principal, Error>;
+}
+
+/// HMAC-based validator for local development and tests.
+#[derive(Clone)]
+pub struct HmacValidator {
+    secret: String,
+    issuer: String,
+    audience: String,
+}
+
+impl HmacValidator {
+    pub fn new(
+        secret: impl Into<String>,
+        issuer: impl Into<String>,
+        audience: impl Into<String>,
+    ) -> Self {
+        Self {
+            secret: secret.into(),
+            issuer: issuer.into(),
+            audience: audience.into(),
+        }
+    }
+}
+
+impl TokenValidator for HmacValidator {
+    fn validate(&self, token: &str) -> Result<Principal, Error> {
+        let header = decode_header(token)
+            .map_err(|e| Error::unauthenticated(format!("invalid token header: {}", e)))?;
+        let algorithm = header.alg;
+        let key = DecodingKey::from_secret(self.secret.as_bytes());
+
+        let mut validation = Validation::new(algorithm);
+        validation.set_issuer(&[&self.issuer]);
+        validation.set_audience(&[&self.audience]);
+        validation.validate_exp = true;
+        validation.required_spec_claims = {
+            let mut s = HashSet::new();
+            s.insert("exp".to_string());
+            s.insert("iss".to_string());
+            s.insert("aud".to_string());
+            s
+        };
+
+        let TokenData { claims, .. } = decode::<TokenClaims>(token, &key, &validation)
+            .map_err(|e| Error::unauthenticated(format!("token validation failed: {}", e)))?;
+
+        let user_id = UserId::try_from(claims.sub.as_str())?;
+        Ok(Principal::user(user_id))
+    }
+}
+
+/// Service-account validator using a shared secret (client-credentials style).
+#[derive(Clone)]
+pub struct ServiceAccountValidator {
+    credentials: std::sync::Arc<std::collections::HashMap<String, String>>,
+}
+
+impl ServiceAccountValidator {
+    pub fn new(credentials: std::collections::HashMap<String, String>) -> Self {
+        Self {
+            credentials: std::sync::Arc::new(credentials),
+        }
+    }
+}
+
+impl TokenValidator for ServiceAccountValidator {
+    fn validate(&self, token: &str) -> Result<Principal, Error> {
+        if let Some(name) = self.credentials.get(token) {
+            Ok(Principal::service(name.clone()))
+        } else {
+            Err(Error::unauthenticated("unknown service account"))
+        }
+    }
+}
+
+/// Maps claim roles to platform `Role`s.
+pub fn map_roles(claim_roles: &[String]) -> Vec<crate::rbac::Role> {
+    claim_roles.iter().filter_map(|s| s.parse::<crate::rbac::Role>().ok()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+    use moqentra_types::RandomIdGenerator;
+
+    #[test]
+    fn hmac_validator_roundtrip() {
+        let gen = RandomIdGenerator;
+        let user_id = UserId::new_v7(&gen);
+        let claims = TokenClaims {
+            sub: user_id.to_string(),
+            iss: "https://moqentra.test".to_string(),
+            aud: "moqentra".to_string(),
+            exp: usize::MAX,
+            iat: 0,
+            roles: vec!["viewer".to_string()],
+            tenant_ids: vec![],
+        };
+
+        let token = encode(
+            &Header::new(Algorithm::HS256),
+            &claims,
+            &EncodingKey::from_secret(b"secret"),
+        )
+        .unwrap();
+        let validator = HmacValidator::new("secret", "https://moqentra.test", "moqentra");
+        let principal = validator.validate(&token).unwrap();
+        assert!(matches!(principal, Principal::User { id } if id == user_id));
+    }
+
+    #[test]
+    fn expired_token_rejected() {
+        let gen = RandomIdGenerator;
+        let user_id = UserId::new_v7(&gen);
+        let claims = TokenClaims {
+            sub: user_id.to_string(),
+            iss: "https://moqentra.test".to_string(),
+            aud: "moqentra".to_string(),
+            exp: 0,
+            iat: 0,
+            roles: vec![],
+            tenant_ids: vec![],
+        };
+
+        let token = encode(
+            &Header::new(Algorithm::HS256),
+            &claims,
+            &EncodingKey::from_secret(b"secret"),
+        )
+        .unwrap();
+        let validator = HmacValidator::new("secret", "https://moqentra.test", "moqentra");
+        assert!(validator.validate(&token).is_err());
+    }
+
+    #[test]
+    fn wrong_issuer_rejected() {
+        let gen = RandomIdGenerator;
+        let user_id = UserId::new_v7(&gen);
+        let claims = TokenClaims {
+            sub: user_id.to_string(),
+            iss: "https://other.test".to_string(),
+            aud: "moqentra".to_string(),
+            exp: usize::MAX,
+            iat: 0,
+            roles: vec![],
+            tenant_ids: vec![],
+        };
+
+        let token = encode(
+            &Header::new(Algorithm::HS256),
+            &claims,
+            &EncodingKey::from_secret(b"secret"),
+        )
+        .unwrap();
+        let validator = HmacValidator::new("secret", "https://moqentra.test", "moqentra");
+        assert!(validator.validate(&token).is_err());
+    }
+}
