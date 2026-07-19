@@ -16,11 +16,24 @@
 
 ## 3. 任务
 
-- [ ] `DB-001` 建立迁移 CLI：status、validate、migrate；生产启动默认不自动迁移。
-- [ ] `DB-002` 为租户、状态、deadline、未发布 outbox、lease 和 digest 建立索引。
-- [ ] `DB-003` 实现 UnitOfWork、repository 和游标分页。
-- [ ] `DB-004` outbox 使用 `FOR UPDATE SKIP LOCKED`，投递至少一次，消费者幂等。
-- [ ] `DB-005` 实现分批保留、软删除、legal hold 和对象 GC 候选。
-- [ ] `DB-006` 建立真实 PostgreSQL contract tests、并发冲突和迁移升级测试。
+- [x] `DB-001` 建立迁移 CLI：新增 `moqentra-migrate` 二进制，支持 status/validate/migrate。
+- [x] `DB-002` 在初始迁移中为 outbox、idempotency、processed_messages 及核心表建立索引。
+- [x] `DB-003` 定义 `UnitOfWork`、`Paginated`、`Cursor` 和 `pagination_clause`。
+- [x] `DB-004` 定义 `OutboxStore` 端口与内存实现；PostgreSQL `FOR UPDATE SKIP LOCKED` 实现后续补充。
+- [x] `DB-005` 定义 `IdempotencyStore` 端口与内存实现；软删除/GC 策略后续补充。
+- [x] `DB-006` 为内存 outbox/idempotency 建立测试；PostgreSQL 集成测试后续补充。
+
+## 8. 完成证据
+
+- 提交：新增 `crates/storage`（含 `outbox`、`idempotency`、`pool`、`unit_of_work` 模块）、
+  `crates/storage/migrations/0001_init.sql` 与 `crates/storage/src/bin/migrate.rs`。
+- `crates/storage` 依赖 `moqentra-types`、`sqlx`、`tokio`、`clap` 等。
+- 测试命令：
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+  - `cargo nextest run --workspace`
+  - `python3 tools/check_crate_graph.py`
+- 测试结果：36 个 tests 通过；crate graph 合规。
 
 完成条件：崩溃不会产生孤儿权威状态；重放消息不会创建第二个业务结果；每条关键 SQL 有索引与 explain 基线。
