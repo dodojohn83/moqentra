@@ -1,0 +1,29 @@
+# Rust
+/target/
+
+# Node
+node_modules/
+.pnpm-store/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Env
+.env*
+!.env.example
+
+# Test artifacts
+/test-results/
+/coverage/

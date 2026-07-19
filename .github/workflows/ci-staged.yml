@@ -1,0 +1,69 @@
+name: CI (Staged)
+
+# These jobs are configured but run manually until the corresponding code,
+# lockfiles, and test fixtures are added in later tasks. They are not part of
+# the required check set for the empty skeleton.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Buf setup
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+      - name: Buf lint
+        run: buf lint proto
+      - name: Buf format check
+        run: buf format --diff proto
+
+  web:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.1
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Test
+        run: pnpm test
+
+  python:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.7.0"
+      - name: Lint
+        run: uv run --package moqentra-worker ruff check python/moqentra_worker
+      - name: Typecheck
+        run: uv run --package moqentra-worker mypy python/moqentra_worker
+      - name: Test
+        run: uv run --package moqentra-worker pytest python/moqentra_worker
+
+  supply-chain:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94.1
+      - name: cargo deny
+        run: |
+          cargo install cargo-deny --locked --version 0.18.0
+          cargo deny check

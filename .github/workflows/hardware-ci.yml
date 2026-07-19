@@ -1,0 +1,36 @@
+name: Hardware CI
+
+# Runs manually on self-hosted runners with NVIDIA, AMD, or Ascend hardware.
+# These runners are not available in the default CI pool; triggering this
+# workflow with missing hardware will remain pending rather than faking success.
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Self-hosted runner label (nvidia / amd / ascend)"
+        required: true
+        default: "nvidia"
+
+jobs:
+  nvidia:
+    if: github.event.inputs.runner == 'nvidia'
+    runs-on: [self-hosted, nvidia]
+    steps:
+      - uses: actions/checkout@v4
+      - name: CUDA classification training
+        run: ./tools/benchmarks/run-hardware-test.sh nvidia
+  amd:
+    if: github.event.inputs.runner == 'amd'
+    runs-on: [self-hosted, amd]
+    steps:
+      - uses: actions/checkout@v4
+      - name: ROCm classification training
+        run: ./tools/benchmarks/run-hardware-test.sh amd
+  ascend:
+    if: github.event.inputs.runner == 'ascend'
+    runs-on: [self-hosted, ascend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: CANN classification training
+        run: ./tools/benchmarks/run-hardware-test.sh ascend
