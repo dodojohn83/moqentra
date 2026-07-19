@@ -1,0 +1,8 @@
+version: v1
+name: github.com/dodojohn83/moqentra
+breaking:
+  use:
+    - FILE
+lint:
+  use:
+    - DEFAULT

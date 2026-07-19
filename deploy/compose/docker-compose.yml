@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16.4
+    environment:
+      POSTGRES_USER: moqentra
+      POSTGRES_PASSWORD: moqentra
+      POSTGRES_DB: moqentra
+    ports:
+      - "5432:5432"
+
+  minio:
+    image: minio/minio:RELEASE.2025-07-19T-00-00-00Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"

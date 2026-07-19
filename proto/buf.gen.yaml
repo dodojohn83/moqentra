@@ -1,0 +1,8 @@
+version: v1
+managed:
+  enabled: true
+plugins:
+  - plugin: rust
+    out: ../crates/contracts/src/gen
+  - plugin: python
+    out: ../python/moqentra_worker/src/moqentra_worker/gen

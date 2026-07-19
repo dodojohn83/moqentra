@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package moqentra.common.v1;
+
+option go_package = "github.com/dodojohn83/moqentra/proto/moqentra/common/v1;commonv1";
+
+// Common identifiers and metadata used across Moqentra services.
+message TenantId {
+  string value = 1;
+}
+
+message ProjectId {
+  string value = 1;
+}
+
+message UserId {
+  string value = 1;
+}
