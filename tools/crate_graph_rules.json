@@ -1,0 +1,134 @@
+{
+  "crates": {
+    "moqentra-types": {
+      "description": "Shared value types, identifiers, and schemas. No internal dependencies.",
+      "allowed_internal": [],
+      "forbidden_external": []
+    },
+    "moqentra-contracts": {
+      "description": "Versioned contracts and generated runtime stubs. Depends only on types.",
+      "allowed_internal": ["moqentra-types"],
+      "forbidden_external": []
+    },
+    "moqentra-domain": {
+      "description": "Pure domain logic and state machines. No transport, storage, or runtime dependencies.",
+      "allowed_internal": ["moqentra-types", "moqentra-contracts"],
+      "forbidden_external": [
+        "axum", "axum-server", "sqlx", "sea-orm", "tokio-postgres", "kube",
+        "kube-client", "kube-core", "s3", "rusoto", "aws-sdk-s3", "tonic",
+        "tonic-transport", "reqwest", "tokio", "async-std"
+      ]
+    },
+    "moqentra-application": {
+      "description": "Application services and ports. Bridges domain and adapters.",
+      "allowed_internal": [
+        "moqentra-types", "moqentra-contracts", "moqentra-domain"
+      ],
+      "forbidden_external": [
+        "axum", "sqlx", "kube", "aws-sdk-s3", "tonic-transport"
+      ]
+    },
+    "moqentra-storage": {
+      "description": "PostgreSQL repository adapter.",
+      "allowed_internal": [
+        "moqentra-types", "moqentra-contracts", "moqentra-domain",
+        "moqentra-application"
+      ],
+      "forbidden_external": []
+    },
+    "moqentra-object-store": {
+      "description": "S3-compatible object storage adapter.",
+      "allowed_internal": [
+        "moqentra-types", "moqentra-contracts", "moqentra-domain",
+        "moqentra-application"
+      ],
+      "forbidden_external": []
+    },
+    "moqentra-auth": {
+      "description": "Authentication and authorization adapter.",
+      "allowed_internal": [
+        "moqentra-types", "moqentra-contracts", "moqentra-domain",
+        "moqentra-application"
+      ],
+      "forbidden_external": []
+    },
+    "moqentra-scheduler": {
+      "description": "Scheduling and resource policy adapter.",
+      "allowed_internal": [
+        "moqentra-types", "moqentra-contracts", "moqentra-domain",
+        "moqentra-application"
+      ],
+      "forbidden_external": []
+    },
+    "moqentra-worker-control": {
+      "description": "Python gRPC worker control adapter.",
+      "allowed_internal": [
+        "moqentra-types", "moqentra-contracts", "moqentra-domain",
+        "moqentra-application"
+      ],
+      "forbidden_external": []
+    },
+    "moqentra-dyun-adapter": {
+      "description": "dyun-gu runtime adapter.",
+      "allowed_internal": [
+        "moqentra-types", "moqentra-contracts", "moqentra-domain",
+        "moqentra-application"
+      ],
+      "forbidden_external": []
+    },
+    "moqentra-http-api": {
+      "description": "HTTP/gRPC northbound API adapter.",
+      "allowed_internal": [
+        "moqentra-types", "moqentra-contracts", "moqentra-domain",
+        "moqentra-application"
+      ],
+      "forbidden_external": []
+    },
+    "moqentra-observability": {
+      "description": "Telemetry and logging adapter.",
+      "allowed_internal": [
+        "moqentra-types", "moqentra-contracts", "moqentra-domain",
+        "moqentra-application"
+      ],
+      "forbidden_external": []
+    }
+  },
+  "apps": {
+    "moqentra-control-plane": {
+      "description": "HTTP/gRPC control plane executable.",
+      "allowed_internal": [
+        "moqentra-types", "moqentra-contracts", "moqentra-domain",
+        "moqentra-application", "moqentra-http-api", "moqentra-storage",
+        "moqentra-object-store", "moqentra-auth", "moqentra-observability"
+      ]
+    },
+    "moqentra-scheduler-agent": {
+      "description": "Scheduler and reconciler executable.",
+      "allowed_internal": [
+        "moqentra-types", "moqentra-contracts", "moqentra-domain",
+        "moqentra-application", "moqentra-scheduler", "moqentra-storage",
+        "moqentra-observability"
+      ]
+    },
+    "moqentra-node-agent": {
+      "description": "Node executor and training runner supervisor.",
+      "allowed_internal": [
+        "moqentra-types", "moqentra-contracts", "moqentra-domain",
+        "moqentra-application", "moqentra-worker-control", "moqentra-observability"
+      ]
+    },
+    "moqentra-dyun-agent": {
+      "description": "dyun-gu graph runtime agent.",
+      "allowed_internal": [
+        "moqentra-types", "moqentra-contracts", "moqentra-domain",
+        "moqentra-application", "moqentra-dyun-adapter", "moqentra-observability"
+      ]
+    }
+  },
+  "adapter_adapter_ban": true,
+  "adapter_crates": [
+    "moqentra-storage", "moqentra-object-store", "moqentra-auth",
+    "moqentra-scheduler", "moqentra-worker-control", "moqentra-dyun-adapter",
+    "moqentra-http-api", "moqentra-observability"
+  ]
+}

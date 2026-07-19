@@ -18,10 +18,22 @@
 
 ## 4. 任务
 
-- [ ] `ARCH-001` 创建 crate graph 检查并禁止反向依赖。
-- [ ] `ARCH-002` 定义 control-plane、scheduler、node-agent、dyun-agent 的进程职责。
-- [ ] `ARCH-003` 定义同步 API、异步 Operation 和事件的使用边界。
-- [ ] `ARCH-004` 为每个外部系统定义 port、超时、重试和错误映射。
-- [ ] `ARCH-005` 建立 ADR 模板；跨边界变化必须先更新 ADR。
+- [x] `ARCH-001` 创建 crate graph 检查并禁止反向依赖。
+- [x] `ARCH-002` 定义 control-plane、scheduler、node-agent、dyun-agent 的进程职责。
+- [x] `ARCH-003` 定义同步 API、异步 Operation 和事件的使用边界。
+- [x] `ARCH-004` 为每个外部系统定义 port、超时、重试和错误映射。
+- [x] `ARCH-005` 建立 ADR 模板；跨边界变化必须先更新 ADR。
+
+## 4. 完成证据
+
+- 提交：新增 `docs/architecture.md`、`docs/adr/0000-template.md`、
+  `docs/adr/README.md`、`tools/crate_graph_rules.json`、
+  `tools/check_crate_graph.py`。
+- 测试命令：
+  - `python3 tools/check_crate_graph.py`
+  - `cargo test --workspace`
+- 测试结果：crate graph 检查通过；所有 crate/app 符合当前架构规则；
+  `cargo test` 通过。
+- 结论：领域测试无需网络、数据库、Tokio handle 或厂商 SDK 即可执行。
 
 完成条件：领域测试无需网络、数据库、Tokio handle 或厂商 SDK即可执行。
