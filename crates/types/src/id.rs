@@ -128,6 +128,8 @@ define_id!(AssetId, "Object within a dataset version.");
 define_id!(AnnotationProjectId, "Annotation project within a project.");
 define_id!(AnnotationTaskId, "Annotation task assignment.");
 define_id!(AnnotationId, "Individual annotation record.");
+define_id!(QualityRunId, "Data quality run report.");
+define_id!(AutoLabelJobId, "Automatic pre-labeling job.");
 define_id!(TrainingJobId, "Training job.");
 define_id!(
     AttemptId,
