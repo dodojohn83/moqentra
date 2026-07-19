@@ -1,0 +1,115 @@
+# Moqentra baseline version matrix.
+# All entries MUST reference a tagged release, a commit SHA, or a named channel
+# with an explicit EOL/upgrade window. Floating tags such as "latest" are not
+# allowed in production builds.
+
+[metadata]
+name = "Moqentra Version Matrix"
+frozen_at = "2026-07-19"
+source_policy = "All production dependencies must be pinned to a version, commit, or digest. Upgrades are gated by contract tests."
+
+[[toolchain]]
+name = "rust"
+version = "1.94.1"
+edition = "2021"
+source = "https://github.com/rust-lang/rust/releases/tag/1.94.1"
+verified_at = "2026-07-19"
+eol = "2026-09-04 (upgrade window to Rust 1.96)"
+constraints = ["workspace MSRV", "edition 2021", "Cargo.lock committed"]
+
+[[toolchain]]
+name = "node"
+version = "22.14.0 LTS"
+source = "https://nodejs.org/en/blog/release/v22.14.0"
+verified_at = "2026-07-19"
+eol = "2027-04"
+constraints = ["pnpm 10.x", "no floating npm registry tags in CI"]
+
+[[upstream]]
+name = "dyun-gu"
+version = "commit f6d6cb06e07b8dde332ed585a8250207501898dc"
+source = "https://github.com/ChungTak/dyun-gu-dev/commit/f6d6cb06e07b8dde332ed585a8250207501898dc"
+verified_at = "2026-07-19"
+eol = "tracked upstream"
+constraints = ["Upgrade must run GraphSpec, hot-update, and media link contract tests"]
+
+[[frontend]]
+name = "labelu-kit"
+version = "v5.11.1"
+source = "https://github.com/opendatalab/labelU-Kit/releases/tag/v5.11.1"
+verified_at = "2026-07-19"
+eol = "upstream"
+constraints = ["First evaluation baseline", "Keep third-party license manifest"]
+
+[[python]]
+name = "python"
+version = "3.13.4"
+source = "https://www.python.org/downloads/release/python-3134/"
+verified_at = "2026-07-19"
+eol = "2029-10 (end of 3.13 support)"
+constraints = ["Base interpreter for worker images and tooling"]
+
+[[python]]
+name = "pytorch"
+version = "2.7.0"
+source = "https://github.com/pytorch/pytorch/releases/tag/v2.7.0"
+verified_at = "2026-07-19"
+eol = "upstream"
+constraints = ["CUDA 12.8 prebuilt wheel for NVIDIA", "ROCm 6.4 prebuilt wheel for AMD", "Ascend via torch-npu or MindSpore worker"]
+
+[[hardware]]
+vendor = "nvidia"
+family = "geforce/rtx/quadro/datacenter"
+runtime = "cuda"
+version = "12.8"
+driver_min = "565.57.01"
+cudnn = "9.8"
+nccl = "2.27"
+verified_at = "2026-07-19"
+eol = "upstream"
+constraints = ["Blackwell architecture support", "CI evidence required for supported status"]
+
+[[hardware]]
+vendor = "amd"
+family = "instinct/radeon-pro"
+runtime = "rocm"
+version = "6.4.0"
+driver_min = "6.4.0"
+verified_at = "2026-07-19"
+eol = "upstream"
+constraints = ["MI300X CPX+NPS4 validated", "No mixed vendor SDK images"]
+
+[[hardware]]
+vendor = "ascend"
+family = "atlas-910/atlas-950/atlas-a3"
+runtime = "cann"
+version = "9.0.0"
+python = "3.11"
+verified_at = "2026-07-19"
+eol = "upstream"
+constraints = ["Toolkit+ops+nnal packages", "Ubuntu 22.04 / openEuler 24.03 base images"]
+
+[[platform]]
+name = "kubernetes"
+version = "1.33.13"
+source = "https://github.com/kubernetes/kubernetes/releases/tag/v1.33.13"
+verified_at = "2026-07-19"
+eol = "2026-06-28 (maintain existing clusters; use 1.34+ for new clusters)"
+constraints = ["Server and worker versions must match within one minor"]
+
+[[platform]]
+name = "volcano"
+version = "1.12.4"
+source = "https://github.com/volcano-sh/volcano/releases/tag/v1.12.4"
+verified_at = "2026-07-19"
+eol = "upstream"
+constraints = ["Batch scheduling", "gang scheduling", "Ascend vNPU support"]
+
+[[platform]]
+name = "object-storage"
+protocol = "s3"
+api_version = "2006-03-01"
+implementations = ["minio", "ceph-rgw", "aws-s3", "aliyun-oss"]
+verified_at = "2026-07-19"
+eol = "n/a"
+constraints = ["Use virtual-hosted or path-style endpoints explicitly", "No credential in URL"]

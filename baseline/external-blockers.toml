@@ -1,0 +1,63 @@
+# External SDK / hardware blocker registry.
+# This file records upstream gaps, missing hardware access, or license blockers
+# that prevent a feature from reaching the next support level. It MUST NOT be used
+# to disable CI gates; every blocker must list the test gate that proves it.
+
+[metadata]
+name = "Moqentra External Blocker Register"
+frozen_at = "2026-07-19"
+
+[[blocker]]
+id = "BLOCK-001"
+component = "training-worker"
+description = "No dedicated AMD Instinct MI300X runner in CI."
+affected_level = "supported"
+current_level = "preview"
+workaround = "Lab validation on borrowed MI300X; use compile-only CI for PR gates."
+test_gate = "Real training job on MI300X with checkpoint/resume and artifact checksum."
+status = "open"
+owner = "infra"
+
+[[blocker]]
+id = "BLOCK-002"
+component = "ascend-worker"
+description = "No Ascend Atlas 910B/A3 runner in CI."
+affected_level = "supported"
+current_level = "compile-only"
+workaround = "Cross-compile Ascend worker image and run syntax/unit tests on x86."
+test_gate = "End-to-end classification training on Ascend with CANN 9.0.0."
+status = "open"
+owner = "infra"
+
+[[blocker]]
+id = "BLOCK-003"
+component = "inference-adapter"
+description = "Upstream dyun-gu hot-update contract is not yet released as a tagged version."
+affected_level = "supported"
+current_level = "preview"
+workaround = "Pin to verified commit f6d6cb06e07b8dde332ed585a8250207501898dc and run contract tests."
+test_gate = "GraphSpec, hot-update, and media link tests pass against pinned commit."
+status = "open"
+owner = "runtime"
+
+[[blocker]]
+id = "BLOCK-004"
+component = "object-storage"
+description = "Alibaba Cloud OSS signature v4 authentication differs from S3 in corner cases."
+affected_level = "supported"
+current_level = "preview"
+workaround = "Use MinIO/Ceph RGW or AWS S3 for production object storage."
+test_gate = "Compatibility test suite against OSS endpoint in Alibaba test account."
+status = "open"
+owner = "storage"
+
+[[blocker]]
+id = "BLOCK-005"
+component = "labelu-kit"
+description = "v5.11.1 release tag not yet available upstream; latest verified is v5.11.0."
+affected_level = "supported"
+current_level = "preview"
+workaround = "Evaluate against v5.11.0 and update to v5.11.1 when released."
+test_gate = "LabelU-Kit import/export and component embedding tests."
+status = "open"
+owner = "frontend"
