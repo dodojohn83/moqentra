@@ -1,0 +1,78 @@
+# Moqentra hardware support levels.
+# Levels:
+#   supported     = real hardware CI, accuracy baseline, failure recovery,
+#                   monitoring and upgrade evidence exist.
+#   preview       = validated in a lab environment; may lack production telemetry.
+#   compile-only  = source builds and unit tests pass; no hardware CI.
+#   mock          = used only for non-hardware unit/integration tests.
+
+[metadata]
+name = "Moqentra Hardware Support Matrix"
+frozen_at = "2026-07-19"
+
+[[device]]
+vendor = "nvidia"
+family = "datacenter"
+devices = ["H100", "H200", "L40S", "B100", "B200"]
+level = "supported"
+conditions = [
+  "NVIDIA datacenter driver >= 565.57.01",
+  "CUDA 12.8 runtime",
+  "cuDNN 9.8 / NCCL 2.27",
+  "Real training CI evidence for at least classification/detection/segmentation",
+  "Checkpoint/resume and artifact reproducibility tests pass"
+]
+
+[[device]]
+vendor = "nvidia"
+family = "geforce-rtx"
+devices = ["RTX 4090", "RTX 5090"]
+level = "preview"
+conditions = [
+  "CUDA 12.8 driver",
+  "Not in primary production support matrix; lab validation only"
+]
+
+[[device]]
+vendor = "amd"
+family = "instinct"
+devices = ["MI300X", "MI250X"]
+level = "preview"
+conditions = [
+  "ROCm 6.4.0",
+  "CPX mode with NPS4 validated for MI300X",
+  "PyTorch/ROCm 2.7 wheel",
+  "Lab CI evidence required before promoted to supported"
+]
+
+[[device]]
+vendor = "amd"
+family = "radeon-pro"
+devices = ["W7800-48GB"]
+level = "compile-only"
+conditions = [
+  "ROCm 6.4.0",
+  "No production CI; builds only"
+]
+
+[[device]]
+vendor = "ascend"
+family = "atlas"
+devices = ["Atlas 800T A2", "Atlas 900 A2", "Atlas 900 A3", "Atlas 200T A2"]
+level = "compile-only"
+conditions = [
+  "CANN 9.0.0",
+  "Toolkit + ops + nnal packages installed",
+  "torch-npu 2.7 or MindSpore 2.5 worker image",
+  "Requires dedicated Ascend CI runner before supported"
+]
+
+[[device]]
+vendor = "qemu"
+family = "mock-gpu"
+devices = ["none"]
+level = "mock"
+conditions = [
+  "Used for unit tests and control-plane CI only",
+  "Never used for accuracy or performance claims"
+]

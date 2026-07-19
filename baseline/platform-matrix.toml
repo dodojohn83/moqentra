@@ -1,0 +1,76 @@
+# Moqentra supported platform and protocol matrix.
+# New deployment targets must be added here before CI images are built.
+
+[metadata]
+name = "Moqentra Platform Matrix"
+frozen_at = "2026-07-19"
+
+[[os]]
+name = "ubuntu"
+versions = ["22.04", "24.04"]
+role = ["developer", "server", "container-base", "worker"]
+notes = "Primary development and server OS. LTS only."
+
+[[os]]
+name = "openeuler"
+versions = ["24.03"]
+role = ["ascend-cann-worker"]
+notes = "Supported for Ascend CANN base images."
+
+[[os]]
+name = "windows"
+versions = ["10", "11"]
+role = ["desktop-client"]
+notes = "Tauri desktop shell only. Server runtime not supported."
+
+[[os]]
+name = "macos"
+versions = ["14", "15"]
+role = ["developer", "desktop-client"]
+notes = "Apple Silicon and Intel builds for development and desktop shell."
+
+[[cpu]]
+arch = "x86_64"
+vendors = ["amd", "intel"]
+level = "required"
+notes = "Control plane, worker, desktop, and Kubernetes nodes."
+
+[[cpu]]
+arch = "aarch64"
+vendors = ["arm", "apple"]
+level = "supported"
+notes = "Server ARM builds and Apple Silicon development."
+
+[[kubernetes]]
+version = "1.33.13"
+compatible_volcano = "1.12.4"
+compatible_hami = "2.5.0"
+notes = "Control-plane minimum. VolcanoJob v1 API."
+
+[[object_storage]]
+protocol = "s3"
+api_version = "2006-03-01"
+features = ["virtual-hosted-style", "path-style", "multipart-upload", "presigned-url"]
+implementations = ["minio", "ceph-rgw", "aws-s3", "aliyun-oss"]
+notes = "All object storage must expose S3-compatible API. No vendor-specific SDK in domain code."
+
+[[database]]
+engine = "postgresql"
+minimum_version = "16.4"
+required_extensions = ["uuid-ossp", "pgcrypto", "rls"]
+notes = "Primary metadata store. Row-level security enabled."
+
+[[browser]]
+name = "chrome"
+minimum_version = "126"
+notes = "Web console target. SharedArrayBuffer and WebCodecs required."
+
+[[browser]]
+name = "edge"
+minimum_version = "126"
+notes = "Same engine as Chromium target."
+
+[[browser]]
+name = "firefox"
+minimum_version = "128"
+notes = "Best-effort support."

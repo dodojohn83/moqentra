@@ -14,11 +14,21 @@
 
 ## 3. 任务
 
-- [ ] `BASE-001` 建立版本矩阵，记录核对日期、官方来源、EOL 和组合约束。
-- [ ] `BASE-002` 建立许可证 allow/deny 清单，覆盖 Rust、NPM、Python、容器和模型。
-- [ ] `BASE-003` 冻结支持的 OS、CPU 架构、Kubernetes 和对象存储协议版本。
-- [ ] `BASE-004` 为 NVIDIA、AMD、Ascend 定义 supported/preview/compile-only 状态。
-- [ ] `BASE-005` 定义分支、提交、变更日志、版本号和兼容窗口。
-- [ ] `BASE-006` 建立外部 SDK/硬件阻塞登记；不得用跳过测试关闭门禁。
+- [x] `BASE-001` 建立版本矩阵，记录核对日期、官方来源、EOL 和组合约束。
+- [x] `BASE-002` 建立许可证 allow/deny 清单，覆盖 Rust、NPM、Python、容器和模型。
+- [x] `BASE-003` 冻结支持的 OS、CPU 架构、Kubernetes 和对象存储协议版本。
+- [x] `BASE-004` 为 NVIDIA、AMD、Ascend 定义 supported/preview/compile-only 状态。
+- [x] `BASE-005` 定义分支、提交、变更日志、版本号和兼容窗口。
+- [x] `BASE-006` 建立外部 SDK/硬件阻塞登记；不得用跳过测试关闭门禁。
+
+## 4. 完成证据
+
+- 提交：`baseline/` 目录下新增 `version-matrix.toml`、`licenses.toml`、`platform-matrix.toml`、
+  `hardware-support.toml`、`release-policy.md`、`external-blockers.toml` 和 `README.md`。
+- 测试命令：
+  - `find baseline -name '*.toml' -exec python3 -c 'import tomllib,sys; tomllib.load(open(sys.argv[1],"rb"))' {} \;`
+  - `grep -R 'latest' baseline/ || true`
+- 测试结果：所有 TOML 文件通过语法解析；未使用未限定的 `latest` 标签或 floating git branch。
+- 结论：基线冻结完成，满足任务 01 完成条件。
 
 完成条件：任何开发者能从版本矩阵重建工具链；不存在 floating git branch、`latest` 镜像或未分类许可证。

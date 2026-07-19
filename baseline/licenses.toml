@@ -1,0 +1,90 @@
+# Moqentra license allow/deny manifest.
+# This file is the source of truth for license compliance. Every dependency,
+# container base image, model weight, codec, and dataset redistribution term
+# must be classifiable against one of the categories below.
+
+[policy]
+review_required = true
+copyleft_prohibited_in_linked_binaries = true
+gpl_codec_allowed_only_at_runtime = true
+model_license_must_be_documented = true
+
+# SPDX identifiers that are automatically allowed in source code, Rust crates,
+# TypeScript packages, and Python packages shipped with the platform.
+[allow]
+licenses = [
+  "MIT",
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Zlib",
+  "BSL-1.0",
+  "OpenSSL",
+]
+
+# SPDX identifiers that are denied by default. Exceptions must be listed in
+# [[exceptions]] with a documented rationale and legal sign-off.
+[deny]
+licenses = [
+  "GPL-1.0-only",
+  "GPL-1.0-or-later",
+  "GPL-2.0-only",
+  "GPL-2.0-or-later",
+  "GPL-3.0-only",
+  "GPL-3.0-or-later",
+  "AGPL-1.0-only",
+  "AGPL-3.0-only",
+  "LGPL-2.0-only",
+  "LGPL-2.0-or-later",
+  "LGPL-2.1-only",
+  "LGPL-2.1-or-later",
+  "LGPL-3.0-only",
+  "LGPL-3.0-or-later",
+  "SSPL-1.0",
+  "Proprietary-Unknown",
+  "NOASSERTION",
+]
+
+# Category-specific overrides. The most specific rule wins.
+[[category]]
+name = "rust"
+allowed = ["MIT", "Apache-2.0", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib", "OpenSSL"]
+deny = ["GPL-*", "AGPL-*", "LGPL-*", "SSPL-1.0"]
+scanner = "cargo-deny"
+
+[[category]]
+name = "npm"
+allowed = ["MIT", "Apache-2.0", "BSD-*", "ISC", "MPL-2.0", "Zlib"]
+deny = ["GPL-*", "AGPL-*", "LGPL-*", "SSPL-1.0"]
+scanner = "license-checker"
+
+[[category]]
+name = "python"
+allowed = ["MIT", "Apache-2.0", "BSD-*", "ISC", "MPL-2.0", "PSF-2.0"]
+deny = ["GPL-*", "AGPL-*", "LGPL-*", "SSPL-1.0"]
+scanner = "pip-licenses"
+
+[[category]]
+name = "container"
+allowed = ["Apache-2.0", "MIT", "BSD-3-Clause", "MPL-2.0"]
+deny = ["GPL-3.0", "AGPL-3.0"]
+scanner = "syft-sbom"
+
+[[category]]
+name = "model"
+allowed = ["Apache-2.0", "MIT", "BSD-3-Clause", "CC-BY-4.0", "CC-BY-SA-4.0"]
+deny = ["GPL-3.0", "AGPL-3.0", "CC-BY-NC-*", "Proprietary-Unknown"]
+scanner = "manual-manifest"
+
+# Documented exceptions. An exception is valid only for the exact version listed.
+[[exceptions]]
+id = "EXC-001"
+component = "example-gpl-tool"
+version = "n/a"
+license = "GPL-3.0-only"
+scope = "build-time-only-cli"
+rationale = "Not linked into distributed binaries; invoked as a separate process."
+approved_by = "TBD"
