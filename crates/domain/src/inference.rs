@@ -176,6 +176,12 @@ impl Deployment {
             // Old generation reports are ignored (idempotent reconciliation).
             return Ok(());
         }
+        if let Some((name, _)) = metrics.iter().find(|(_, v)| !v.is_finite()) {
+            return Err(moqentra_types::Error::invalid_argument(format!(
+                "replica metric must be finite: {}",
+                name
+            )));
+        }
         self.replicas.insert(
             replica_id.into(),
             ReplicaObservedState {
