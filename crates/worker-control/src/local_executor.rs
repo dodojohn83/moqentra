@@ -1,0 +1,285 @@
+//! Local executor and node-agent resource management.
+
+use moqentra_types::{AttemptId, NodeId, UtcTimestamp};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+
+/// Kind of accelerator.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum AcceleratorKind {
+    Nvidia,
+    Amd,
+    Ascend,
+    Cpu,
+}
+
+/// A compute device attached to a node.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Device {
+    pub uuid: String,
+    pub kind: AcceleratorKind,
+    pub memory_mib: u64,
+    pub driver_version: String,
+    pub runtime: String,
+    pub healthy: bool,
+}
+
+/// Node capabilities discovered at startup.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeCapabilities {
+    pub node_id: NodeId,
+    pub cpu_cores: u32,
+    pub memory_mib: u64,
+    pub disk_mib: u64,
+    pub container_runtime: String,
+    pub devices: Vec<Device>,
+    pub healthy: bool,
+    pub reported_at: UtcTimestamp,
+}
+
+/// A persistent resource allocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Allocation {
+    pub id: String,
+    pub attempt_id: AttemptId,
+    pub node_id: NodeId,
+    pub cpu_cores: u32,
+    pub memory_mib: u64,
+    pub device_uuids: BTreeSet<String>,
+    pub fencing_token: u64,
+    pub created_at: UtcTimestamp,
+    pub released_at: Option<UtcTimestamp>,
+}
+
+/// Container security profile.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContainerSecurityProfile {
+    pub run_as_root: bool,
+    pub read_only_rootfs: bool,
+    pub dropped_capabilities: Vec<String>,
+    pub seccomp_profile: Option<String>,
+}
+
+impl Default for ContainerSecurityProfile {
+    fn default() -> Self {
+        Self {
+            run_as_root: false,
+            read_only_rootfs: true,
+            dropped_capabilities: vec!["ALL".to_string()],
+            seccomp_profile: None,
+        }
+    }
+}
+
+/// Container launch config.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContainerConfig {
+    pub image_digest: String,
+    pub entrypoint: Vec<String>,
+    pub env: BTreeMap<String, String>,
+    pub bind_mounts: BTreeMap<String, String>,
+    pub security: ContainerSecurityProfile,
+}
+
+/// Local executor managing node resources and containers.
+#[derive(Debug, Clone, Default)]
+pub struct LocalExecutor {
+    allocations: HashMap<String, Allocation>,
+    device_usage: BTreeMap<String, String>,
+}
+
+impl LocalExecutor {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn allocate(
+        &mut self,
+        request: &AllocationRequest,
+        node_id: NodeId,
+        capabilities: &NodeCapabilities,
+        fencing_token: u64,
+    ) -> Result<Allocation, moqentra_types::Error> {
+        if request.memory_mib > capabilities.memory_mib {
+            return Err(moqentra_types::Error::unavailable("insufficient memory"));
+        }
+        if request.cpu_cores > capabilities.cpu_cores {
+            return Err(moqentra_types::Error::unavailable("insufficient cpu"));
+        }
+
+        let mut assigned = BTreeSet::new();
+        for needed in &request.devices {
+            let available = capabilities
+                .devices
+                .iter()
+                .filter(|d| {
+                    d.kind == *needed && d.healthy && !self.device_usage.contains_key(&d.uuid)
+                })
+                .map(|d| d.uuid.clone())
+                .take(request.device_count as usize)
+                .collect::<BTreeSet<_>>();
+            if available.len() < request.device_count as usize {
+                return Err(moqentra_types::Error::unavailable("insufficient devices"));
+            }
+            for uuid in available {
+                self.device_usage.insert(uuid.clone(), request.attempt_id.to_string());
+                assigned.insert(uuid);
+            }
+        }
+
+        let allocation = Allocation {
+            id: format!("alloc-{}", request.attempt_id),
+            attempt_id: request.attempt_id,
+            node_id,
+            cpu_cores: request.cpu_cores,
+            memory_mib: request.memory_mib,
+            device_uuids: assigned,
+            fencing_token,
+            created_at: UtcTimestamp::now(),
+            released_at: None,
+        };
+        self.allocations.insert(allocation.id.clone(), allocation.clone());
+        Ok(allocation)
+    }
+
+    pub fn release(&mut self, allocation_id: &str) -> Result<(), moqentra_types::Error> {
+        let allocation = self
+            .allocations
+            .get_mut(allocation_id)
+            .ok_or_else(|| moqentra_types::Error::not_found("allocation"))?;
+        for uuid in &allocation.device_uuids {
+            self.device_usage.remove(uuid);
+        }
+        allocation.released_at = Some(UtcTimestamp::now());
+        Ok(())
+    }
+
+    pub fn reconcile_orphans(&mut self, active_attempts: &[AttemptId]) {
+        let active: BTreeSet<_> = active_attempts.iter().map(|a| a.to_string()).collect();
+        let stale: Vec<_> = self
+            .allocations
+            .values()
+            .filter(|a| a.released_at.is_none() && !active.contains(&a.attempt_id.to_string()))
+            .map(|a| a.id.clone())
+            .collect();
+        for id in stale {
+            let _ = self.release(&id);
+        }
+    }
+
+    pub fn launch_container(
+        &self,
+        _config: &ContainerConfig,
+    ) -> Result<String, moqentra_types::Error> {
+        if _config.security.run_as_root {
+            return Err(moqentra_types::Error::permission_denied(
+                "root execution not allowed",
+            ));
+        }
+        Ok(format!(
+            "container-{}",
+            _config.image_digest.replace(':', "-")
+        ))
+    }
+}
+
+/// Allocation request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AllocationRequest {
+    pub attempt_id: AttemptId,
+    pub cpu_cores: u32,
+    pub memory_mib: u64,
+    pub devices: Vec<AcceleratorKind>,
+    pub device_count: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use moqentra_types::{AttemptId, NodeId, RandomIdGenerator};
+
+    fn make_capabilities() -> NodeCapabilities {
+        let gen = RandomIdGenerator;
+        NodeCapabilities {
+            node_id: NodeId::new_v7(&gen),
+            cpu_cores: 8,
+            memory_mib: 32768,
+            disk_mib: 1024000,
+            container_runtime: "podman".to_string(),
+            devices: vec![Device {
+                uuid: "gpu-0".to_string(),
+                kind: AcceleratorKind::Nvidia,
+                memory_mib: 24576,
+                driver_version: "535".to_string(),
+                runtime: "cuda".to_string(),
+                healthy: true,
+            }],
+            healthy: true,
+            reported_at: UtcTimestamp::now(),
+        }
+    }
+
+    #[test]
+    fn allocate_and_release_device() {
+        let gen = RandomIdGenerator;
+        let caps = make_capabilities();
+        let mut executor = LocalExecutor::new();
+        let request = AllocationRequest {
+            attempt_id: AttemptId::new_v7(&gen),
+            cpu_cores: 2,
+            memory_mib: 8192,
+            devices: vec![AcceleratorKind::Nvidia],
+            device_count: 1,
+        };
+        let alloc = executor.allocate(&request, caps.node_id, &caps, 1).unwrap();
+        assert_eq!(alloc.device_uuids.len(), 1);
+
+        // Second allocation on the same device should fail.
+        let request2 = AllocationRequest {
+            attempt_id: AttemptId::new_v7(&gen),
+            cpu_cores: 2,
+            memory_mib: 8192,
+            devices: vec![AcceleratorKind::Nvidia],
+            device_count: 1,
+        };
+        assert!(executor.allocate(&request2, caps.node_id, &caps, 2).is_err());
+
+        executor.release(&alloc.id).unwrap();
+        assert!(executor.allocate(&request2, caps.node_id, &caps, 3).is_ok());
+    }
+
+    #[test]
+    fn root_container_rejected() {
+        let config = ContainerConfig {
+            image_digest: "sha256:abc".to_string(),
+            entrypoint: vec!["train".to_string()],
+            env: BTreeMap::new(),
+            bind_mounts: BTreeMap::new(),
+            security: ContainerSecurityProfile {
+                run_as_root: true,
+                read_only_rootfs: true,
+                dropped_capabilities: vec![],
+                seccomp_profile: None,
+            },
+        };
+        let executor = LocalExecutor::new();
+        assert!(executor.launch_container(&config).is_err());
+    }
+
+    #[test]
+    fn reconcile_orphans() {
+        let gen = RandomIdGenerator;
+        let caps = make_capabilities();
+        let mut executor = LocalExecutor::new();
+        let attempt = AttemptId::new_v7(&gen);
+        let request = AllocationRequest {
+            attempt_id: attempt,
+            cpu_cores: 1,
+            memory_mib: 1024,
+            devices: vec![],
+            device_count: 0,
+        };
+        let alloc = executor.allocate(&request, caps.node_id, &caps, 1).unwrap();
+        executor.reconcile_orphans(&[]);
+        assert!(executor.allocations[&alloc.id].released_at.is_some());
+    }
+}
