@@ -78,7 +78,7 @@ pub struct OperationRef {
 }
 
 /// Webhook subscription and delivery metadata.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebhookSubscription {
     pub id: String,
     pub tenant_id: moqentra_types::TenantId,
@@ -88,6 +88,21 @@ pub struct WebhookSubscription {
     pub active: bool,
     pub max_retries: u32,
     pub circuit_open: bool,
+}
+
+impl std::fmt::Debug for WebhookSubscription {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WebhookSubscription")
+            .field("id", &self.id)
+            .field("tenant_id", &self.tenant_id)
+            .field("url", &self.url)
+            .field("event_types", &self.event_types)
+            .field("secret_hmac", &"[REDACTED]")
+            .field("active", &self.active)
+            .field("max_retries", &self.max_retries)
+            .field("circuit_open", &self.circuit_open)
+            .finish()
+    }
 }
 
 type HmacSha256 = Hmac<Sha256>;
