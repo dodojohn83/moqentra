@@ -152,12 +152,19 @@ impl PlanCompiler {
                 total_members: 1,
                 topology: "none".to_string(),
             },
-            moqentra_domain::training::DistributedConfig::Ddp { world_size } => GangGroup {
-                name: format!("gang-{}", attempt_id),
-                min_available: world_size,
-                total_members: world_size,
-                topology: spec.resources.topology.clone().unwrap_or_default(),
-            },
+            moqentra_domain::training::DistributedConfig::Ddp { world_size } => {
+                if world_size == 0 {
+                    return Err(moqentra_types::Error::invalid_argument(
+                        "ddp world_size must be > 0",
+                    ));
+                }
+                GangGroup {
+                    name: format!("gang-{}", attempt_id),
+                    min_available: world_size,
+                    total_members: world_size,
+                    topology: spec.resources.topology.clone().unwrap_or_default(),
+                }
+            }
         };
 
         Ok(ExecutionPlan {
