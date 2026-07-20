@@ -8,6 +8,7 @@ pub mod conversion;
 pub mod dataset;
 pub mod export;
 pub mod import;
+pub mod inference;
 pub mod model_registry;
 pub mod pipeline;
 pub mod quality;
@@ -29,6 +30,10 @@ pub use dataset::{
     compute_manifest_digest, AssetRef, Dataset, DatasetState, DatasetVersion, DatasetVersionState,
 };
 pub use import::{ImportJob, ImportJobFailure, ImportJobState};
+pub use inference::{
+    Cluster, Deployment, DeploymentState, Endpoint, PlacementPolicy, ReleaseBundle,
+    ReplicaObservedState, RolloutPolicy, RolloutStrategy,
+};
 pub use model_registry::{
     Artifact, Attachment, Model, ModelArtifactManifest, ModelLineage, ModelSignature, ModelVersion,
     ModelVersionState, TensorSpec,

@@ -95,7 +95,7 @@ export interface LabelUAnnotation {
 export interface MoqentraAnnotationPatch {
   annotationId: string;
   labelId: string;
-  geometry: Record<string, number[]>;
+  geometry: Record<string, number[] | undefined>;
   frame?: number;
 }
 

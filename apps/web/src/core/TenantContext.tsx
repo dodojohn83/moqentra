@@ -1,0 +1,42 @@
+import { createContext, useContext, useMemo, useState } from "react";
+
+export interface TenantScope {
+  tenantId: string;
+  projectId?: string;
+}
+
+interface TenantContextValue {
+  scope: TenantScope;
+  setTenant: (tenantId: string) => void;
+  setProject: (projectId: string | undefined) => void;
+}
+
+const TenantContext = createContext<TenantContextValue | null>(null);
+
+export function TenantProvider({
+  initialTenantId,
+  children,
+}: {
+  initialTenantId: string;
+  children: React.ReactNode;
+}) {
+  const [scope, setScope] = useState<TenantScope>({ tenantId: initialTenantId });
+
+  const value = useMemo(
+    () => ({
+      scope,
+      setTenant: (tenantId: string) => setScope({ tenantId }),
+      setProject: (projectId: string | undefined) =>
+        setScope((prev) => ({ ...prev, projectId })),
+    }),
+    [scope],
+  );
+
+  return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>;
+}
+
+export function useTenant(): TenantContextValue {
+  const ctx = useContext(TenantContext);
+  if (!ctx) throw new Error("useTenant must be used within TenantProvider");
+  return ctx;
+}

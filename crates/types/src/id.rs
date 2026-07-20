@@ -154,6 +154,8 @@ define_id!(
 );
 define_id!(ReplicaId, "Running replica of a deployment.");
 define_id!(NodeId, "Compute node agent.");
+define_id!(ClusterId, "Inference cluster.");
+define_id!(EndpointId, "Inference endpoint.");
 define_id!(OperationId, "Long-running operation.");
 define_id!(ArtifactDigest, "Content digest of an artifact.");
 
