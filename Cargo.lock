@@ -2073,6 +2073,12 @@ dependencies = [
 [[package]]
 name = "moqentra-observability"
 version = "0.1.0"
+dependencies = [
+ "moqentra-types",
+ "serde",
+ "serde_json",
+ "tracing",
+]
 
 [[package]]
 name = "moqentra-scheduler"
