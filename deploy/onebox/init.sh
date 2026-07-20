@@ -16,6 +16,7 @@ if [[ ! -f "${SCRIPT_DIR}/certs/tls.crt" ]]; then
   openssl req -x509 -newkey rsa:2048 -keyout "${SCRIPT_DIR}/certs/tls.key" \
     -out "${SCRIPT_DIR}/certs/tls.crt" -days 365 -nodes \
     -subj "/CN=localhost" 2>/dev/null
+  chmod 600 "${SCRIPT_DIR}/certs/tls.key"
 fi
 
 # Generate random secrets when defaults are still in place.
