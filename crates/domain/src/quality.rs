@@ -341,9 +341,14 @@ impl AutoLabelJob {
         dataset_version_id: DatasetVersionId,
         model_version_id: ModelVersionId,
         confidence_threshold: f64,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        if !(0.0..=1.0).contains(&confidence_threshold) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "confidence_threshold must be finite and in [0, 1]",
+            ));
+        }
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             dataset_version_id,
             model_version_id,
@@ -353,7 +358,7 @@ impl AutoLabelJob {
             accepted_count: 0,
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn start(&mut self) -> Result<(), moqentra_types::Error> {
@@ -375,6 +380,18 @@ impl AutoLabelJob {
             return Err(moqentra_types::Error::conflict(
                 "auto-label job is not running",
             ));
+        }
+        for suggestion in &suggestions {
+            if suggestion.label.trim().is_empty() {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "suggestion label is empty",
+                ));
+            }
+            if !(0.0..=1.0).contains(&suggestion.confidence) {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "suggestion confidence must be finite and in [0, 1]",
+                ));
+            }
         }
         self.suggestions.extend(suggestions);
         self.updated_at = UtcTimestamp::now();
@@ -459,8 +476,14 @@ impl ReviewItem {
                 "review item is not pending",
             ));
         }
+        let reason = reason.into();
+        if reason.trim().is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "rejection reason must be non-empty",
+            ));
+        }
         self.decision = ReviewDecision::Rejected;
-        self.reason = Some(reason.into());
+        self.reason = Some(reason);
         self.rework_task_id = Some(rework_task_id);
         self.reviewed_at = Some(UtcTimestamp::now());
         Ok(())
@@ -568,7 +591,8 @@ mod tests {
             DatasetVersionId::new_v7(&gen),
             ModelVersionId::new_v7(&gen),
             0.5,
-        );
+        )
+        .unwrap();
         job.start().unwrap();
         let suggestion = AutoLabelSuggestion {
             id: AnnotationId::new_v7(&gen),

@@ -57,6 +57,11 @@ impl ImportJob {
         if !matches!(self.state, ImportJobState::Pending) {
             return Err(moqentra_types::Error::conflict("job is not pending"));
         }
+        if total_bytes == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "total_bytes must be greater than zero",
+            ));
+        }
         self.total_bytes = total_bytes;
         self.state = ImportJobState::Inspecting;
         Ok(())
@@ -171,8 +176,9 @@ mod tests {
     #[test]
     fn completed_job_cannot_be_cancelled() {
         let mut job = ImportJob::new();
-        job.start_inspection(0).unwrap();
+        job.start_inspection(100).unwrap();
         job.start_transfer().unwrap();
+        job.progress_transfer(100).unwrap();
         job.start_validation().unwrap();
         job.complete().unwrap();
         assert!(job.cancel().is_err());
