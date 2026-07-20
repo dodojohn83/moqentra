@@ -17,9 +17,10 @@ pub use config::Configuration;
 pub use error::{Error, ErrorKind, FieldViolation};
 pub use id::{
     AnnotationId, AnnotationProjectId, AnnotationTaskId, ApplicationVersionId, ArtifactDigest,
-    AssetId, AttemptId, AutoLabelJobId, CheckpointId, DatasetId, DatasetVersionId, DeploymentId,
-    ExperimentId, IdGenerator, ModelId, ModelVersionId, NodeId, OperationId, ProjectId,
-    QualityRunId, RandomIdGenerator, RankId, StaticIdGenerator, TenantId, TrainingJobId, UserId,
+    AssetId, AttemptId, AutoLabelJobId, CheckpointId, ConversionJobId, DatasetId, DatasetVersionId,
+    DeploymentId, EvaluationRunId, ExperimentId, HpoRunId, IdGenerator, ModelId, ModelVersionId,
+    NodeId, NotebookId, OperationId, PipelineId, PipelineRunId, ProjectId, QualityRunId,
+    RandomIdGenerator, RankId, StaticIdGenerator, TenantId, TrainingJobId, UserId,
 };
 pub use pagination::{Page, PageRequest};
 pub use request::{Principal, RequestContext, ResourceQuantity, ResourceRef};
