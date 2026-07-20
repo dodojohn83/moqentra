@@ -1964,6 +1964,7 @@ dependencies = [
  "jsonwebtoken",
  "moqentra-types",
  "serde",
+ "serde_json",
  "thiserror",
  "tracing",
 ]
