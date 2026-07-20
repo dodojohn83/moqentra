@@ -26,6 +26,10 @@ impl SecretProvider {
                 if Self::is_dangerous_path(path) {
                     return None;
                 }
+                let meta = std::fs::symlink_metadata(path).ok()?;
+                if meta.file_type().is_symlink() {
+                    return None;
+                }
                 std::fs::read_to_string(path).ok().map(|s| s.trim().to_string())
             }
             SecretProvider::Env { name } => std::env::var(name).ok(),
