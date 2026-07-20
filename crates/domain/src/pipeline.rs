@@ -293,8 +293,10 @@ impl HpoRun {
         metric: f64,
         job_id: TrainingJobId,
     ) -> Result<(), moqentra_types::Error> {
-        if metric.is_nan() {
-            return Err(moqentra_types::Error::invalid_argument("metric is NaN"));
+        if !metric.is_finite() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "metric must be finite",
+            ));
         }
         let trial = self
             .trials

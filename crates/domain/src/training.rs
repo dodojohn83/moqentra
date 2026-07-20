@@ -326,9 +326,9 @@ impl TrainingJob {
         points: Vec<MetricPoint>,
         max_cardinality: usize,
     ) -> Result<(), moqentra_types::Error> {
-        if points.iter().any(|p| p.value.is_nan()) {
+        if points.iter().any(|p| !p.value.is_finite()) {
             return Err(moqentra_types::Error::invalid_argument(
-                "metric value is NaN",
+                "metric value must be finite",
             ));
         }
         let names: BTreeMap<String, usize> = points.iter().fold(BTreeMap::new(), |mut acc, p| {
@@ -551,16 +551,24 @@ mod tests {
     }
 
     #[test]
-    fn nan_metric_rejected() {
+    fn non_finite_metric_rejected() {
         let mut job = make_job();
-        let points = vec![MetricPoint {
+        let nan = MetricPoint {
             step: 1,
             timestamp: UtcTimestamp::now(),
             name: "loss".to_string(),
             value: f64::NAN,
             tags: BTreeMap::new(),
-        }];
-        assert!(job.append_metrics(points, 10).is_err());
+        };
+        let inf = MetricPoint {
+            step: 1,
+            timestamp: UtcTimestamp::now(),
+            name: "loss".to_string(),
+            value: f64::INFINITY,
+            tags: BTreeMap::new(),
+        };
+        assert!(job.append_metrics(vec![nan], 10).is_err());
+        assert!(job.append_metrics(vec![inf], 10).is_err());
     }
 
     #[test]

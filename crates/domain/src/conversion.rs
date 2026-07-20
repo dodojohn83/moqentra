@@ -243,9 +243,20 @@ impl EvaluationRun {
         Ok(())
     }
 
-    pub fn report_metrics(&mut self, metrics: Vec<EvaluationMetric>) {
+    pub fn report_metrics(
+        &mut self,
+        metrics: Vec<EvaluationMetric>,
+    ) -> Result<(), moqentra_types::Error> {
+        for metric in &metrics {
+            if !metric.value.is_finite() || !metric.tolerance.is_finite() {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "metric and tolerance must be finite",
+                ));
+            }
+        }
         self.metrics.extend(metrics);
         self.updated_at = UtcTimestamp::now();
+        Ok(())
     }
 
     pub fn complete(&mut self) -> Result<(), moqentra_types::Error> {
@@ -292,8 +303,10 @@ impl PromotionPolicy {
                 .find(|m| &m.name == name)
                 .map(|m| m.value)
                 .ok_or_else(|| moqentra_types::Error::invalid_argument("missing metric"))?;
-            if value.is_nan() || min.is_nan() || tol.is_nan() {
-                return Err(moqentra_types::Error::invalid_argument("metric is NaN"));
+            if !value.is_finite() || !min.is_finite() || !tol.is_finite() {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "metric and threshold must be finite",
+                ));
             }
             let threshold = min - tol;
             if value < threshold {
@@ -400,7 +413,8 @@ mod tests {
                 value: 0.88,
                 tolerance: 0.01,
             },
-        ]);
+        ])
+        .unwrap();
         run.complete().unwrap();
 
         let mut required = BTreeMap::new();
