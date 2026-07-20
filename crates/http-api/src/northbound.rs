@@ -84,6 +84,7 @@ pub struct WebhookSubscription {
     pub tenant_id: moqentra_types::TenantId,
     pub url: String,
     pub event_types: Vec<String>,
+    #[serde(skip_serializing)]
     pub secret_hmac: String,
     pub active: bool,
     pub max_retries: u32,
@@ -401,6 +402,22 @@ mod tests {
             sub.sign_payload(b"body", "d2", 42).unwrap(),
             "different delivery id changes signature"
         );
+    }
+
+    #[test]
+    fn webhook_secret_not_serialized() {
+        let sub = WebhookSubscription {
+            id: "w4".to_string(),
+            tenant_id: TenantId::new_v7(&RandomIdGenerator),
+            url: "https://example.com/hook".to_string(),
+            event_types: vec![],
+            secret_hmac: "super-secret".to_string(),
+            active: true,
+            max_retries: 3,
+            circuit_open: false,
+        };
+        let json = serde_json::to_string(&sub).unwrap();
+        assert!(!json.contains("super-secret"));
     }
 
     #[test]
