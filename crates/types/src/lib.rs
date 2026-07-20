@@ -16,9 +16,10 @@ pub mod time;
 pub use config::Configuration;
 pub use error::{Error, ErrorKind, FieldViolation};
 pub use id::{
-    AnnotationTaskId, ApplicationVersionId, ArtifactDigest, AssetId, AttemptId, DatasetId,
-    DatasetVersionId, DeploymentId, IdGenerator, ModelVersionId, NodeId, OperationId, ProjectId,
-    RandomIdGenerator, StaticIdGenerator, TenantId, TrainingJobId, UserId,
+    AnnotationId, AnnotationProjectId, AnnotationTaskId, ApplicationVersionId, ArtifactDigest,
+    AssetId, AttemptId, DatasetId, DatasetVersionId, DeploymentId, IdGenerator, ModelVersionId,
+    NodeId, OperationId, ProjectId, RandomIdGenerator, StaticIdGenerator, TenantId, TrainingJobId,
+    UserId,
 };
 pub use pagination::{Page, PageRequest};
 pub use request::{Principal, RequestContext, ResourceQuantity, ResourceRef};
