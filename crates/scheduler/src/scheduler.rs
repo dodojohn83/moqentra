@@ -196,14 +196,17 @@ impl ClusterTopology {
         &self,
         request: &ResourceRequest,
     ) -> Result<String, moqentra_types::Error> {
+        let total_cpu_milli = (request.replicas as u64)
+            .checked_mul(request.cpu_milli)
+            .ok_or_else(|| moqentra_types::Error::invalid_argument("cpu request overflow"))?;
+        let total_memory_mib = (request.replicas as u64)
+            .checked_mul(request.memory_mib)
+            .ok_or_else(|| moqentra_types::Error::invalid_argument("memory request overflow"))?;
         for (name, node) in &self.nodes {
-            let total_cpu_milli = (request.replicas as u64)
-                .checked_mul(request.cpu_milli)
-                .ok_or_else(|| moqentra_types::Error::invalid_argument("cpu request overflow"))?;
             if (node.cpu_cores as u64).checked_mul(1000).is_none_or(|c| c < total_cpu_milli) {
                 continue;
             }
-            if node.memory_mib < request.memory_mib {
+            if node.memory_mib < total_memory_mib {
                 continue;
             }
             if request.accelerator_count > 0 {

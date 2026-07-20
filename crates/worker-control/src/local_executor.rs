@@ -4,7 +4,7 @@ use moqentra_types::{AttemptId, NodeId, UtcTimestamp};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 /// Kind of accelerator.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum AcceleratorKind {
     Nvidia,
     Amd,
@@ -85,6 +85,8 @@ pub struct ContainerConfig {
 pub struct LocalExecutor {
     allocations: HashMap<String, Allocation>,
     device_usage: BTreeMap<String, String>,
+    allocated_cpu_cores: u64,
+    allocated_memory_mib: u64,
 }
 
 impl LocalExecutor {
@@ -99,15 +101,29 @@ impl LocalExecutor {
         capabilities: &NodeCapabilities,
         fencing_token: u64,
     ) -> Result<Allocation, moqentra_types::Error> {
-        if request.memory_mib > capabilities.memory_mib {
+        let available_cpu =
+            (capabilities.cpu_cores as u64).saturating_sub(self.allocated_cpu_cores);
+        if (request.cpu_cores as u64) > available_cpu {
+            return Err(moqentra_types::Error::unavailable("insufficient cpu"));
+        }
+        let available_memory = capabilities.memory_mib.saturating_sub(self.allocated_memory_mib);
+        if request.memory_mib > available_memory {
             return Err(moqentra_types::Error::unavailable("insufficient memory"));
         }
-        if request.cpu_cores > capabilities.cpu_cores {
-            return Err(moqentra_types::Error::unavailable("insufficient cpu"));
+        if request.device_count == 0 && !request.devices.is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "device_count must be greater than zero",
+            ));
         }
         if request.devices.is_empty() && request.device_count > 0 {
             return Err(moqentra_types::Error::invalid_argument(
                 "device_count set but no device kinds requested",
+            ));
+        }
+        let unique_kinds: BTreeSet<_> = request.devices.iter().collect();
+        if unique_kinds.len() != request.devices.len() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "duplicate device kinds in request",
             ));
         }
 
@@ -142,6 +158,14 @@ impl LocalExecutor {
             created_at: UtcTimestamp::now(),
             released_at: None,
         };
+        self.allocated_cpu_cores =
+            self.allocated_cpu_cores
+                .checked_add(request.cpu_cores as u64)
+                .ok_or_else(|| moqentra_types::Error::unavailable("cpu allocation overflow"))?;
+        self.allocated_memory_mib = self
+            .allocated_memory_mib
+            .checked_add(request.memory_mib)
+            .ok_or_else(|| moqentra_types::Error::unavailable("memory allocation overflow"))?;
         self.allocations.insert(allocation.id.clone(), allocation.clone());
         Ok(allocation)
     }
@@ -151,10 +175,16 @@ impl LocalExecutor {
             .allocations
             .get_mut(allocation_id)
             .ok_or_else(|| moqentra_types::Error::not_found("allocation"))?;
-        for uuid in &allocation.device_uuids {
-            self.device_usage.remove(uuid);
+        if allocation.released_at.is_none() {
+            for uuid in &allocation.device_uuids {
+                self.device_usage.remove(uuid);
+            }
+            self.allocated_cpu_cores =
+                self.allocated_cpu_cores.saturating_sub(allocation.cpu_cores as u64);
+            self.allocated_memory_mib =
+                self.allocated_memory_mib.saturating_sub(allocation.memory_mib);
+            allocation.released_at = Some(UtcTimestamp::now());
         }
-        allocation.released_at = Some(UtcTimestamp::now());
         Ok(())
     }
 
