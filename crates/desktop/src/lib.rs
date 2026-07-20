@@ -184,9 +184,11 @@ impl FileUpload {
         index: u64,
         etag: impl Into<String>,
     ) -> Result<(), moqentra_types::Error> {
+        let idx = usize::try_from(index)
+            .map_err(|_| moqentra_types::Error::invalid_argument("chunk index out of range"))?;
         let chunk = self
             .chunks
-            .get_mut(index as usize)
+            .get_mut(idx)
             .ok_or_else(|| moqentra_types::Error::not_found("chunk"))?;
         chunk.etag = Some(etag.into());
         self.completed_chunks.insert(index);
