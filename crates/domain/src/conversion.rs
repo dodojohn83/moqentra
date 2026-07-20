@@ -292,7 +292,7 @@ impl PromotionPolicy {
                 .find(|m| &m.name == name)
                 .map(|m| m.value)
                 .ok_or_else(|| moqentra_types::Error::invalid_argument("missing metric"))?;
-            if value < *min {
+            if value.is_nan() || value < *min {
                 return Err(moqentra_types::Error::invalid_argument(
                     "metric below threshold",
                 ));

@@ -110,6 +110,17 @@ pub fn annotations_to_coco(
                     "bbox must contain exactly 4 values",
                 ));
             }
+            let (x, y, w, h) = (bbox[0], bbox[1], bbox[2], bbox[3]);
+            if !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "bbox coordinates must be finite",
+                ));
+            }
+            if w <= 0.0 || h <= 0.0 {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "bbox width and height must be positive",
+                ));
+            }
             let segmentation =
                 if let Some(poly) = ann.payload.get("polygon").and_then(|v| v.as_array()) {
                     vec![poly
@@ -122,7 +133,7 @@ pub fn annotations_to_coco(
                 } else {
                     vec![]
                 };
-            let area = bbox[2] * bbox[3];
+            let area = w * h;
 
             coco_annotations.push(CocoAnnotationEntry {
                 id: ann_id,

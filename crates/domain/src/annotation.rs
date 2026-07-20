@@ -152,7 +152,10 @@ impl TaskLease {
         self.expires_at = clock
             .add_std_duration(duration)
             .ok_or_else(|| moqentra_types::Error::internal("overflow"))?;
-        self.fencing_token += 1;
+        self.fencing_token = self
+            .fencing_token
+            .checked_add(1)
+            .ok_or_else(|| moqentra_types::Error::internal("fencing token overflow"))?;
         Ok(())
     }
 }
