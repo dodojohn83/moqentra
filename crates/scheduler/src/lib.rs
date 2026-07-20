@@ -6,7 +6,10 @@
 #![allow(missing_docs)]
 
 pub mod distributed;
+pub mod reconciler;
 pub mod scheduler;
+
+pub use reconciler::{ClusterAgent, DesiredObserved, LeaderElection, Lease, Reconciler};
 
 /// Placeholder module until domain types are added in subsequent tasks.
 pub mod placeholder {

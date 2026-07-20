@@ -1964,6 +1964,7 @@ dependencies = [
  "jsonwebtoken",
  "moqentra-types",
  "serde",
+ "serde_json",
  "thiserror",
  "tracing",
 ]
@@ -1987,6 +1988,15 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "moqentra-desktop"
+version = "0.1.0"
+dependencies = [
+ "moqentra-types",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

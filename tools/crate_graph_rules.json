@@ -91,6 +91,13 @@
         "moqentra-application"
       ],
       "forbidden_external": []
+    },
+    "moqentra-desktop": {
+      "description": "Desktop shell IPC, offline cache and file transfer primitives.",
+      "allowed_internal": [
+        "moqentra-types"
+      ],
+      "forbidden_external": []
     }
   },
   "apps": {
