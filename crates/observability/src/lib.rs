@@ -196,7 +196,9 @@ impl DiagnosticBundle {
     }
 
     pub fn is_safe(&self) -> bool {
-        let raw = serde_json::to_string(&self.redacted_logs).unwrap_or_default();
+        let Ok(raw) = serde_json::to_string(&self.redacted_logs) else {
+            return false;
+        };
         !raw.contains("password=") && !raw.contains("token=") && !raw.contains("secret=")
     }
 }
