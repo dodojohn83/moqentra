@@ -210,7 +210,10 @@ impl LocalExecutor {
                 "root execution not allowed",
             ));
         }
-        if _config.image_digest.is_empty() || !_config.image_digest.contains(':') {
+        fn valid_digest(d: &str) -> bool {
+            !d.is_empty() && d.contains(':') && d.split(':').all(|part| !part.is_empty())
+        }
+        if !valid_digest(&_config.image_digest) {
             return Err(moqentra_types::Error::invalid_argument(
                 "image digest must be in algorithm:hex form",
             ));

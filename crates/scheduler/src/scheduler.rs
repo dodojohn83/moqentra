@@ -125,9 +125,12 @@ impl PlanCompiler {
         attempt_id: AttemptId,
     ) -> Result<ExecutionPlan, moqentra_types::Error> {
         let spec = &job.spec;
-        if spec.image_digest.is_empty() || spec.code_digest.is_empty() {
+        fn valid_digest(d: &str) -> bool {
+            !d.is_empty() && d.contains(':') && d.split(':').all(|part| !part.is_empty())
+        }
+        if !valid_digest(&spec.image_digest) || !valid_digest(&spec.code_digest) {
             return Err(moqentra_types::Error::invalid_argument(
-                "missing image or code digest",
+                "image and code digests must be in algorithm:hex form",
             ));
         }
         if spec.resources.replicas == 0 {
