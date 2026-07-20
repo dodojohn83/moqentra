@@ -98,7 +98,7 @@ impl Default for DatabaseConfig {
 }
 
 /// Object storage configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObjectStorageConfig {
     pub endpoint: String,
@@ -106,6 +106,18 @@ pub struct ObjectStorageConfig {
     pub access_key_id: String,
     pub secret_access_key: SecretString,
     pub region: String,
+}
+
+impl fmt::Debug for ObjectStorageConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ObjectStorageConfig")
+            .field("endpoint", &self.endpoint)
+            .field("bucket", &self.bucket)
+            .field("access_key_id", &"[REDACTED]")
+            .field("secret_access_key", &self.secret_access_key)
+            .field("region", &self.region)
+            .finish()
+    }
 }
 
 impl Default for ObjectStorageConfig {
