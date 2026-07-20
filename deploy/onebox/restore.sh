@@ -12,6 +12,13 @@ export PGUSER="${POSTGRES_USER:-moqentra}"
 BACKUP_ARCHIVE="$1"
 BACKUP_DIR=$(mktemp -d)
 trap 'rm -rf "$BACKUP_DIR"' EXIT
+
+# Reject archives that contain absolute paths or parent-directory traversal.
+if tar -tzf "$BACKUP_ARCHIVE" | grep -qE '^/|(^|/)\.\.(/|$)'; then
+  echo "ERROR: backup archive contains absolute or traversal paths." >&2
+  exit 1
+fi
+
 tar --no-same-owner -xzf "$BACKUP_ARCHIVE" -C "$BACKUP_DIR"
 
 DUMP_FILE=$(find "$BACKUP_DIR" -name "pg_dump.sql" -print -quit)
