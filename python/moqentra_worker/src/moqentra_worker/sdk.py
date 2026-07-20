@@ -150,9 +150,9 @@ class WorkerRuntime:
         if real_base != base_dir:
             raise ValueError(f"worker root must not contain symlinks: {base_dir}")
 
-        work_dir = Path(config.get("work_dir", str(base_dir / "work")))
-        input_dir = Path(config.get("input_dir", str(base_dir / "input")))
-        output_dir = Path(config.get("output_dir", str(base_dir / "output")))
+        work_dir = Path(config.get("work_dir") or str(base_dir / "work"))
+        input_dir = Path(config.get("input_dir") or str(base_dir / "input"))
+        output_dir = Path(config.get("output_dir") or str(base_dir / "output"))
 
         for path in (work_dir, input_dir, output_dir):
             if not _is_allowed_path(path, base_dir):
