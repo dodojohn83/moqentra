@@ -2023,6 +2023,13 @@ dependencies = [
 [[package]]
 name = "moqentra-http-api"
 version = "0.1.0"
+dependencies = [
+ "moqentra-application",
+ "moqentra-domain",
+ "moqentra-types",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "moqentra-node-agent"

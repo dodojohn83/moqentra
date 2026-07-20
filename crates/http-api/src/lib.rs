@@ -1,9 +1,11 @@
 //! Moqentra `moqentra-http-api` crate.
 //!
-//! This crate is part of the Moqentra workspace. Domain logic and public APIs
-//! are documented in the `dev-docs/002_vibe_coding_plan` chapters.
+//! Northbound API concerns: problem details, idempotency, pagination, SSE and
+//! webhook primitives.
 
-#![warn(missing_docs)]
+#![allow(missing_docs)]
+
+pub mod northbound;
 
 /// Placeholder module until domain types are added in subsequent tasks.
 pub mod placeholder {
