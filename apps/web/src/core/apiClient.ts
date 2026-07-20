@@ -91,38 +91,44 @@ export async function* apiStream<T>(
 ): AsyncGenerator<T, void, unknown> {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const url = `${baseUrl.replace(/\/$/, "")}${normalizedPath}`;
-  const response = await fetch(url, {
-    headers: {
-      Accept: "text/event-stream",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-  if (!response.ok) throw new Error(`SSE failed: ${response.status}`);
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error("SSE body unavailable");
-
-  const decoder = new TextDecoder();
-  let buffer = "";
+  const controller = new AbortController();
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        if (line.startsWith("data: ")) {
-          const payload = line.slice(6);
-          if (!payload) continue;
-          try {
-            yield JSON.parse(payload) as T;
-          } catch {
-            // Skip malformed SSE payloads instead of crashing the stream.
+    const response = await fetch(url, {
+      headers: {
+        Accept: "text/event-stream",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`SSE failed: ${response.status}`);
+    const reader = response.body?.getReader();
+    if (!reader) return;
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const payload = line.slice(6);
+            if (!payload) continue;
+            try {
+              yield JSON.parse(payload) as T;
+            } catch {
+              // Skip malformed SSE payloads instead of crashing the stream.
+            }
           }
         }
       }
+    } finally {
+      reader.releaseLock();
     }
   } finally {
-    reader.cancel().catch(() => {});
+    controller.abort();
   }
 }
