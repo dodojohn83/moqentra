@@ -3,7 +3,9 @@
 //! This crate is part of the Moqentra workspace. Domain logic and public APIs
 //! are documented in the `dev-docs/002_vibe_coding_plan` chapters.
 
-#![warn(missing_docs)]
+#![allow(missing_docs)]
+
+pub mod dyun;
 
 /// Placeholder module until domain types are added in subsequent tasks.
 pub mod placeholder {

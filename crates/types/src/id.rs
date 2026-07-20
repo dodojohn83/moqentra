@@ -146,11 +146,13 @@ define_id!(PipelineId, "Pipeline definition.");
 define_id!(PipelineRunId, "Pipeline execution run.");
 define_id!(HpoRunId, "Hyper-parameter optimization run.");
 define_id!(NotebookId, "Interactive notebook instance.");
+define_id!(ApplicationId, "Application family identifier.");
 define_id!(ApplicationVersionId, "Versioned application graph.");
 define_id!(
     DeploymentId,
     "Running deployment of an application version."
 );
+define_id!(ReplicaId, "Running replica of a deployment.");
 define_id!(NodeId, "Compute node agent.");
 define_id!(OperationId, "Long-running operation.");
 define_id!(ArtifactDigest, "Content digest of an artifact.");

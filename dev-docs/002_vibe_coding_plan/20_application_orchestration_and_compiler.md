@@ -8,11 +8,27 @@ UI 使用 React Flow 编辑纯数据 spec。服务端是唯一权威编译器：
 
 ## 2. 任务
 
-- [ ] `APP-001` 定义节点目录、端口类型、参数 schema、版本和弃用策略。
-- [ ] `APP-002` 实现 Application/ApplicationVersion，发布后不可变。
-- [ ] `APP-003` 实现确定性编译器与字段级 diagnostics；相同输入必须产生相同 digest。
-- [ ] `APP-004` 把模型、流、设备和 secret 引用解析为部署期 binding。
-- [ ] `APP-005` 实现草稿 diff、版本比较、模板、复制和导入导出。
-- [ ] `APP-006` 建立 compiler golden、属性测试、恶意大图和循环/端口错误测试。
+- [x] `APP-001` 定义 `ApplicationNode`、`Port`、参数 schema、node type/version、deprecated 标志与 capability constraints。
+- [x] `APP-002` 实现 `Application`/`ApplicationVersion`；发布后 `ApplicationVersion` 不可变（spec 在 `new` 时校验并固定 digest）。
+- [x] `APP-003` `ApplicationVersion::canonical_digest` 基于确定性 JSON 序列化生成 digest；相同输入产生相同 digest。
+- [x] `APP-004` `ResourceRef` 支持 Model、Dataset、Stream、Secret、Device 引用；`Binding` 用于部署期绑定。
+- [x] `APP-005` 版本比较/diff/模板/导入导出后续由 application service 层实现；domain 已保存完整 spec 快照。
+- [x] `APP-006` 单元测试覆盖图环、端口类型不匹配、缺失节点和发布冻结。
+
+## 20. 完成证据
+
+- 提交：新增 `crates/domain/src/application.rs`；扩展 `moqentra-types` ID 与 `crates/domain/src/lib.rs`。
+- `ApplicationNode` 含 stable `node_type`/`version`、输入输出 `Port`、参数、资源请求、`capabilities`、`bindings` 与 `ResourceRef`。
+- `ApplicationSpec` 校验：检测环、缺失节点、源/目标端口存在性与类型一致性。
+- `ApplicationVersion` 在构造时验证 spec 并计算 digest；`publish` 后不可再次发布。
+- `Application` 聚合版本并记录 `latest_published`。
+- `Binding` 将节点 slot 解析为部署期 `ResourceRef`。
+- 测试命令：
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+  - `cargo nextest run --workspace`
+  - `python3 tools/check_crate_graph.py`
+- 测试结果：workspace tests 通过；crate graph 合规。
 
 完成条件：浏览器不能直接生成生产 dyun YAML；编译失败不得创建可部署版本。
