@@ -120,6 +120,8 @@ impl WebhookSubscription {
         match parsed.host() {
             Some(url::Host::Domain(domain)) => {
                 let lower = domain.to_lowercase();
+                // Ignore a trailing dot so `metadata.google.internal.` is also blocked.
+                let lower = lower.trim_end_matches('.');
                 if lower.is_empty()
                     || lower == "localhost"
                     || lower.ends_with(".localhost")
@@ -132,8 +134,8 @@ impl WebhookSubscription {
                 // Reject domain-looking IPs such as 127.1 or 0x7f.0.0.1 that the
                 // url crate does not parse as an address literal.
                 if lower.parse::<IpAddr>().is_ok()
-                    || Ipv4Addr::from_str(&lower).is_ok()
-                    || parse_ipv4_like(&lower).is_some_and(is_internal_ipv4)
+                    || Ipv4Addr::from_str(lower).is_ok()
+                    || parse_ipv4_like(lower).is_some_and(is_internal_ipv4)
                 {
                     return Err(Error::invalid_argument(
                         "SSRF: internal address not allowed",
