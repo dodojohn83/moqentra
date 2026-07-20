@@ -96,6 +96,8 @@ class WorkerSession:
         if self._cancelled:
             raise RuntimeError("worker has been cancelled")
         target = path or (self.output_dir / "checkpoints" / f"step-{len(self._metrics)}")
+        if not target.is_absolute():
+            target = self.output_dir / target
         if not (
             _is_allowed_path(target, self.work_dir)
             or _is_allowed_path(target, self.output_dir)
