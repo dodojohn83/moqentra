@@ -21,7 +21,13 @@ fi
 
 tar --no-same-owner -xzf "$BACKUP_ARCHIVE" -C "$BACKUP_DIR"
 
-DUMP_FILE=$(find "$BACKUP_DIR" -name "pg_dump.sql" -print -quit)
+# Reject any symlinks; they can point outside the extraction directory.
+if find "$BACKUP_DIR" -type l -print -quit | grep -q .; then
+  echo "ERROR: backup archive contains symbolic links." >&2
+  exit 1
+fi
+
+DUMP_FILE=$(find "$BACKUP_DIR" -name "pg_dump.sql" -type f -print -quit)
 if [[ -z "$DUMP_FILE" ]]; then
   echo "ERROR: pg_dump.sql not found in backup archive." >&2
   exit 1
