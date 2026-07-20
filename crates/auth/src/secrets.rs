@@ -155,7 +155,7 @@ impl SecurityLimits {
     }
 
     pub fn check_url_length(&self, len: usize) -> Result<(), moqentra_types::Error> {
-        if len as u32 > self.max_url_length {
+        if len as u64 > self.max_url_length as u64 {
             Err(moqentra_types::Error::invalid_argument("url too long"))
         } else {
             Ok(())
@@ -181,7 +181,7 @@ impl SecurityLimits {
     }
 
     pub fn check_log_line_length(&self, len: usize) -> Result<(), moqentra_types::Error> {
-        if len as u32 > self.max_log_line_length {
+        if len as u64 > self.max_log_line_length as u64 {
             Err(moqentra_types::Error::invalid_argument("log line too long"))
         } else {
             Ok(())
