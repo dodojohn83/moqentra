@@ -116,6 +116,9 @@ impl WebhookSubscription {
         if parsed.scheme() != "http" && parsed.scheme() != "https" {
             return Err(Error::invalid_argument("url scheme must be http or https"));
         }
+        if !parsed.username().is_empty() || parsed.password().is_some() {
+            return Err(Error::invalid_argument("url must not contain credentials"));
+        }
 
         match parsed.host() {
             Some(url::Host::Domain(domain)) => {
