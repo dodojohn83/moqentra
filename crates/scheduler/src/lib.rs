@@ -5,6 +5,7 @@
 
 #![allow(missing_docs)]
 
+pub mod distributed;
 pub mod scheduler;
 
 /// Placeholder module until domain types are added in subsequent tasks.
