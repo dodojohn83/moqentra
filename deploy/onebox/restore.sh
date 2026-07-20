@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "${SCRIPT_DIR}/.env" ]]; then
+  # shellcheck source=/dev/null
+  source "${SCRIPT_DIR}/.env"
+fi
+
 BACKUP_ARCHIVE="$1"
 BACKUP_DIR=$(mktemp -d)
-tar xzf "$BACKUP_ARCHIVE" -C "$BACKUP_DIR"
+trap 'rm -rf "$BACKUP_DIR"' EXIT
+tar --no-same-owner -xzf "$BACKUP_ARCHIVE" -C "$BACKUP_DIR"
 
 DUMP_FILE=$(find "$BACKUP_DIR" -name "pg_dump.sql" -print -quit)
 if [[ -z "$DUMP_FILE" ]]; then
