@@ -7,6 +7,8 @@ if [[ -f "${SCRIPT_DIR}/.env" ]]; then
   source "${SCRIPT_DIR}/.env"
 fi
 
+export PGUSER="${POSTGRES_USER:-moqentra}"
+
 BACKUP_ARCHIVE="$1"
 BACKUP_DIR=$(mktemp -d)
 trap 'rm -rf "$BACKUP_DIR"' EXIT
@@ -18,8 +20,8 @@ if [[ -z "$DUMP_FILE" ]]; then
   exit 1
 fi
 
-docker compose -f "$(dirname "$0")/docker-compose.yml" exec -T postgres \
-  psql -U "${POSTGRES_USER:-moqentra}" < "$DUMP_FILE"
+docker compose -f "$(dirname "$0")/docker-compose.yml" exec -T -e PGUSER postgres \
+  psql < "$DUMP_FILE"
 
 echo "Database restored from $BACKUP_ARCHIVE"
 rm -rf "$BACKUP_DIR"

@@ -160,10 +160,16 @@ pub fn annotation_to_yolo_line(
     let y = bbox[1];
     let w = bbox[2];
     let h = bbox[3];
-    let x_center = (x + w / 2.0) / image_width;
-    let y_center = (y + h / 2.0) / image_height;
-    let nw = w / image_width;
-    let nh = h / image_height;
+    if !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
+        return None;
+    }
+    if w <= 0.0 || h <= 0.0 {
+        return None;
+    }
+    let x_center = ((x + w / 2.0) / image_width).clamp(0.0, 1.0);
+    let y_center = ((y + h / 2.0) / image_height).clamp(0.0, 1.0);
+    let nw = (w / image_width).clamp(0.0, 1.0);
+    let nh = (h / image_height).clamp(0.0, 1.0);
     Some(format!(
         "{} {:.6} {:.6} {:.6} {:.6}",
         label_index, x_center, y_center, nw, nh

@@ -118,6 +118,9 @@ impl ObjectStorage for InMemoryObjectStore {
         part_number: i32,
         data: Bytes,
     ) -> Result<String, Error> {
+        if part_number <= 0 {
+            return Err(Error::invalid_argument("part number must be positive"));
+        }
         let mut multipart = self.multipart.lock().unwrap_or_else(|e| e.into_inner());
         let upload = multipart
             .get_mut(upload_id)
@@ -142,10 +145,26 @@ impl ObjectStorage for InMemoryObjectStore {
         }
 
         let mut combined = Vec::new();
+        if parts.is_empty() {
+            return Err(Error::invalid_argument(
+                "multipart completion requires at least one part",
+            ));
+        }
         let mut parts: Vec<_> = parts;
         parts.sort_by_key(|(n, _)| *n);
         let mut seen = std::collections::HashSet::new();
+        let mut expected = 1i32;
         for (part_number, etag) in parts {
+            if part_number <= 0 {
+                return Err(Error::invalid_argument("part number must be positive"));
+            }
+            if part_number != expected {
+                return Err(Error::invalid_argument(format!(
+                    "expected part {} but got {}",
+                    expected, part_number
+                )));
+            }
+            expected += 1;
             if !seen.insert(part_number) {
                 return Err(Error::invalid_argument(format!(
                     "duplicate part {}",

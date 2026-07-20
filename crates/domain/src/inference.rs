@@ -229,16 +229,16 @@ impl PlacementPolicy {
     pub fn score(&self, cluster: &Cluster, model: ModelVersionId) -> i64 {
         let mut score = 0i64;
         if self.regions.contains(&cluster.region) {
-            score += 10;
+            score = score.saturating_add(10);
         }
         if self.data_locality && cluster.cached_models.contains(&model) {
-            score += 20;
+            score = score.saturating_add(20);
         }
         for cap in &self.required_capabilities {
             if cluster.capabilities.contains(cap) {
-                score += 5;
+                score = score.saturating_add(5);
             } else {
-                score -= 100;
+                score = score.saturating_sub(100);
             }
         }
         score

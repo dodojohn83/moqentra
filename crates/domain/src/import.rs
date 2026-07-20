@@ -74,7 +74,10 @@ impl ImportJob {
         if !matches!(self.state, ImportJobState::Transferring) {
             return Err(moqentra_types::Error::conflict("job is not transferring"));
         }
-        self.transferred_bytes += bytes;
+        self.transferred_bytes = self
+            .transferred_bytes
+            .checked_add(bytes)
+            .ok_or_else(|| moqentra_types::Error::invalid_argument("transferred bytes overflow"))?;
         if self.transferred_bytes > self.total_bytes {
             return Err(moqentra_types::Error::invalid_argument(
                 "transferred bytes exceed total",

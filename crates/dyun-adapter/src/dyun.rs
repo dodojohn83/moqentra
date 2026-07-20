@@ -167,7 +167,11 @@ pub enum RunnerState {
 
 impl Runner {
     pub fn validate_sandbox(&self) -> Result<(), moqentra_types::Error> {
-        if self.sandbox_path.contains("..") || !self.sandbox_path.starts_with('/') {
+        if self.sandbox_path.is_empty()
+            || self.sandbox_path.contains('\0')
+            || !self.sandbox_path.starts_with('/')
+            || self.sandbox_path.split('/').any(|c| c == "..")
+        {
             return Err(moqentra_types::Error::invalid_argument(
                 "invalid sandbox path",
             ));
