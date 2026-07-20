@@ -82,20 +82,26 @@ impl AnnotationProject {
         name: impl Into<String>,
         task_type: TaskType,
         ontology: Ontology,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        let name = name.into();
+        if name.trim().is_empty() || name.len() > 128 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "annotation project name must be non-empty and at most 128 characters",
+            ));
+        }
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             tenant_id,
             project_id,
             dataset_version_id,
-            name: name.into(),
+            name,
             task_type,
             ontology,
             state: AnnotationProjectState::Draft,
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn activate(&mut self) {

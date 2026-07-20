@@ -379,20 +379,32 @@ impl Experiment {
         name: impl Into<String>,
         dataset_version_id: DatasetVersionId,
         target_metric: impl Into<String>,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        let name = name.into();
+        let target_metric = target_metric.into();
+        if name.trim().is_empty() || name.len() > 128 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "experiment name must be non-empty and at most 128 characters",
+            ));
+        }
+        if target_metric.trim().is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "experiment target_metric must be non-empty",
+            ));
+        }
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             tenant_id,
             project_id,
-            name: name.into(),
+            name,
             dataset_version_id,
-            target_metric: target_metric.into(),
+            target_metric,
             job_ids: Vec::new(),
             best_model_version_id: None,
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn add_job(&mut self, job_id: TrainingJobId) {
@@ -581,7 +593,8 @@ mod tests {
             "exp-1",
             DatasetVersionId::new_v7(&gen),
             "accuracy",
-        );
+        )
+        .unwrap();
         let model = ModelVersionId::new_v7(&gen);
         exp.set_best(model);
         assert_eq!(exp.best_model_version_id, Some(model));
