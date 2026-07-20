@@ -29,8 +29,7 @@ docker compose -f "$(dirname "$0")/docker-compose.yml" exec -T -e "PGUSER=${POST
 
 docker run --rm --network host --env-file "$ENV_FILE" \
   -v "${DEST}:${DEST}" --entrypoint sh \
-  minio/mc -c 'mc alias set local "http://localhost:${MINIO_API_PORT}" "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}" && mc mirror local/moqentra "${BACKUP_DEST}"' \
-  || true
+  minio/mc -c 'mc alias set local "http://localhost:${MINIO_API_PORT}" "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}" && mc mirror local/moqentra "${BACKUP_DEST}"'
 
 tar czf "${DEST}.tar.gz" -C "$BACKUP_DIR" "$TIMESTAMP"
 rm -rf "$DEST"
