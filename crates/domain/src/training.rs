@@ -326,6 +326,11 @@ impl TrainingJob {
         points: Vec<MetricPoint>,
         max_cardinality: usize,
     ) -> Result<(), moqentra_types::Error> {
+        if points.iter().any(|p| p.value.is_nan()) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "metric value is NaN",
+            ));
+        }
         let names: BTreeMap<String, usize> = points.iter().fold(BTreeMap::new(), |mut acc, p| {
             *acc.entry(p.name.clone()).or_insert(0) += 1;
             acc
@@ -543,6 +548,19 @@ mod tests {
             },
         ];
         assert!(job.append_metrics(points, 2).is_err());
+    }
+
+    #[test]
+    fn nan_metric_rejected() {
+        let mut job = make_job();
+        let points = vec![MetricPoint {
+            step: 1,
+            timestamp: UtcTimestamp::now(),
+            name: "loss".to_string(),
+            value: f64::NAN,
+            tags: BTreeMap::new(),
+        }];
+        assert!(job.append_metrics(points, 10).is_err());
     }
 
     #[test]
