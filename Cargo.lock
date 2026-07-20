@@ -2101,6 +2101,9 @@ dependencies = [
 [[package]]
 name = "moqentra-worker-control"
 version = "0.1.0"
+dependencies = [
+ "moqentra-types",
+]
 
 [[package]]
 name = "multimap"
