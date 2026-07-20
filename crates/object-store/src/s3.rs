@@ -89,7 +89,8 @@ impl ObjectStorage for S3ObjectStore {
             .send()
             .await
             .map_err(S3ObjectStore::map_error)?;
-        let size = output.content_length.unwrap_or(0) as u64;
+        let size = u64::try_from(output.content_length.unwrap_or(0))
+            .map_err(|_| Error::invalid_argument("negative content length"))?;
         let media_type = output.content_type.map(|s| s.to_string());
         let bytes = output.body.collect().await.map_err(S3ObjectStore::map_error)?.into_bytes();
         Ok((

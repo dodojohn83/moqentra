@@ -116,6 +116,9 @@ impl WebhookSubscription {
         if parsed.scheme() != "http" && parsed.scheme() != "https" {
             return Err(Error::invalid_argument("url scheme must be http or https"));
         }
+        if !parsed.username().is_empty() || parsed.password().is_some() {
+            return Err(Error::invalid_argument("url must not contain credentials"));
+        }
 
         match parsed.host() {
             Some(url::Host::Domain(domain)) => {
@@ -183,7 +186,12 @@ fn is_benchmarking(ip: Ipv4Addr) -> bool {
 }
 
 fn is_internal_ipv6(ip: Ipv6Addr) -> bool {
-    if ip.is_loopback() || ip.is_unspecified() || ip.is_multicast() || ip.is_unique_local() {
+    if ip.is_loopback()
+        || ip.is_unspecified()
+        || ip.is_multicast()
+        || ip.is_unique_local()
+        || ip.is_unicast_link_local()
+    {
         return true;
     }
     // Catch IPv4-mapped loopback/private addresses such as ::ffff:127.0.0.1.

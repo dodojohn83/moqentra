@@ -270,10 +270,11 @@ impl HpoRun {
         &mut self,
         parameters: BTreeMap<String, String>,
     ) -> Result<u32, moqentra_types::Error> {
-        if self.trials.len() as u32 >= self.trial_budget {
+        let number = u32::try_from(self.trials.len())
+            .map_err(|_| moqentra_types::Error::internal("trial count overflow"))?;
+        if number >= self.trial_budget {
             return Err(moqentra_types::Error::unavailable("trial budget exhausted"));
         }
-        let number = self.trials.len() as u32;
         self.trials.push(Trial {
             number,
             parameters,

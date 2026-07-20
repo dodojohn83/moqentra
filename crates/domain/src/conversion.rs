@@ -93,20 +93,19 @@ impl ConversionJob {
         profile: &ConversionProfile,
         parameters: &BTreeMap<String, String>,
     ) -> String {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        use std::hash::{Hash, Hasher};
-        source.to_string().hash(&mut hasher);
-        format!(
-            "{:?}-{}-{}-{}-{}-{:?}",
-            profile.target,
-            profile.toolchain_image_digest,
-            profile.target_chip,
-            profile.precision,
-            profile.dynamic_shapes,
-            parameters
-        )
-        .hash(&mut hasher);
-        format!("cache-{:x}", hasher.finish())
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(source.to_string().as_bytes());
+        hasher.update(profile.toolchain_image_digest.as_bytes());
+        hasher.update(profile.target_chip.as_bytes());
+        hasher.update(profile.precision.as_bytes());
+        hasher.update(profile.dynamic_shapes.to_string().as_bytes());
+        hasher.update(format!("{:?}", profile.target).as_bytes());
+        for (k, v) in parameters {
+            hasher.update(k.as_bytes());
+            hasher.update(v.as_bytes());
+        }
+        format!("cache-{:x}", hasher.finalize())
     }
 
     pub fn start(&mut self) -> Result<(), moqentra_types::Error> {

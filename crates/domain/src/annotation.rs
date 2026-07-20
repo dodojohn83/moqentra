@@ -143,6 +143,11 @@ impl TaskLease {
         if !self.is_valid(clock) {
             return Err(moqentra_types::Error::conflict("lease expired"));
         }
+        if ttl_seconds <= 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "ttl must be positive",
+            ));
+        }
         let duration = std::time::Duration::from_secs(ttl_seconds as u64);
         self.expires_at = clock
             .add_std_duration(duration)

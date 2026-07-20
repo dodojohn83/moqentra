@@ -21,7 +21,7 @@ class WorkerLifecycle(Protocol):
     """Framework-adapter lifecycle implemented by user training code."""
 
     def prepare(self, config: Dict[str, Any]) -> None: ...
-    def run(self) -> Dict[str, Any]: ...
+    def run(self, session: WorkerSession) -> Dict[str, Any]: ...
     def save_checkpoint(self, path: Path) -> str: ...
     def finalize(self) -> Dict[str, Any]: ...
 
@@ -96,8 +96,14 @@ class WorkerRuntime:
             self._signal_handler(signum, frame)
 
     def run(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        attempt_id = config["attempt_id"]
-        fencing_token = config["fencing_token"]
+        attempt_id = config.get("attempt_id")
+        fencing_token = config.get("fencing_token")
+        if not attempt_id or not fencing_token:
+            return {
+                "attempt_id": attempt_id or "",
+                "fencing_token": fencing_token or "",
+                "error": "missing attempt_id or fencing_token",
+            }
         work_dir = Path(config.get("work_dir", "/tmp/moqentra/work"))
         input_dir = Path(config.get("input_dir", "/tmp/moqentra/input"))
         output_dir = Path(config.get("output_dir", "/tmp/moqentra/output"))
@@ -122,7 +128,7 @@ class WorkerRuntime:
 
         try:
             self.adapter.prepare(config)
-            result = self.adapter.run()
+            result = self.adapter.run(self._session)
             manifest = self.adapter.finalize()
             return {
                 "attempt_id": attempt_id,
@@ -149,8 +155,8 @@ class PyTorchAdapter(WorkerLifecycle):
     def prepare(self, config: Dict[str, Any]) -> None:
         pass
 
-    def run(self) -> Dict[str, Any]:
-        return {}
+    def run(self, session: WorkerSession) -> Dict[str, Any]:
+        return self.train_fn(session)
 
     def save_checkpoint(self, path: Path) -> str:
         path.write_text("checkpoint")
