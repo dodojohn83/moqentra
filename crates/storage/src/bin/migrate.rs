@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use sqlx::PgPool;
 
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[command(name = "moqentra-migrate", about = "Moqentra PostgreSQL migrations")]
 struct Cli {
     #[command(subcommand)]
@@ -13,6 +13,15 @@ struct Cli {
     /// PostgreSQL connection URL.
     #[arg(short, long, env = "DATABASE_URL")]
     database_url: String,
+}
+
+impl std::fmt::Debug for Cli {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Cli")
+            .field("command", &self.command)
+            .field("database_url", &"[REDACTED]")
+            .finish()
+    }
 }
 
 #[derive(Subcommand, Debug)]
