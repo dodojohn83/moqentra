@@ -172,29 +172,54 @@ pub enum RunnerState {
 
 impl Runner {
     pub fn validate_sandbox(&self, root: impl AsRef<Path>) -> Result<(), moqentra_types::Error> {
-        if self.sandbox_path.is_empty()
-            || self.sandbox_path.contains('\0')
-            || !self.sandbox_path.starts_with('/')
-            || self.sandbox_path.split('/').any(|c| c == "..")
-        {
+        if self.sandbox_path.is_empty() || self.sandbox_path.contains('\0') {
             return Err(moqentra_types::Error::invalid_argument(
                 "invalid sandbox path",
             ));
         }
-        let abs = std::path::absolute(&self.sandbox_path)
-            .map_err(|_| moqentra_types::Error::invalid_argument("sandbox path not resolvable"))?;
-        if abs.components().any(|c| c == std::path::Component::ParentDir) {
-            return Err(moqentra_types::Error::invalid_argument(
-                "sandbox path traversal not allowed",
-            ));
-        }
-        if !abs.starts_with(root.as_ref()) {
+        if !is_within_root(&self.sandbox_path, root)? {
             return Err(moqentra_types::Error::permission_denied(
                 "sandbox path outside workspace",
             ));
         }
         Ok(())
     }
+}
+
+/// Verifies `path` is confined to `root`, resolving symlinks on every
+/// existing ancestor so that a directory symlink cannot escape the workspace.
+fn is_within_root(
+    path: impl AsRef<Path>,
+    root: impl AsRef<Path>,
+) -> Result<bool, moqentra_types::Error> {
+    let root = root.as_ref();
+    std::fs::create_dir_all(root).map_err(|e| {
+        moqentra_types::Error::invalid_argument(format!("sandbox root not creatable: {e}"))
+    })?;
+    let root_canonical = std::fs::canonicalize(root)
+        .map_err(|e| moqentra_types::Error::internal(format!("canonicalize root: {e}")))?;
+    let abs = std::path::absolute(path.as_ref())
+        .map_err(|e| moqentra_types::Error::invalid_argument(format!("invalid path: {e}")))?;
+
+    for ancestor in abs.ancestors() {
+        if ancestor.exists() {
+            let canonical = std::fs::canonicalize(ancestor)
+                .map_err(|e| moqentra_types::Error::internal(format!("canonicalize path: {e}")))?;
+            if !canonical.starts_with(&root_canonical) {
+                return Ok(false);
+            }
+            let suffix = abs
+                .strip_prefix(ancestor)
+                .map_err(|_| moqentra_types::Error::internal("sandbox path prefix mismatch"))?;
+            for comp in suffix.components() {
+                if comp.as_os_str() == ".." || comp.as_os_str().is_empty() {
+                    return Ok(false);
+                }
+            }
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Returns the default sandbox workspace root.
