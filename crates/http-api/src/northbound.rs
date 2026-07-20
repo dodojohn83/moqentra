@@ -186,7 +186,12 @@ fn is_benchmarking(ip: Ipv4Addr) -> bool {
 }
 
 fn is_internal_ipv6(ip: Ipv6Addr) -> bool {
-    if ip.is_loopback() || ip.is_unspecified() || ip.is_multicast() || ip.is_unique_local() {
+    if ip.is_loopback()
+        || ip.is_unspecified()
+        || ip.is_multicast()
+        || ip.is_unique_local()
+        || ip.is_unicast_link_local()
+    {
         return true;
     }
     // Catch IPv4-mapped loopback/private addresses such as ::ffff:127.0.0.1.
