@@ -65,7 +65,22 @@ export async function apiRequest(
   }
 
   const text = await response.text();
-  return text ? JSON.parse(text) : null;
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new ApiError(
+      {
+        type: "about:blank",
+        title: "Invalid JSON",
+        status: response.status,
+        code: "INVALID_JSON",
+        detail: "server returned non-JSON response body",
+        request_id: headers["Idempotency-Key"] ?? "",
+      },
+      response,
+    );
+  }
 }
 
 export async function* apiStream<T>(
@@ -95,7 +110,12 @@ export async function* apiStream<T>(
     for (const line of lines) {
       if (line.startsWith("data: ")) {
         const payload = line.slice(6);
-        if (payload) yield JSON.parse(payload) as T;
+        if (!payload) continue;
+        try {
+          yield JSON.parse(payload) as T;
+        } catch {
+          // Skip malformed SSE payloads instead of crashing the stream.
+        }
       }
     }
   }

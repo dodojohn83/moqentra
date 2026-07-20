@@ -1,7 +1,10 @@
 //! Northbound API primitives: problem details, idempotency, cursors and webhooks.
 
+use hmac::{Hmac, Mac};
 use moqentra_types::{Error, RequestContext, UtcTimestamp};
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 /// RFC 9457 Problem Details.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,36 +89,82 @@ pub struct WebhookSubscription {
     pub circuit_open: bool,
 }
 
+type HmacSha256 = Hmac<Sha256>;
+
 impl WebhookSubscription {
-    pub fn sign_payload(&self, body: &[u8], delivery_id: &str, timestamp: i64) -> String {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        self.secret_hmac.hash(&mut hasher);
-        delivery_id.hash(&mut hasher);
-        timestamp.hash(&mut hasher);
-        body.hash(&mut hasher);
-        format!("sha256={:x}", hasher.finish())
+    pub fn sign_payload(
+        &self,
+        body: &[u8],
+        delivery_id: &str,
+        timestamp: i64,
+    ) -> Result<String, Error> {
+        let mut mac = HmacSha256::new_from_slice(self.secret_hmac.as_bytes())
+            .map_err(|_| Error::invalid_argument("invalid hmac key length"))?;
+        mac.update(delivery_id.as_bytes());
+        mac.update(b":");
+        mac.update(timestamp.to_string().as_bytes());
+        mac.update(b":");
+        mac.update(body);
+        let signature = mac.finalize().into_bytes();
+        Ok(format!("sha256={}", hex::encode(signature)))
     }
 
     pub fn validate_url(&self) -> Result<(), Error> {
-        if !self.url.starts_with("http://") && !self.url.starts_with("https://") {
-            return Err(Error::invalid_argument("invalid url"));
+        let parsed =
+            url::Url::parse(&self.url).map_err(|_| Error::invalid_argument("invalid url"))?;
+        if parsed.scheme() != "http" && parsed.scheme() != "https" {
+            return Err(Error::invalid_argument("url scheme must be http or https"));
         }
-        let after_scheme = self.url.split_once("://").map(|(_, rest)| rest).unwrap_or("");
-        let host = after_scheme.split('/').next().unwrap_or("").split(':').next().unwrap_or("");
-        if host.is_empty()
-            || host == "localhost"
-            || host == "127.0.0.1"
-            || host.starts_with("10.")
-            || host.starts_with("192.168.")
-        {
-            return Err(Error::invalid_argument(
-                "SSRF: internal address not allowed",
-            ));
+
+        match parsed.host() {
+            Some(url::Host::Domain(domain)) => {
+                let lower = domain.to_lowercase();
+                if lower.is_empty()
+                    || lower == "localhost"
+                    || lower.ends_with(".localhost")
+                    || lower == "metadata.google.internal"
+                {
+                    return Err(Error::invalid_argument(
+                        "SSRF: internal address not allowed",
+                    ));
+                }
+            }
+            Some(url::Host::Ipv4(ip)) => {
+                if is_internal_ipv4(ip) {
+                    return Err(Error::invalid_argument(
+                        "SSRF: internal address not allowed",
+                    ));
+                }
+            }
+            Some(url::Host::Ipv6(ip)) => {
+                if is_internal_ipv6(ip) {
+                    return Err(Error::invalid_argument(
+                        "SSRF: internal address not allowed",
+                    ));
+                }
+            }
+            None => return Err(Error::invalid_argument("url missing host")),
         }
+
         Ok(())
     }
+}
+
+fn is_internal_ipv4(ip: Ipv4Addr) -> bool {
+    ip.is_loopback()
+        || ip.is_private()
+        || ip.is_link_local()
+        || ip.is_multicast()
+        || ip.is_broadcast()
+        || ip.is_unspecified()
+        || ip.octets()[0] == 100 && (ip.octets()[1] & 0b1100_0000 == 64) // 100.64.0.0/10
+        || ip == Ipv4Addr::new(169, 254, 169, 254) // link-local metadata
+        || ip == Ipv4Addr::new(198, 18, 0, 0) || ip == Ipv4Addr::new(198, 19, 255, 255)
+    // 198.18.0.0/15 endpoints
+}
+
+fn is_internal_ipv6(ip: Ipv6Addr) -> bool {
+    ip.is_loopback() || ip.is_unspecified() || ip.is_multicast() || ip.is_unique_local()
 }
 
 /// SSE event envelope.
@@ -193,6 +242,49 @@ mod tests {
             circuit_open: false,
         };
         assert!(sub.validate_url().is_ok());
+    }
+
+    #[test]
+    fn webhook_rejects_metadata_and_loopback_ips() {
+        let make = |url: &str| WebhookSubscription {
+            id: "w".to_string(),
+            tenant_id: TenantId::new_v7(&RandomIdGenerator),
+            url: url.to_string(),
+            event_types: vec![],
+            secret_hmac: "secret".to_string(),
+            active: true,
+            max_retries: 3,
+            circuit_open: false,
+        };
+        assert!(make("http://127.0.0.2/hook").validate_url().is_err());
+        assert!(make("http://169.254.169.254/latest/").validate_url().is_err());
+        assert!(make("http://[::1]/hook").validate_url().is_err());
+    }
+
+    #[test]
+    fn webhook_signs_payload_with_hmac() {
+        let sub = WebhookSubscription {
+            id: "w3".to_string(),
+            tenant_id: TenantId::new_v7(&RandomIdGenerator),
+            url: "https://example.com/hook".to_string(),
+            event_types: vec![],
+            secret_hmac: "secret".to_string(),
+            active: true,
+            max_retries: 3,
+            circuit_open: false,
+        };
+        let signature = sub.sign_payload(b"body", "d1", 42).unwrap();
+        assert!(signature.starts_with("sha256="));
+        assert_eq!(
+            signature,
+            sub.sign_payload(b"body", "d1", 42).unwrap(),
+            "signature is deterministic"
+        );
+        assert_ne!(
+            signature,
+            sub.sign_payload(b"body", "d2", 42).unwrap(),
+            "different delivery id changes signature"
+        );
     }
 
     #[test]

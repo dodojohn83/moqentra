@@ -78,8 +78,11 @@ impl FakeS3Proxy {
     }
 
     fn should_fault(&mut self) -> bool {
-        if self.fault_rate <= 0.0 {
+        if self.fault_rate <= 0.0 || self.fault_rate.is_nan() {
             return false;
+        }
+        if self.fault_rate >= 1.0 {
+            return true;
         }
         self.requests.is_multiple_of(((1.0 / self.fault_rate) as u64).max(1))
     }

@@ -17,7 +17,10 @@ export class UploadManager {
   private uploads = new Map<string, UploadState>();
 
   start(file: File, uploadChunk: (chunk: Blob, index: number, signal: AbortSignal) => Promise<ChunkResult>): string {
-    const id = crypto.randomUUID();
+    const id =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const abortController = new AbortController();
     const state: UploadState = {
       file,

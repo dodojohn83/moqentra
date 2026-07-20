@@ -23,6 +23,7 @@ impl Compatibility {
             && self.worker_compatible
             && self.agent_compatible
             && self.schema_add_only
+            && self.sdk_compatible
     }
 }
 
@@ -89,6 +90,11 @@ impl ReleaseGate {
                 "72h burn-in not complete",
             ));
         }
+        if !self.disaster_recovery_drill {
+            return Err(moqentra_types::Error::unavailable(
+                "disaster recovery drill not complete",
+            ));
+        }
         if !self.rollback_tested {
             return Err(moqentra_types::Error::unavailable("rollback not tested"));
         }
@@ -128,6 +134,16 @@ impl DeploymentValues {
         if !self.resource_limits {
             return Err(moqentra_types::Error::invalid_argument(
                 "resource limits must be set",
+            ));
+        }
+        if !self.pod_disruption_budget_enabled {
+            return Err(moqentra_types::Error::invalid_argument(
+                "pod disruption budget must be enabled",
+            ));
+        }
+        if !self.upgrade_hooks {
+            return Err(moqentra_types::Error::invalid_argument(
+                "upgrade hooks must be enabled",
             ));
         }
         Ok(())
