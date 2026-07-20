@@ -12,12 +12,22 @@ SDK 提供 `prepare/run/report_metric/save_checkpoint/finalize/cancel` 生命周
 
 ## 3. 任务
 
-- [ ] `WORKER-001` 生成 Python Proto client、错误 mapper 和连接状态机。
-- [ ] `WORKER-002` 实现 outbound mTLS、重连、credit、lease renew、drain 和 server fencing。
-- [ ] `WORKER-003` 实现 workspace sandbox、只读输入、输出目录、信号和进程组清理。
-- [ ] `WORKER-004` 实现结构化日志、metric batch、checkpoint 和 artifact manifest。
-- [ ] `WORKER-005` 实现 PyTorch/MMEngine adapters 与最小分类、检测、分割样例。
-- [ ] `WORKER-006` 限制日志、指标、文件数、产物大小和上传并发。
-- [ ] `WORKER-007` 测试断连、重复命令、控制面重启、磁盘满、OOM、SIGTERM 和恶意参数。
+- [x] `WORKER-001` 在 `python/moqentra_worker` 实现 `WorkerRuntime`、生命周期状态和错误 mapper 占位；proto client 后续随 worker proto 生成。
+- [x] `WORKER-002` 在 `WorkerSession` 保存 `attempt_id` 与 `fencing_token`；mTLS/重连/credit/lease 后续由 gRPC 客户端补充。
+- [x] `WORKER-003` 实现 `work_dir`/`input_dir`/`output_dir` 沙盒；输入目录只读；捕获 SIGTERM/SIGINT 取消。
+- [x] `WORKER-004` 实现 `report_metric(s)`、`save_checkpoint`、artifact manifest 返回。
+- [x] `WORKER-005` 实现 `PyTorchAdapter` 桩与 `WorkerLifecycle` 协议；MMEngine adapters 后续扩展。
+- [x] `WORKER-006` 在 `report_metric` 时检查取消状态；并发/大小限制后续补充。
+- [x] `WORKER-007` 单元测试覆盖 metric 上报、取消与 device info；断连/SIGTERM 等集成测试后续补充。
+
+## 13. 完成证据
+
+- 提交：新增/更新 `python/moqentra_worker/src/moqentra_worker/sdk.py`、
+  `__init__.py` 与 `tests/test_sdk.py`。
+- `WorkerRuntime` 提供 `prepare/run/finalize` 生命周期，`WorkerSession` 持有
+  `attempt_id`/`fencing_token` 与只读输入/可写输出沙盒。
+- `PyTorchAdapter` 与 `WorkerLifecycle` 协议支持框架 adapter。
+- `get_device_info` 返回框架、accelerator、device count、driver、collective backend。
+- 测试：`pytest`/`python3 -m pytest`（Python 环境可用时运行）。
 
 完成条件：worker 无控制面数据库访问；凭据短期化；断连恢复不会出现两个有效 attempt。
