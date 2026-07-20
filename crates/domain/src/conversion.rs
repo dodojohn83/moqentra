@@ -68,10 +68,25 @@ impl ConversionJob {
         target: ConversionTarget,
         profile: ConversionProfile,
         parameters: BTreeMap<String, String>,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        if profile.sdk_version.trim().is_empty()
+            || profile.target_chip.trim().is_empty()
+            || profile.precision.trim().is_empty()
+        {
+            return Err(moqentra_types::Error::invalid_argument(
+                "conversion profile fields must be non-empty",
+            ));
+        }
+        if !profile.toolchain_image_digest.contains(':')
+            || profile.toolchain_image_digest.split(':').any(|part| part.is_empty())
+        {
+            return Err(moqentra_types::Error::invalid_argument(
+                "toolchain_image_digest must be algorithm:hex",
+            ));
+        }
         let now = UtcTimestamp::now();
         let cache_key = Self::compute_cache_key(&source_model_version_id, &profile, &parameters);
-        Self {
+        Ok(Self {
             id,
             tenant_id,
             project_id,
@@ -85,7 +100,7 @@ impl ConversionJob {
             log_digest: None,
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     fn compute_cache_key(
@@ -222,9 +237,20 @@ impl EvaluationRun {
         hardware_profile: impl Into<String>,
         preprocess_version: impl Into<String>,
         postprocess_version: impl Into<String>,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        let hardware_profile = hardware_profile.into();
+        let preprocess_version = preprocess_version.into();
+        let postprocess_version = postprocess_version.into();
+        if hardware_profile.trim().is_empty()
+            || preprocess_version.trim().is_empty()
+            || postprocess_version.trim().is_empty()
+        {
+            return Err(moqentra_types::Error::invalid_argument(
+                "evaluation run string fields must be non-empty",
+            ));
+        }
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             tenant_id,
             project_id,
@@ -233,13 +259,13 @@ impl EvaluationRun {
             seed,
             metrics: Vec::new(),
             state: EvaluationRunState::Pending,
-            hardware_profile: hardware_profile.into(),
-            preprocess_version: preprocess_version.into(),
-            postprocess_version: postprocess_version.into(),
+            hardware_profile,
+            preprocess_version,
+            postprocess_version,
             reference_outputs: BTreeMap::new(),
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn start(&mut self) -> Result<(), moqentra_types::Error> {
@@ -355,6 +381,7 @@ mod tests {
             make_profile(),
             BTreeMap::new(),
         )
+        .unwrap()
     }
 
     #[test]
@@ -408,7 +435,8 @@ mod tests {
             "nvidia-a100",
             "pre-1",
             "post-1",
-        );
+        )
+        .unwrap();
         run.start().unwrap();
         run.report_metrics(vec![
             EvaluationMetric {

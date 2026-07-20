@@ -107,9 +107,10 @@ impl PipelineRun {
         tenant_id: TenantId,
         project_id: ProjectId,
         spec: PipelineSpec,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        spec.validate_dag()?;
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             tenant_id,
             project_id,
@@ -118,7 +119,7 @@ impl PipelineRun {
             node_states: BTreeMap::new(),
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn start(&mut self) -> Result<(), moqentra_types::Error> {
@@ -477,7 +478,8 @@ mod tests {
             TenantId::new_v7(&gen),
             ProjectId::new_v7(&gen),
             spec,
-        );
+        )
+        .unwrap();
         run.start().unwrap();
         assert!(run.update_node("b", NodeRunState::Running).is_err());
         run.update_node("a", NodeRunState::Succeeded).unwrap();

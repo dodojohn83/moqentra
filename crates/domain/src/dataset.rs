@@ -108,6 +108,16 @@ impl DatasetVersion {
                 "cannot modify a published or deprecated dataset version",
             ));
         }
+        if self.assets.iter().any(|a| a.name == asset.name) {
+            return Err(moqentra_types::Error::conflict(
+                "asset name already exists in version",
+            ));
+        }
+        if self.assets.iter().any(|a| a.object_key == asset.object_key) {
+            return Err(moqentra_types::Error::conflict(
+                "object key already exists in version",
+            ));
+        }
         asset.validate()?;
         self.assets.push(asset);
         Ok(())
@@ -201,9 +211,18 @@ impl Dataset {
         })
     }
 
-    pub fn add_version(&mut self, version_id: DatasetVersionId) {
+    pub fn add_version(
+        &mut self,
+        version_id: DatasetVersionId,
+    ) -> Result<(), moqentra_types::Error> {
+        if self.version_ids.contains(&version_id) {
+            return Err(moqentra_types::Error::conflict(
+                "version already in dataset",
+            ));
+        }
         self.version_ids.push(version_id);
         self.updated_at = UtcTimestamp::now();
+        Ok(())
     }
 
     pub fn set_latest_published(

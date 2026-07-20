@@ -494,9 +494,13 @@ impl Experiment {
         })
     }
 
-    pub fn add_job(&mut self, job_id: TrainingJobId) {
+    pub fn add_job(&mut self, job_id: TrainingJobId) -> Result<(), moqentra_types::Error> {
+        if self.job_ids.contains(&job_id) {
+            return Err(moqentra_types::Error::conflict("job already in experiment"));
+        }
         self.job_ids.push(job_id);
         self.updated_at = UtcTimestamp::now();
+        Ok(())
     }
 
     pub fn set_best(&mut self, model_version_id: ModelVersionId) {

@@ -235,9 +235,18 @@ impl Application {
         })
     }
 
-    pub fn add_version(&mut self, version_id: ApplicationVersionId) {
+    pub fn add_version(
+        &mut self,
+        version_id: ApplicationVersionId,
+    ) -> Result<(), moqentra_types::Error> {
+        if self.version_ids.contains(&version_id) {
+            return Err(moqentra_types::Error::conflict(
+                "version already in application",
+            ));
+        }
         self.version_ids.push(version_id);
         self.updated_at = UtcTimestamp::now();
+        Ok(())
     }
 
     pub fn set_latest_published(
