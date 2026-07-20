@@ -1,6 +1,6 @@
 //! JWT/OIDC validation and principal extraction.
 
-use jsonwebtoken::{decode, decode_header, DecodingKey, TokenData, Validation};
+use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, TokenData, Validation};
 use moqentra_types::{Error, Principal, UserId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -53,6 +53,12 @@ impl TokenValidator for HmacValidator {
         let header = decode_header(token)
             .map_err(|e| Error::unauthenticated(format!("invalid token header: {}", e)))?;
         let algorithm = header.alg;
+        if !matches!(
+            algorithm,
+            Algorithm::HS256 | Algorithm::HS384 | Algorithm::HS512
+        ) {
+            return Err(Error::unauthenticated("only HMAC tokens are accepted"));
+        }
         let key = DecodingKey::from_secret(self.secret.as_bytes());
 
         let mut validation = Validation::new(algorithm);

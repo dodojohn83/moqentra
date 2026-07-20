@@ -23,6 +23,13 @@ impl SecretProvider {
     pub fn resolve(&self) -> Option<String> {
         match self {
             SecretProvider::File { path } => {
+                if Self::is_dangerous_path(path) {
+                    return None;
+                }
+                let meta = std::fs::symlink_metadata(path).ok()?;
+                if meta.file_type().is_symlink() {
+                    return None;
+                }
                 std::fs::read_to_string(path).ok().map(|s| s.trim().to_string())
             }
             SecretProvider::Env { name } => std::env::var(name).ok(),
@@ -31,6 +38,13 @@ impl SecretProvider {
                 None
             }
         }
+    }
+
+    fn is_dangerous_path(path: &str) -> bool {
+        path.is_empty()
+            || path.contains('\0')
+            || !path.starts_with('/')
+            || path.split('/').any(|c| c == "..")
     }
 }
 
@@ -83,8 +97,24 @@ impl SecretRedactor {
     pub fn redact(&self, input: &str) -> String {
         let mut output = input.to_string();
         for pat in &self.patterns {
-            output = output.replace(pat, "[REDACTED]");
+            output = Self::redact_pattern(&output, pat);
         }
+        output
+    }
+
+    fn redact_pattern(input: &str, pat: &str) -> String {
+        let mut output = String::with_capacity(input.len());
+        let mut rest = input;
+        while let Some(pos) = rest.find(pat) {
+            output.push_str(&rest[..pos]);
+            let after = &rest[pos + pat.len()..];
+            let consumed_bytes: usize =
+                after.chars().take_while(|c| !c.is_whitespace()).map(|c| c.len_utf8()).sum();
+            let (_, tail) = after.split_at(consumed_bytes);
+            output.push_str("[REDACTED]");
+            rest = tail;
+        }
+        output.push_str(rest);
         output
     }
 }
@@ -129,8 +159,34 @@ impl SecurityLimits {
     }
 
     pub fn check_url_length(&self, len: usize) -> Result<(), moqentra_types::Error> {
-        if len as u32 > self.max_url_length {
+        if len as u64 > self.max_url_length as u64 {
             Err(moqentra_types::Error::invalid_argument("url too long"))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn check_json_size(&self, size: usize) -> Result<(), moqentra_types::Error> {
+        if size as u64 > self.max_json_size {
+            Err(moqentra_types::Error::invalid_argument("json too large"))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn check_proto_message_size(&self, size: u64) -> Result<(), moqentra_types::Error> {
+        if size > self.max_proto_message_size {
+            Err(moqentra_types::Error::invalid_argument(
+                "protobuf message too large",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn check_log_line_length(&self, len: usize) -> Result<(), moqentra_types::Error> {
+        if len as u64 > self.max_log_line_length as u64 {
+            Err(moqentra_types::Error::invalid_argument("log line too long"))
         } else {
             Ok(())
         }
@@ -207,5 +263,12 @@ mod tests {
 
         let deep = (0..40).fold(serde_json::json!("leaf"), |acc, _| serde_json::json!([acc]));
         assert!(limits.check_json_depth(&deep, 0).is_err());
+
+        assert!(limits.check_json_size(1024).is_ok());
+        assert!(limits.check_json_size(usize::MAX).is_err());
+        assert!(limits.check_proto_message_size(1024).is_ok());
+        assert!(limits.check_proto_message_size(u64::MAX).is_err());
+        assert!(limits.check_log_line_length(1024).is_ok());
+        assert!(limits.check_log_line_length(usize::MAX).is_err());
     }
 }

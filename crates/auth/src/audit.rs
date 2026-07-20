@@ -71,13 +71,13 @@ impl InMemoryAuditLog {
     }
 
     pub fn events(&self) -> Vec<AuditEvent> {
-        self.events.lock().expect("audit log lock").clone()
+        self.events.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 }
 
 impl AuditLog for InMemoryAuditLog {
     fn record(&self, event: AuditEvent) -> Result<(), moqentra_types::Error> {
-        self.events.lock().expect("audit log lock").push(event);
+        self.events.lock().unwrap_or_else(|e| e.into_inner()).push(event);
         Ok(())
     }
 }

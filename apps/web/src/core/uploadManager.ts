@@ -4,6 +4,8 @@ export interface UploadState {
   completed: boolean;
   error?: string;
   abortController: AbortController;
+  completedChunks: number;
+  etags: string[];
 }
 
 export interface ChunkResult {
@@ -17,26 +19,50 @@ export class UploadManager {
   private uploads = new Map<string, UploadState>();
 
   start(file: File, uploadChunk: (chunk: Blob, index: number, signal: AbortSignal) => Promise<ChunkResult>): string {
-    const id = crypto.randomUUID();
+    const id =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const abortController = new AbortController();
     const state: UploadState = {
       file,
       progress: 0,
       completed: false,
       abortController,
+      completedChunks: 0,
+      etags: [],
     };
     this.uploads.set(id, state);
 
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-    const chunks: ChunkResult[] = [];
+    this.run(id, uploadChunk);
+    return id;
+  }
+
+  private run(
+    id: string,
+    uploadChunk: (chunk: Blob, index: number, signal: AbortSignal) => Promise<ChunkResult>,
+  ): void {
+    const state = this.uploads.get(id);
+    if (!state || state.completed) return;
+
+    const totalChunks = Math.ceil(state.file.size / CHUNK_SIZE);
+    if (totalChunks === 0) {
+      state.progress = 100;
+      state.completed = true;
+      return;
+    }
 
     (async () => {
       try {
-        for (let i = 0; i < totalChunks; i++) {
-          if (abortController.signal.aborted) return;
-          const chunk = file.slice(i * CHUNK_SIZE, Math.min((i + 1) * CHUNK_SIZE, file.size));
-          const result = await uploadChunk(chunk, i, abortController.signal);
-          chunks.push(result);
+        for (let i = state.completedChunks; i < totalChunks; i++) {
+          if (state.abortController.signal.aborted) return;
+          const chunk = state.file.slice(
+            i * CHUNK_SIZE,
+            Math.min((i + 1) * CHUNK_SIZE, state.file.size),
+          );
+          const result = await uploadChunk(chunk, i, state.abortController.signal);
+          state.etags[i] = result.etag;
+          state.completedChunks = i + 1;
           state.progress = Math.round(((i + 1) / totalChunks) * 100);
         }
         state.completed = true;
@@ -44,8 +70,6 @@ export class UploadManager {
         state.error = e instanceof Error ? e.message : String(e);
       }
     })();
-
-    return id;
   }
 
   getState(id: string): UploadState | undefined {
@@ -63,10 +87,14 @@ export class UploadManager {
 
   resume(id: string, uploadChunk: (chunk: Blob, index: number, signal: AbortSignal) => Promise<ChunkResult>): boolean {
     const state = this.uploads.get(id);
-    if (!state || state.completed || state.error) return false;
-    // In a real implementation this would re-send only missing chunks using the
-    // stored etags. The placeholder resumes by creating a fresh AbortController.
-    state.abortController = new AbortController();
+    if (!state || state.completed) return false;
+    if (state.error) {
+      state.error = undefined;
+    }
+    if (state.abortController.signal.aborted) {
+      state.abortController = new AbortController();
+    }
+    this.run(id, uploadChunk);
     return true;
   }
 }

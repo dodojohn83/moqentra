@@ -68,8 +68,14 @@ impl ApplicationSpec {
 
         // Validate port types on edges.
         for (src, src_port, dst, dst_port) in &self.edges {
-            let s = self.nodes.get(src).unwrap();
-            let d = self.nodes.get(dst).unwrap();
+            let s = self
+                .nodes
+                .get(src)
+                .ok_or_else(|| moqentra_types::Error::internal("missing source node"))?;
+            let d = self
+                .nodes
+                .get(dst)
+                .ok_or_else(|| moqentra_types::Error::internal("missing destination node"))?;
             let s_type = s
                 .outputs
                 .iter()
@@ -149,7 +155,7 @@ impl ApplicationVersion {
         spec: ApplicationSpec,
     ) -> Result<Self, moqentra_types::Error> {
         spec.validate()?;
-        let digest = Self::canonical_digest(&spec);
+        let digest = Self::canonical_digest(&spec)?;
         let now = UtcTimestamp::now();
         Ok(Self {
             id,
@@ -174,13 +180,13 @@ impl ApplicationVersion {
         Ok(())
     }
 
-    fn canonical_digest(spec: &ApplicationSpec) -> String {
-        let json = serde_json::to_string(spec).unwrap_or_default();
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        json.hash(&mut hasher);
-        format!("sha256:{:x}", hasher.finish())
+    fn canonical_digest(spec: &ApplicationSpec) -> Result<String, moqentra_types::Error> {
+        use sha2::{Digest, Sha256};
+        let json = serde_json::to_string(spec).map_err(|e| {
+            moqentra_types::Error::internal(format!("canonical serialization failed: {e}"))
+        })?;
+        let hash = Sha256::digest(json.as_bytes());
+        Ok(format!("sha256:{:x}", hash))
     }
 }
 

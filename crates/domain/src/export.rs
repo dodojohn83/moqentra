@@ -166,14 +166,14 @@ pub fn annotations_to_voc(_annotations: &[Annotation], _labels: &[Label]) -> Str
 /// Detect export format by file extension.
 pub fn format_by_extension(path: &str) -> Option<ExportFormat> {
     let lower = path.to_lowercase();
-    if lower.ends_with(".json") || lower.ends_with(".coco.json") {
+    if lower.ends_with(".moqentra.json") {
+        Some(ExportFormat::Native)
+    } else if lower.ends_with(".coco.json") || lower.ends_with(".json") {
         Some(ExportFormat::Coco)
     } else if lower.ends_with(".xml") {
         Some(ExportFormat::Voc)
-    } else if lower.ends_with(".txt") || lower.contains("yolo") {
+    } else if lower.ends_with(".txt") || lower.ends_with(".yolo") {
         Some(ExportFormat::Yolo)
-    } else if lower.ends_with(".moqentra.json") {
-        Some(ExportFormat::Native)
     } else {
         None
     }
