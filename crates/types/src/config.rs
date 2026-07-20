@@ -103,7 +103,7 @@ impl Default for DatabaseConfig {
 pub struct ObjectStorageConfig {
     pub endpoint: String,
     pub bucket: String,
-    pub access_key_id: String,
+    pub access_key_id: SecretString,
     pub secret_access_key: SecretString,
     pub region: String,
 }
@@ -125,7 +125,7 @@ impl Default for ObjectStorageConfig {
         Self {
             endpoint: "http://127.0.0.1:9000".to_string(),
             bucket: "moqentra".to_string(),
-            access_key_id: "minioadmin".to_string(),
+            access_key_id: SecretString::new("minioadmin"),
             secret_access_key: SecretString::new("minioadmin"),
             region: "us-east-1".to_string(),
         }
