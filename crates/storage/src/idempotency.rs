@@ -86,12 +86,15 @@ impl IdempotencyStore for InMemoryIdempotencyStore {
                 return Err(Error::conflict("idempotency key already in progress"));
             }
         }
+        let expires_at = now
+            .add_std_duration(ttl)
+            .ok_or_else(|| Error::invalid_argument("idempotency ttl is too large"))?;
         let entry = IdempotencyEntry {
             id: Uuid::new_v4(),
             scope: scope.clone(),
             status: IdempotencyStatus::InProgress,
             response: None,
-            expires_at: now.add_std_duration(ttl).unwrap_or(now),
+            expires_at,
             created_at: now,
         };
         entries.insert(scope, entry.clone());

@@ -30,7 +30,8 @@ impl UtcTimestamp {
 
     /// Adds a `std::time::Duration`, returning `None` on overflow.
     pub fn add_std_duration(self, duration: std::time::Duration) -> Option<Self> {
-        let d = Duration::new(duration.as_secs() as i64, duration.subsec_nanos() as i32);
+        let secs = i64::try_from(duration.as_secs()).ok()?;
+        let d = Duration::new(secs, duration.subsec_nanos() as i32);
         self.add_duration(d)
     }
 
