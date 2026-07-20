@@ -3,6 +3,7 @@
 use moqentra_types::{AssetId, DeploymentId, NodeId, ReplicaId, UtcTimestamp};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 /// dyun graph bundle version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -170,7 +171,7 @@ pub enum RunnerState {
 }
 
 impl Runner {
-    pub fn validate_sandbox(&self) -> Result<(), moqentra_types::Error> {
+    pub fn validate_sandbox(&self, root: impl AsRef<Path>) -> Result<(), moqentra_types::Error> {
         if self.sandbox_path.is_empty()
             || self.sandbox_path.contains('\0')
             || !self.sandbox_path.starts_with('/')
@@ -180,8 +181,25 @@ impl Runner {
                 "invalid sandbox path",
             ));
         }
+        let abs = std::path::absolute(&self.sandbox_path)
+            .map_err(|_| moqentra_types::Error::invalid_argument("sandbox path not resolvable"))?;
+        if abs.components().any(|c| c == std::path::Component::ParentDir) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "sandbox path traversal not allowed",
+            ));
+        }
+        if !abs.starts_with(root.as_ref()) {
+            return Err(moqentra_types::Error::permission_denied(
+                "sandbox path outside workspace",
+            ));
+        }
         Ok(())
     }
+}
+
+/// Returns the default sandbox workspace root.
+pub fn default_sandbox_root() -> PathBuf {
+    PathBuf::from("/tmp/moqentra-dyun")
 }
 
 #[cfg(test)]
@@ -248,6 +266,29 @@ mod tests {
             sandbox_path: "../etc".to_string(),
             exit_code: None,
         };
-        assert!(runner.validate_sandbox().is_err());
+        assert!(runner.validate_sandbox(default_sandbox_root()).is_err());
+    }
+
+    #[test]
+    fn sandbox_path_confined_to_workspace() {
+        let runner = Runner {
+            id: "r2".to_string(),
+            replica_id: ReplicaId::new_v7(&RandomIdGenerator),
+            state: RunnerState::Created,
+            image_digest: "sha256:img".to_string(),
+            sandbox_path: "/etc".to_string(),
+            exit_code: None,
+        };
+        assert!(runner.validate_sandbox(default_sandbox_root()).is_err());
+
+        let valid = Runner {
+            id: "r3".to_string(),
+            replica_id: ReplicaId::new_v7(&RandomIdGenerator),
+            state: RunnerState::Created,
+            image_digest: "sha256:img".to_string(),
+            sandbox_path: "/tmp/moqentra-dyun/run-1".to_string(),
+            exit_code: None,
+        };
+        assert!(valid.validate_sandbox(default_sandbox_root()).is_ok());
     }
 }

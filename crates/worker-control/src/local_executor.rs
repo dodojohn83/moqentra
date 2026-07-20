@@ -2,6 +2,7 @@
 
 use moqentra_types::{AttemptId, NodeId, UtcTimestamp};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::path::{Path, PathBuf};
 
 /// Kind of accelerator.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -80,18 +81,47 @@ pub struct ContainerConfig {
     pub security: ContainerSecurityProfile,
 }
 
+fn is_allowed_bind_mount_path(path: &str, base: &Path) -> bool {
+    let abs = match std::path::absolute(path) {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    if abs.components().any(|c| c == std::path::Component::ParentDir) {
+        return false;
+    }
+    abs.starts_with(base)
+}
+
 /// Local executor managing node resources and containers.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct LocalExecutor {
     allocations: HashMap<String, Allocation>,
     device_usage: BTreeMap<String, String>,
     allocated_cpu_cores: u64,
     allocated_memory_mib: u64,
+    workspace_root: PathBuf,
+}
+
+impl Default for LocalExecutor {
+    fn default() -> Self {
+        Self {
+            allocations: HashMap::new(),
+            device_usage: BTreeMap::new(),
+            allocated_cpu_cores: 0,
+            allocated_memory_mib: 0,
+            workspace_root: PathBuf::from("/tmp/moqentra"),
+        }
+    }
 }
 
 impl LocalExecutor {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_workspace_root(mut self, root: impl Into<PathBuf>) -> Self {
+        self.workspace_root = root.into();
+        self
     }
 
     pub fn allocate(
@@ -229,6 +259,11 @@ impl LocalExecutor {
                         "bind mount path traversal not allowed",
                     ));
                 }
+            }
+            if !is_allowed_bind_mount_path(src, &self.workspace_root) {
+                return Err(moqentra_types::Error::permission_denied(
+                    "bind mount source outside workspace",
+                ));
             }
         }
         Ok(format!(
