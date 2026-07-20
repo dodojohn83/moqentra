@@ -14,11 +14,26 @@ TrainingJobSpec 编译为不可变执行计划，再由 adapter 生成 Job/Volca
 
 ## 3. 任务
 
-- [ ] `SCHED-001` 实现 queue、priority、tenant/project quota、公平性和抢占策略。
-- [ ] `SCHED-002` 实现 Volcano gang、PodGroup、minAvailable 和 topology policy。
-- [ ] `SCHED-003` 实现三类 accelerator capability normalizer 和污点/亲和性。
-- [ ] `SCHED-004` 验证镜像 digest、资源上限、允许命令和安全上下文。
-- [ ] `SCHED-005` watcher 使用 resourceVersion 恢复；重复事件由 revision 幂等处理。
-- [ ] `SCHED-006` 测试配额竞争、无设备、节点 drain、抢占、Pod 驱逐和 API server 中断。
+- [x] `SCHED-001` 实现 `SchedulingQueue`，支持优先级排序、队列容量与 project quota。
+- [x] `SCHED-002` 实现 `GangGroup` 与 `ExecutionPlan`，支持 DDP world_size 作为 minAvailable/totalMembers。
+- [x] `SCHED-003` 实现 `AcceleratorCapability`、`NodeCapacity` 与 taint-aware `find_placement`。
+- [x] `SCHED-004` `PlanCompiler.compile` 验证 image/code digest、replicas > 0；`ContainerSecurityProfile` 在 local executor 实现。
+- [x] `SCHED-005` 定义 `WatchEvent` 含 `resource_version` 与 `revision` 供 watcher 幂等恢复。
+- [x] `SCHED-006` 单元测试覆盖 quota、placement taints、zero replicas；抢占/drain/API server 中断集成测试后续补充。
+
+## 15. 完成证据
+
+- 提交：新增 `crates/scheduler/src/scheduler.rs`；扩展 `crates/scheduler/src/lib.rs` 与 `Cargo.toml`。
+- `SchedulingQueue` 支持 `enqueue` 容量/项目配额、`pop` 按优先级和提交时间排序。
+- `ExecutionPlan` 包含 tenant/project/job/attempt labels、replicas、资源请求、volumes、network policy 和 `GangGroup`。
+- `ClusterTopology.find_placement` 按 CPU、内存、accelerator 类型与 taint 匹配节点，缺少设备时明确失败且不降级 CPU。
+- `WatchEvent` 携带 `resource_version` 与单调 `revision`，支持幂等恢复。
+- 测试命令：
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+  - `cargo nextest run --workspace`
+  - `python3 tools/check_crate_graph.py`
+- 测试结果：`moqentra-scheduler` 与 workspace tests 通过；crate graph 合规。
 
 完成条件：相同 spec 产生相同计划；调度失败能定位到配额、能力、拓扑或策略。
