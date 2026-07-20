@@ -137,6 +137,8 @@ impl ObjectStorage for InMemoryObjectStore {
             .ok_or_else(|| Error::not_found("multipart upload"))?;
 
         let mut combined = Vec::new();
+        let mut parts = parts;
+        parts.sort_by_key(|(n, _)| *n);
         for (part_number, _etag) in parts {
             let part = upload
                 .parts
