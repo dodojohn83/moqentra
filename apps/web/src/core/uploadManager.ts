@@ -2,6 +2,7 @@ export interface UploadState {
   file: File;
   progress: number;
   completed: boolean;
+  uploading: boolean;
   error?: string;
   abortController: AbortController;
   completedChunks: number;
@@ -28,6 +29,7 @@ export class UploadManager {
       file,
       progress: 0,
       completed: false,
+      uploading: false,
       abortController,
       completedChunks: 0,
       etags: [],
@@ -43,7 +45,7 @@ export class UploadManager {
     uploadChunk: (chunk: Blob, index: number, signal: AbortSignal) => Promise<ChunkResult>,
   ): void {
     const state = this.uploads.get(id);
-    if (!state || state.completed) return;
+    if (!state || state.completed || state.uploading) return;
 
     const totalChunks = Math.ceil(state.file.size / CHUNK_SIZE);
     if (totalChunks === 0) {
@@ -51,6 +53,8 @@ export class UploadManager {
       state.completed = true;
       return;
     }
+
+    state.uploading = true;
 
     (async () => {
       try {
@@ -61,13 +65,18 @@ export class UploadManager {
             Math.min((i + 1) * CHUNK_SIZE, state.file.size),
           );
           const result = await uploadChunk(chunk, i, state.abortController.signal);
-          state.etags[i] = result.etag;
+          if (result.chunkIndex !== i) {
+            throw new Error(`chunk index mismatch: expected ${i}, got ${result.chunkIndex}`);
+          }
+          state.etags[result.chunkIndex] = result.etag;
           state.completedChunks = i + 1;
           state.progress = Math.round(((i + 1) / totalChunks) * 100);
         }
         state.completed = true;
       } catch (e) {
         state.error = e instanceof Error ? e.message : String(e);
+      } finally {
+        state.uploading = false;
       }
     })();
   }
@@ -87,7 +96,7 @@ export class UploadManager {
 
   resume(id: string, uploadChunk: (chunk: Blob, index: number, signal: AbortSignal) => Promise<ChunkResult>): boolean {
     const state = this.uploads.get(id);
-    if (!state || state.completed) return false;
+    if (!state || state.completed || state.uploading) return false;
     if (state.error) {
       state.error = undefined;
     }

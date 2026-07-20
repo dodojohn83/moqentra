@@ -13,6 +13,9 @@ pub struct Lease {
     pub released: bool,
 }
 
+// Cap TTLs to avoid i64 overflow; ~10 years is effectively forever.
+const MAX_TTL_SECONDS: u64 = 10 * 365 * 24 * 60 * 60;
+
 impl Lease {
     pub fn new(
         resource_id: impl Into<String>,
@@ -20,12 +23,13 @@ impl Lease {
         epoch: u64,
         ttl_seconds: u64,
     ) -> Self {
+        let ttl = ttl_seconds.min(MAX_TTL_SECONDS);
         Self {
             resource_id: resource_id.into(),
             holder: holder.into(),
             epoch,
             expires_at: UtcTimestamp::now()
-                .add_std_duration(std::time::Duration::from_secs(ttl_seconds))
+                .add_std_duration(std::time::Duration::from_secs(ttl))
                 .unwrap_or_else(UtcTimestamp::now),
             released: false,
         }
@@ -43,8 +47,9 @@ impl Lease {
         if self.released {
             return Err(moqentra_types::Error::conflict("lease released"));
         }
+        let ttl = ttl_seconds.min(MAX_TTL_SECONDS);
         self.expires_at = UtcTimestamp::now()
-            .add_std_duration(std::time::Duration::from_secs(ttl_seconds))
+            .add_std_duration(std::time::Duration::from_secs(ttl))
             .unwrap_or_else(UtcTimestamp::now);
         Ok(())
     }
@@ -155,10 +160,9 @@ impl ClusterAgent {
     }
 
     pub fn mark_offline_if_stale(&mut self, now: UtcTimestamp, ttl_seconds: u64) {
+        let ttl = ttl_seconds.min(MAX_TTL_SECONDS);
         if let Some(last) = self.last_seen {
-            if let Some(expires) =
-                last.add_std_duration(std::time::Duration::from_secs(ttl_seconds))
-            {
+            if let Some(expires) = last.add_std_duration(std::time::Duration::from_secs(ttl)) {
                 if now >= expires {
                     self.offline = true;
                 }
@@ -208,7 +212,9 @@ impl Reconciler {
             }
             if let Some(observed) = observer(id) {
                 // Ignore CAS failures during a read-only observation cycle.
-                let _ = state.reconcile(observed, state.revision + 1);
+                // Use wrapping_add to avoid debug-build panics on u64 overflow;
+                // reconcile rejects next_revision <= current, so a wrap is safely ignored.
+                let _ = state.reconcile(observed, state.revision.wrapping_add(1));
                 processed += 1;
             }
         }

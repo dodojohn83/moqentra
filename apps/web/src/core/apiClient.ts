@@ -103,22 +103,26 @@ export async function* apiStream<T>(
 
   const decoder = new TextDecoder();
   let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      if (line.startsWith("data: ")) {
-        const payload = line.slice(6);
-        if (!payload) continue;
-        try {
-          yield JSON.parse(payload) as T;
-        } catch {
-          // Skip malformed SSE payloads instead of crashing the stream.
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const payload = line.slice(6);
+          if (!payload) continue;
+          try {
+            yield JSON.parse(payload) as T;
+          } catch {
+            // Skip malformed SSE payloads instead of crashing the stream.
+          }
         }
       }
     }
+  } finally {
+    reader.cancel().catch(() => {});
   }
 }

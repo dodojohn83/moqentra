@@ -96,11 +96,15 @@ impl ConversionJob {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(source.to_string().as_bytes());
+        hasher.update(profile.sdk_version.as_bytes());
         hasher.update(profile.toolchain_image_digest.as_bytes());
         hasher.update(profile.target_chip.as_bytes());
         hasher.update(profile.precision.as_bytes());
         hasher.update(profile.dynamic_shapes.to_string().as_bytes());
         hasher.update(format!("{:?}", profile.target).as_bytes());
+        for cap in &profile.capabilities {
+            hasher.update(cap.as_bytes());
+        }
         for (k, v) in parameters {
             hasher.update(k.as_bytes());
             hasher.update(v.as_bytes());
@@ -239,9 +243,20 @@ impl EvaluationRun {
         Ok(())
     }
 
-    pub fn report_metrics(&mut self, metrics: Vec<EvaluationMetric>) {
+    pub fn report_metrics(
+        &mut self,
+        metrics: Vec<EvaluationMetric>,
+    ) -> Result<(), moqentra_types::Error> {
+        for metric in &metrics {
+            if !metric.value.is_finite() || !metric.tolerance.is_finite() {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "metric and tolerance must be finite",
+                ));
+            }
+        }
         self.metrics.extend(metrics);
         self.updated_at = UtcTimestamp::now();
+        Ok(())
     }
 
     pub fn complete(&mut self) -> Result<(), moqentra_types::Error> {
@@ -281,14 +296,20 @@ impl PromotionPolicy {
                 "security scan required",
             ));
         }
-        for (name, (min, _tol)) in &self.required_metrics {
+        for (name, (min, tol)) in &self.required_metrics {
             let value = run
                 .metrics
                 .iter()
                 .find(|m| &m.name == name)
                 .map(|m| m.value)
                 .ok_or_else(|| moqentra_types::Error::invalid_argument("missing metric"))?;
-            if value < *min {
+            if !value.is_finite() || !min.is_finite() || !tol.is_finite() {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "metric and threshold must be finite",
+                ));
+            }
+            let threshold = min - tol;
+            if value < threshold {
                 return Err(moqentra_types::Error::invalid_argument(
                     "metric below threshold",
                 ));
@@ -392,7 +413,8 @@ mod tests {
                 value: 0.88,
                 tolerance: 0.01,
             },
-        ]);
+        ])
+        .unwrap();
         run.complete().unwrap();
 
         let mut required = BTreeMap::new();

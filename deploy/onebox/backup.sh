@@ -11,16 +11,24 @@ BACKUP_DIR="${1:-${SCRIPT_DIR}/backup}"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 DEST="${BACKUP_DIR}/${TIMESTAMP}"
 mkdir -p "$DEST"
-trap 'rm -rf "$DEST"' EXIT
+BACKUP_DEST="${DEST}/minio"
 
-docker compose -f "$(dirname "$0")/docker-compose.yml" exec -T postgres \
-  pg_dumpall -U "${POSTGRES_USER:-moqentra}" > "${DEST}/pg_dump.sql"
+ENV_FILE="$(mktemp)"
+trap 'rm -rf "$DEST" "$ENV_FILE"' EXIT
+chmod 600 "$ENV_FILE"
 
-docker run --rm --network host --entrypoint sh \
-  -e "MINIO_API_PORT=${MINIO_API_PORT:-9000}" \
-  -e "MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}" \
-  -e "MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}" \
-  -e "BACKUP_DEST=${DEST}/minio" \
+{
+  echo "MINIO_API_PORT=${MINIO_API_PORT:-9000}"
+  echo "MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}"
+  echo "MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}"
+  echo "BACKUP_DEST=${BACKUP_DEST}"
+} > "$ENV_FILE"
+
+docker compose -f "$(dirname "$0")/docker-compose.yml" exec -T -e "PGUSER=${POSTGRES_USER:-moqentra}" postgres \
+  pg_dumpall > "${DEST}/pg_dump.sql"
+
+docker run --rm --network host --env-file "$ENV_FILE" \
+  -v "${DEST}:${DEST}" --entrypoint sh \
   minio/mc -c 'mc alias set local "http://localhost:${MINIO_API_PORT}" "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}" && mc mirror local/moqentra "${BACKUP_DEST}"' \
   || true
 

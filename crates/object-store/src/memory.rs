@@ -18,6 +18,7 @@ struct Object {
 
 #[derive(Debug, Clone, Default)]
 struct MultipartUpload {
+    object_key: String,
     media_type: Option<String>,
     parts: HashMap<i32, Bytes>,
 }
@@ -95,13 +96,14 @@ impl ObjectStorage for InMemoryObjectStore {
         Ok(format!("memory://{}", key))
     }
 
-    async fn start_multipart(&self, _key: &str, media_type: Option<&str>) -> Result<String, Error> {
+    async fn start_multipart(&self, key: &str, media_type: Option<&str>) -> Result<String, Error> {
         let mut counter = self.counter.lock().unwrap_or_else(|e| e.into_inner());
         *counter += 1;
         let upload_id = format!("upload-{}", counter);
         self.multipart.lock().unwrap_or_else(|e| e.into_inner()).insert(
             upload_id.clone(),
             MultipartUpload {
+                object_key: key.to_string(),
                 media_type: media_type.map(|s| s.to_string()),
                 parts: HashMap::new(),
             },
@@ -116,6 +118,9 @@ impl ObjectStorage for InMemoryObjectStore {
         part_number: i32,
         data: Bytes,
     ) -> Result<String, Error> {
+        if part_number <= 0 {
+            return Err(Error::invalid_argument("part number must be positive"));
+        }
         let mut multipart = self.multipart.lock().unwrap_or_else(|e| e.into_inner());
         let upload = multipart
             .get_mut(upload_id)
@@ -135,12 +140,31 @@ impl ObjectStorage for InMemoryObjectStore {
         let upload = multipart
             .remove(upload_id)
             .ok_or_else(|| Error::not_found("multipart upload"))?;
+        if upload.object_key != key {
+            return Err(Error::invalid_argument("multipart upload key mismatch"));
+        }
 
         let mut combined = Vec::new();
+        if parts.is_empty() {
+            return Err(Error::invalid_argument(
+                "multipart completion requires at least one part",
+            ));
+        }
         let mut parts: Vec<_> = parts;
         parts.sort_by_key(|(n, _)| *n);
         let mut seen = std::collections::HashSet::new();
+        let mut expected = 1i32;
         for (part_number, etag) in parts {
+            if part_number <= 0 {
+                return Err(Error::invalid_argument("part number must be positive"));
+            }
+            if part_number != expected {
+                return Err(Error::invalid_argument(format!(
+                    "expected part {} but got {}",
+                    expected, part_number
+                )));
+            }
+            expected += 1;
             if !seen.insert(part_number) {
                 return Err(Error::invalid_argument(format!(
                     "duplicate part {}",

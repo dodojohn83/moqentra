@@ -78,16 +78,32 @@ pub struct OperationRef {
 }
 
 /// Webhook subscription and delivery metadata.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebhookSubscription {
     pub id: String,
     pub tenant_id: moqentra_types::TenantId,
     pub url: String,
     pub event_types: Vec<String>,
+    #[serde(skip_serializing)]
     pub secret_hmac: String,
     pub active: bool,
     pub max_retries: u32,
     pub circuit_open: bool,
+}
+
+impl std::fmt::Debug for WebhookSubscription {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WebhookSubscription")
+            .field("id", &self.id)
+            .field("tenant_id", &self.tenant_id)
+            .field("url", &self.url)
+            .field("event_types", &self.event_types)
+            .field("secret_hmac", &"[REDACTED]")
+            .field("active", &self.active)
+            .field("max_retries", &self.max_retries)
+            .field("circuit_open", &self.circuit_open)
+            .finish()
+    }
 }
 
 type HmacSha256 = Hmac<Sha256>;
@@ -99,6 +115,9 @@ impl WebhookSubscription {
         delivery_id: &str,
         timestamp: i64,
     ) -> Result<String, Error> {
+        if self.secret_hmac.is_empty() {
+            return Err(Error::invalid_argument("webhook secret must not be empty"));
+        }
         let mut mac = HmacSha256::new_from_slice(self.secret_hmac.as_bytes())
             .map_err(|_| Error::invalid_argument("invalid hmac key length"))?;
         mac.update(delivery_id.as_bytes());
@@ -383,6 +402,22 @@ mod tests {
             sub.sign_payload(b"body", "d2", 42).unwrap(),
             "different delivery id changes signature"
         );
+    }
+
+    #[test]
+    fn webhook_secret_not_serialized() {
+        let sub = WebhookSubscription {
+            id: "w4".to_string(),
+            tenant_id: TenantId::new_v7(&RandomIdGenerator),
+            url: "https://example.com/hook".to_string(),
+            event_types: vec![],
+            secret_hmac: "super-secret".to_string(),
+            active: true,
+            max_retries: 3,
+            circuit_open: false,
+        };
+        let json = serde_json::to_string(&sub).unwrap();
+        assert!(!json.contains("super-secret"));
     }
 
     #[test]

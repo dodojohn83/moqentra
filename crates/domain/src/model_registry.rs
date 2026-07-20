@@ -124,7 +124,8 @@ impl ModelVersion {
             ));
         }
         if self.lineage.code_digest.is_empty()
-            || self.lineage.dataset_version_id.to_string().is_empty()
+            || self.lineage.image_digest.is_empty()
+            || self.lineage.hyperparameter_digest.is_empty()
         {
             return Err(moqentra_types::Error::invalid_argument("missing lineage"));
         }

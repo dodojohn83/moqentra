@@ -5,32 +5,53 @@ use async_trait::async_trait;
 use aws_credential_types::Credentials;
 use aws_sdk_s3::primitives::ByteStream;
 use bytes::Bytes;
-use moqentra_types::Error;
+use moqentra_types::{config::SecretString, Error};
 use std::time::Duration;
 
 /// Configuration for an S3-compatible object store.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct S3Config {
     pub bucket: String,
     pub endpoint: String,
     pub region: String,
-    pub access_key_id: String,
-    pub secret_access_key: String,
+    pub access_key_id: SecretString,
+    pub secret_access_key: SecretString,
     pub force_path_style: bool,
 }
 
+impl std::fmt::Debug for S3Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("S3Config")
+            .field("bucket", &self.bucket)
+            .field("endpoint", &self.endpoint)
+            .field("region", &self.region)
+            .field("access_key_id", &"[REDACTED]")
+            .field("secret_access_key", &"[REDACTED]")
+            .field("force_path_style", &self.force_path_style)
+            .finish()
+    }
+}
+
 /// S3/MinIO backed object store.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct S3ObjectStore {
     client: aws_sdk_s3::Client,
     bucket: String,
 }
 
+impl std::fmt::Debug for S3ObjectStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("S3ObjectStore")
+            .field("bucket", &self.bucket)
+            .finish_non_exhaustive()
+    }
+}
+
 impl S3ObjectStore {
     pub fn new(config: S3Config) -> Result<Self, Error> {
         let credentials = Credentials::new(
-            config.access_key_id,
-            config.secret_access_key,
+            config.access_key_id.expose_secret(),
+            config.secret_access_key.expose_secret(),
             None,
             None,
             "static",
