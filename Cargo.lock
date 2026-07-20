@@ -2004,6 +2004,11 @@ dependencies = [
 [[package]]
 name = "moqentra-dyun-adapter"
 version = "0.1.0"
+dependencies = [
+ "moqentra-types",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "moqentra-dyun-agent"

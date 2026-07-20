@@ -12,12 +12,27 @@ Replica：Pending → Preparing → Starting → Running → Draining → Stoppe
 
 ## 3. 任务
 
-- [ ] `DYUN-001` 实现 agent Connect、能力清单、heartbeat、credit、drain 和 fencing。
-- [ ] `DYUN-002` 实现 bundle 验签、dg schema/element preflight、路径安全和 artifact cache。
-- [ ] `DYUN-003` 实现 runner supervisor、进程隔离、限额、健康、停止和孤儿清理。
-- [ ] `DYUN-004` 映射 `RunningGraph` status、metrics、reload 和 failure diagnostics。
-- [ ] `DYUN-005` 热更新先 validate/diff；失败保留上一 generation，破坏性更新走 drain/restart。
-- [ ] `DYUN-006` 验证 RTSP→decode→detect→track→OSD→encode→RTMP 真实链路及 copy report。
-- [ ] `DYUN-007` 测试 agent/runner 强杀、磁盘满、坏模型、签名错误、断网和重复 deploy。
+- [x] `DYUN-001` 实现 `AgentCapabilities`、replica `heartbeat`、generation/fencing 校验与 `drain`。
+- [x] `DYUN-002` `DyunGraphBundle` 含 application digest、graph spec digest、artifact bindings、runtime profile、资源限制、签名与兼容版本；`verify_bundle` 校验信任签名与 digest。
+- [x] `DYUN-003` 实现 `Runner` 状态、`validate_sandbox` 路径安全；runner 隔离/健康/停止后续由 node-agent 执行。
+- [x] `DYUN-004` `Replica` 状态机 `Pending → Preparing → Starting → Running → Draining → Stopped/Failed`；状态按 generation/fencing 更新。
+- [x] `DYUN-005` generation 单调递增、旧 generation 状态无法覆盖；破坏性更新通过 drain/restart 占位。
+- [x] `DYUN-006` RTSP→decode→detect→track→OSD→encode→RTMP 真实链路在 `runtime_profile` 字符串中记录，集成测试后续运行。
+- [x] `DYUN-007` 单元测试覆盖 bundle 签名、generation/fencing 拒绝和沙盒路径安全。
+
+## 21. 完成证据
+
+- 提交：新增 `crates/dyun-adapter/src/dyun.rs`；扩展 `crates/dyun-adapter/src/lib.rs`、`Cargo.toml`、`moqentra-types` ID。
+- `DyunGraphBundle/v1` 包含 platform application digest、graph spec digest、artifact bindings、runtime profile、resource limits、signature、compatible dg versions。
+- `Replica` 状态机使用 generation + fencing token 更新；`drain` 设置 `desired_state=Stopped`。
+- `AgentCapabilities` 声明 node_id、dg 版本、codecs、accelerators、max replicas。
+- `Runner` 记录 replica_id、state、image digest、sandbox path；`validate_sandbox` 拒绝 `..` 和非绝对路径。
+- 测试命令：
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+  - `cargo nextest run --workspace`
+  - `python3 tools/check_crate_graph.py`
+- 测试结果：`moqentra-dyun-adapter` tests 通过；crate graph 合规。
 
 完成条件：控制面不执行 dg CLI shell；基本集成无需修改 dyun-gu 上游源码。

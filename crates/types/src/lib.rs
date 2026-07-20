@@ -20,7 +20,8 @@ pub use id::{
     ArtifactDigest, AssetId, AttemptId, AutoLabelJobId, CheckpointId, ConversionJobId, DatasetId,
     DatasetVersionId, DeploymentId, EvaluationRunId, ExperimentId, HpoRunId, IdGenerator, ModelId,
     ModelVersionId, NodeId, NotebookId, OperationId, PipelineId, PipelineRunId, ProjectId,
-    QualityRunId, RandomIdGenerator, RankId, StaticIdGenerator, TenantId, TrainingJobId, UserId,
+    QualityRunId, RandomIdGenerator, RankId, ReplicaId, StaticIdGenerator, TenantId, TrainingJobId,
+    UserId,
 };
 pub use pagination::{Page, PageRequest};
 pub use request::{Principal, RequestContext, ResourceQuantity, ResourceRef};
