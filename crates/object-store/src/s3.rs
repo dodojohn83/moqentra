@@ -9,7 +9,7 @@ use moqentra_types::Error;
 use std::time::Duration;
 
 /// Configuration for an S3-compatible object store.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct S3Config {
     pub bucket: String,
     pub endpoint: String,
@@ -19,11 +19,32 @@ pub struct S3Config {
     pub force_path_style: bool,
 }
 
+impl std::fmt::Debug for S3Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("S3Config")
+            .field("bucket", &self.bucket)
+            .field("endpoint", &self.endpoint)
+            .field("region", &self.region)
+            .field("access_key_id", &self.access_key_id)
+            .field("secret_access_key", &"[REDACTED]")
+            .field("force_path_style", &self.force_path_style)
+            .finish()
+    }
+}
+
 /// S3/MinIO backed object store.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct S3ObjectStore {
     client: aws_sdk_s3::Client,
     bucket: String,
+}
+
+impl std::fmt::Debug for S3ObjectStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("S3ObjectStore")
+            .field("bucket", &self.bucket)
+            .finish_non_exhaustive()
+    }
 }
 
 impl S3ObjectStore {
