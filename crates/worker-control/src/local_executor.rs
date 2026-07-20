@@ -82,13 +82,14 @@ pub struct ContainerConfig {
 }
 
 fn is_allowed_bind_mount_path(path: &str, base: &Path) -> bool {
-    let abs = match std::path::absolute(path) {
+    let base = match base.canonicalize() {
         Ok(p) => p,
         Err(_) => return false,
     };
-    if abs.components().any(|c| c == std::path::Component::ParentDir) {
-        return false;
-    }
+    let abs = match std::fs::canonicalize(path) {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
     abs.starts_with(base)
 }
 
