@@ -48,7 +48,8 @@ impl Rendezvous {
         if self.members.contains_key(&rank_id) {
             return Err(moqentra_types::Error::conflict("rank already joined"));
         }
-        let rank_index = self.members.len() as u32;
+        let rank_index = u32::try_from(self.members.len())
+            .map_err(|_| moqentra_types::Error::internal("rank index overflow"))?;
         self.members.insert(rank_id, endpoint.into());
         Ok(rank_index)
     }
@@ -57,7 +58,7 @@ impl Rendezvous {
         if self.finalized {
             return Ok(());
         }
-        if self.members.len() as u32 != self.world_size {
+        if self.members.len() != self.world_size as usize {
             return Err(moqentra_types::Error::unavailable("rendezvous incomplete"));
         }
         self.finalized = true;
@@ -155,7 +156,7 @@ impl DistributedJobState {
     }
 
     pub fn all_finished(&self) -> bool {
-        self.rank_exit_codes.len() as u32 == self.world_size
+        self.rank_exit_codes.len() == self.world_size as usize
             && self.rank_exit_codes.values().all(|c| c.is_some())
     }
 

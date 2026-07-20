@@ -137,14 +137,33 @@ impl ObjectStorage for InMemoryObjectStore {
             .ok_or_else(|| Error::not_found("multipart upload"))?;
 
         let mut combined = Vec::new();
-        let mut parts = parts;
+        let mut parts: Vec<_> = parts;
         parts.sort_by_key(|(n, _)| *n);
-        for (part_number, _etag) in parts {
+        let mut seen = std::collections::HashSet::new();
+        for (part_number, etag) in parts {
+            if !seen.insert(part_number) {
+                return Err(Error::invalid_argument(format!(
+                    "duplicate part {}",
+                    part_number
+                )));
+            }
             let part = upload
                 .parts
                 .get(&part_number)
                 .ok_or_else(|| Error::invalid_argument(format!("missing part {}", part_number)))?;
+            let expected = format!("\"{}\"", digest(part));
+            if etag != expected {
+                return Err(Error::invalid_argument(format!(
+                    "etag mismatch for part {}",
+                    part_number
+                )));
+            }
             combined.extend_from_slice(part);
+        }
+        if seen.len() != upload.parts.len() {
+            return Err(Error::invalid_argument(
+                "multipart completion must list all uploaded parts",
+            ));
         }
         let data = Bytes::from(combined);
         let etag = format!("\"{}\"", digest(&data));
