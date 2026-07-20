@@ -2118,6 +2118,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "moqentra-test-harness"
+version = "0.1.0"
+dependencies = [
+ "moqentra-domain",
+ "moqentra-types",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "moqentra-types"
 version = "0.1.0"
 dependencies = [
