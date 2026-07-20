@@ -4,7 +4,8 @@ use hmac::{Hmac, Mac};
 use moqentra_types::{Error, RequestContext, UtcTimestamp};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::str::FromStr;
 
 /// RFC 9457 Problem Details.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,6 +129,16 @@ impl WebhookSubscription {
                         "SSRF: internal address not allowed",
                     ));
                 }
+                // Reject domain-looking IPs such as 127.1 or 0x7f.0.0.1 that the
+                // url crate does not parse as an address literal.
+                if lower.parse::<IpAddr>().is_ok()
+                    || Ipv4Addr::from_str(&lower).is_ok()
+                    || parse_ipv4_like(&lower).is_some_and(is_internal_ipv4)
+                {
+                    return Err(Error::invalid_argument(
+                        "SSRF: internal address not allowed",
+                    ));
+                }
             }
             Some(url::Host::Ipv4(ip)) => {
                 if is_internal_ipv4(ip) {
@@ -157,14 +168,84 @@ fn is_internal_ipv4(ip: Ipv4Addr) -> bool {
         || ip.is_multicast()
         || ip.is_broadcast()
         || ip.is_unspecified()
-        || ip.octets()[0] == 100 && (ip.octets()[1] & 0b1100_0000 == 64) // 100.64.0.0/10
-        || ip == Ipv4Addr::new(169, 254, 169, 254) // link-local metadata
-        || ip == Ipv4Addr::new(198, 18, 0, 0) || ip == Ipv4Addr::new(198, 19, 255, 255)
-    // 198.18.0.0/15 endpoints
+        || is_cgnat(ip) // 100.64.0.0/10
+        || is_benchmarking(ip) // 198.18.0.0/15
+}
+
+fn is_cgnat(ip: Ipv4Addr) -> bool {
+    ip.octets()[0] == 100 && (ip.octets()[1] & 0b1100_0000 == 64)
+}
+
+fn is_benchmarking(ip: Ipv4Addr) -> bool {
+    ip.octets()[0] == 198 && (ip.octets()[1] == 18 || ip.octets()[1] == 19)
 }
 
 fn is_internal_ipv6(ip: Ipv6Addr) -> bool {
-    ip.is_loopback() || ip.is_unspecified() || ip.is_multicast() || ip.is_unique_local()
+    if ip.is_loopback() || ip.is_unspecified() || ip.is_multicast() || ip.is_unique_local() {
+        return true;
+    }
+    // Catch IPv4-mapped loopback/private addresses such as ::ffff:127.0.0.1.
+    if let Some(mapped) = ip.to_ipv4_mapped() {
+        return is_internal_ipv4(mapped);
+    }
+    false
+}
+
+fn parse_ipv4_like(domain: &str) -> Option<Ipv4Addr> {
+    let parts: Vec<&str> = domain.split('.').collect();
+    if parts.is_empty() || parts.len() > 4 {
+        return None;
+    }
+    if parts.iter().any(|p| p.is_empty()) {
+        return None;
+    }
+
+    let mut values = [0u32; 4];
+    let count = parts.len();
+    for (i, part) in parts.iter().enumerate() {
+        let is_last = i + 1 == count;
+        let max = match (count, i == 0, is_last) {
+            (1, _, _) => u32::MAX,
+            (2, false, true) | (3, false, true) => {
+                // The final part of a 2- or 3-part address fills the
+                // remaining 24 or 16 bits respectively.
+                if count == 2 {
+                    0xffffff
+                } else {
+                    0xffff
+                }
+            }
+            _ => 0xff,
+        };
+        let value = parse_numeric_literal(part, max)?;
+        values[i] = value;
+    }
+
+    let addr = match count {
+        1 => Ipv4Addr::from(values[0]),
+        2 => Ipv4Addr::from((values[0] << 24) | (values[1] & 0xffffff)),
+        3 => Ipv4Addr::from((values[0] << 24) | (values[1] << 16) | (values[2] & 0xffff)),
+        4 => Ipv4Addr::from((values[0] << 24) | (values[1] << 16) | (values[2] << 8) | values[3]),
+        _ => return None,
+    };
+    Some(addr)
+}
+
+fn parse_numeric_literal(part: &str, max: u32) -> Option<u32> {
+    let lower = part.to_lowercase();
+    let (base, num) = if let Some(stripped) = lower.strip_prefix("0x") {
+        (16u32, stripped)
+    } else if lower.starts_with('0') && lower.len() > 1 {
+        // Treat ambiguous leading-zero forms as octal to avoid bypasses.
+        (8u32, &lower[1..])
+    } else {
+        (10u32, &lower[..])
+    };
+    let value = u32::from_str_radix(num, base).ok()?;
+    if value > max {
+        return None;
+    }
+    Some(value)
 }
 
 /// SSE event envelope.
@@ -245,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    fn webhook_rejects_metadata_and_loopback_ips() {
+    fn webhook_rejects_internal_and_encoded_addresses() {
         let make = |url: &str| WebhookSubscription {
             id: "w".to_string(),
             tenant_id: TenantId::new_v7(&RandomIdGenerator),
@@ -259,6 +340,13 @@ mod tests {
         assert!(make("http://127.0.0.2/hook").validate_url().is_err());
         assert!(make("http://169.254.169.254/latest/").validate_url().is_err());
         assert!(make("http://[::1]/hook").validate_url().is_err());
+        assert!(make("http://[::ffff:127.0.0.1]/hook").validate_url().is_err());
+        assert!(make("http://127.1/hook").validate_url().is_err());
+        assert!(make("http://0x7f.0.0.1/hook").validate_url().is_err());
+        assert!(make("http://0177.0.0.1/hook").validate_url().is_err());
+        assert!(make("http://100.64.0.1/hook").validate_url().is_err());
+        assert!(make("http://198.18.0.1/hook").validate_url().is_err());
+        assert!(make("https://example.com/hook").validate_url().is_ok());
     }
 
     #[test]
