@@ -15,11 +15,16 @@ impl ConnectionPool {
     }
 
     pub async fn acquire(&self) -> Result<ScopedConnection, Error> {
-        let conn = self
+        let mut conn = self
             .inner
             .acquire()
             .await
             .map_err(|e| Error::unavailable(format!("database unavailable: {}", e)))?;
+        // Clear any stale tenant context left by a previous checkout.
+        sqlx::query("RESET app.current_tenant")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| Error::internal(format!("failed to reset tenant context: {}", e)))?;
         Ok(ScopedConnection { conn })
     }
 
