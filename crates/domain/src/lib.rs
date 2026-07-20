@@ -3,6 +3,7 @@
 #![allow(missing_docs)]
 
 pub mod annotation;
+pub mod conversion;
 pub mod dataset;
 pub mod export;
 pub mod import;
@@ -13,6 +14,10 @@ pub mod training;
 pub use annotation::{
     Annotation, AnnotationLog, AnnotationProject, AnnotationProjectState, AnnotationTask,
     AnnotationTaskState, AutosaveResult, ExportFormat, Label, Ontology, TaskLease, TaskType,
+};
+pub use conversion::{
+    ConversionJob, ConversionJobState, ConversionProfile, ConversionTarget, EvaluationMetric,
+    EvaluationRun, EvaluationRunState, PromotionPolicy,
 };
 pub use dataset::{
     compute_manifest_digest, AssetRef, Dataset, DatasetState, DatasetVersion, DatasetVersionState,

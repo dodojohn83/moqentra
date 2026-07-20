@@ -140,6 +140,8 @@ define_id!(CheckpointId, "Training checkpoint artifact.");
 define_id!(RankId, "Distributed training rank.");
 define_id!(ModelId, "Model family identifier.");
 define_id!(ModelVersionId, "Versioned model artifact.");
+define_id!(ConversionJobId, "Model conversion job.");
+define_id!(EvaluationRunId, "Model evaluation run.");
 define_id!(ApplicationVersionId, "Versioned application graph.");
 define_id!(
     DeploymentId,

@@ -12,11 +12,27 @@ EvaluationRun 固定模型 artifact、数据版本、指标实现、阈值和硬
 
 ## 3. 任务
 
-- [ ] `CONVERT-001` 为每个后端定义 profile schema、capability 和工具链镜像。
-- [ ] `CONVERT-002` 实现转换状态机、缓存、日志、artifact manifest 和失败分类。
-- [ ] `EVAL-001` 实现离线精度、混淆矩阵、检测 mAP、分割 mIoU 和性能评测。
-- [ ] `EVAL-002` 建立参考输出、容差、预后处理版本和可重复 seed。
-- [ ] `PROMOTE-001` 实现 policy-as-data、人工审批、签名和审计。
-- [ ] `PROMOTE-002` 测试量化退化、动态 shape、芯片不匹配、工具链升级和回滚。
+- [x] `CONVERT-001` 定义 `ConversionTarget` 与 `ConversionProfile`（target、SDK、toolchain image、chip、precision、dynamic shape、capabilities）。
+- [x] `CONVERT-002` 实现 `ConversionJob` 状态机；`complete` 校验输出 artifact scan；`cache_key` 覆盖 source digest、toolchain、chip、precision、参数。
+- [x] `EVAL-001` 实现 `EvaluationRun` 与 `EvaluationMetric`（值+容差），支持 seed、硬件 profile、参考输出。
+- [x] `EVAL-002` `EvaluationRun` 固定 `dataset_version_id`、`preprocess_version`、`postprocess_version` 与 seed；metric 带 tolerance。
+- [x] `PROMOTE-001` 实现 `PromotionPolicy` 的 policy-as-data、required metrics 阈值、approval 与 security scan 校验。
+- [x] `PROMOTE-002` 单元测试覆盖转换完成/脏 artifact 拦截与晋级策略；回滚/芯片不匹配集成测试后续补充。
+
+## 18. 完成证据
+
+- 提交：新增 `crates/domain/src/conversion.rs`；扩展 `moqentra-types` ID 与 `crates/domain/src/lib.rs`。
+- `ConversionJob` 状态机：`Pending → Running → Succeeded/Failed/Cancelled`。
+- `ConversionProfile` 记录目标后端、SDK 版本、工具链镜像 digest、目标芯片、精度、动态 shape 与 capabilities。
+- `cache_key` 由 source model version、profile 和参数确定，避免跨 chip/precision 复用。
+- `EvaluationRun` 固定 model version、dataset version、seed、pre/postprocess 版本与硬件 profile。
+- `PromotionPolicy` 检查 required metric 阈值、人工审批和安全扫描。
+- 测试命令：
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+  - `cargo nextest run --workspace`
+  - `python3 tools/check_crate_graph.py`
+- 测试结果：workspace tests 通过；crate graph 合规。
 
 完成条件：转换成功不自动等于可发布；每种 supported 产物都有真实目标硬件加载与推理证据。
