@@ -32,6 +32,37 @@ pub struct AssetRef {
     pub metadata: Value,
 }
 
+impl AssetRef {
+    fn validate(&self) -> Result<(), moqentra_types::Error> {
+        if self.name.trim().is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "asset name is empty",
+            ));
+        }
+        if self.object_key.is_empty() || self.object_key.contains('\0') {
+            return Err(moqentra_types::Error::invalid_argument(
+                "asset object_key is invalid",
+            ));
+        }
+        if self.size == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "asset size must be greater than zero",
+            ));
+        }
+        if self.media_type.trim().is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "asset media_type is empty",
+            ));
+        }
+        if !self.digest.contains(':') || self.digest.split(':').any(|part| part.is_empty()) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "asset digest must be algorithm:hex",
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// An immutable dataset version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DatasetVersion {
@@ -77,6 +108,7 @@ impl DatasetVersion {
                 "cannot modify a published or deprecated dataset version",
             ));
         }
+        asset.validate()?;
         self.assets.push(asset);
         Ok(())
     }

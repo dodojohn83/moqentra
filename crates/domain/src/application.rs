@@ -154,6 +154,12 @@ impl ApplicationVersion {
         version: impl Into<String>,
         spec: ApplicationSpec,
     ) -> Result<Self, moqentra_types::Error> {
+        let version = version.into();
+        if version.trim().is_empty() || version.len() > 64 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "application version must be non-empty and at most 64 characters",
+            ));
+        }
         spec.validate()?;
         let digest = Self::canonical_digest(&spec)?;
         let now = UtcTimestamp::now();
@@ -162,7 +168,7 @@ impl ApplicationVersion {
             application_id,
             tenant_id,
             project_id,
-            version: version.into(),
+            version,
             spec,
             digest,
             state: ApplicationVersionState::Draft,
@@ -209,18 +215,24 @@ impl Application {
         tenant_id: TenantId,
         project_id: ProjectId,
         name: impl Into<String>,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        let name = name.into();
+        if name.trim().is_empty() || name.len() > 128 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "application name must be non-empty and at most 128 characters",
+            ));
+        }
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             tenant_id,
             project_id,
-            name: name.into(),
+            name,
             version_ids: Vec::new(),
             latest_published: None,
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn add_version(&mut self, version_id: ApplicationVersionId) {

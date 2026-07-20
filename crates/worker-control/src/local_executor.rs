@@ -132,6 +132,11 @@ impl LocalExecutor {
         capabilities: &NodeCapabilities,
         fencing_token: u64,
     ) -> Result<Allocation, moqentra_types::Error> {
+        if request.cpu_cores == 0 || request.memory_mib == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "cpu_cores and memory_mib must be greater than zero",
+            ));
+        }
         let available_cpu =
             (capabilities.cpu_cores as u64).saturating_sub(self.allocated_cpu_cores);
         if (request.cpu_cores as u64) > available_cpu {

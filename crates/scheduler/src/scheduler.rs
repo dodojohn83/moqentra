@@ -138,6 +138,11 @@ impl PlanCompiler {
                 "replicas must be > 0",
             ));
         }
+        if spec.resources.cpu_milli == 0 || spec.resources.memory_mib == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "cpu_milli and memory_mib must be greater than zero",
+            ));
+        }
         let mut labels = BTreeMap::new();
         labels.insert("tenant".to_string(), job.tenant_id.to_string());
         labels.insert("project".to_string(), job.project_id.to_string());
