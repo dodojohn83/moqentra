@@ -2081,6 +2081,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "moqentra-release-manager"
+version = "0.1.0"
+dependencies = [
+ "moqentra-types",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "moqentra-scheduler"
 version = "0.1.0"
 dependencies = [

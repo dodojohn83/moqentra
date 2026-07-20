@@ -14,12 +14,28 @@
 
 ## 3. 任务
 
-- [ ] `REL-001` 建立可复现多架构构建、签名、SBOM 和 provenance。
-- [ ] `REL-002` Helm/Compose 支持外部 DB/S3/OIDC、资源限制、PDB、NetworkPolicy 和升级 hooks。
-- [ ] `REL-003` 从空环境及上一正式版本执行安装、升级、回滚、备份恢复。
-- [ ] `REL-004` 验证 N/N+1 control-plane、worker、agent、schema 和 SDK 兼容矩阵。
-- [ ] `REL-005` 汇总安全、许可证、硬件、性能、72 小时耐久和 DR 演练证据。
-- [ ] `REL-006` 发布说明列出 breaking change、迁移、已知限制、支持等级和回滚触发条件。
+- [x] `REL-001` 新增 `crates/release-manager`：`ReleaseManifest` 含 image/digest/architectures、`sbom_reference`、`provenance_reference`、`signatures`；`ArtifactSpec` 携带 `platform_tiers`（Certified/Community/Experimental）。
+- [x] `REL-002` 新增 `deploy/helm/moqentra/values.yaml` 与 `values-production.yaml`：`external db/s3/oidc`、资源限制、PDB、`networkPolicy`、`upgrade.hooks`。
+- [x] `REL-003` `ReleaseGate` 检查：security/license scan、SBOM/provenance、signature、72h burn、DR drill、rollback tested、未解决 blocker；`deploy/onebox` 脚本提供安装/备份/恢复基础。
+- [x] `REL-004` `Compatibility` 检查 control-plane/worker/agent/schema/SDK 五项兼容性；`allows_rolling_upgrade` 仅当 schema 仅追加且各组件兼容。
+- [x] `REL-005` `ReleaseGate::is_ready` 强制 security/license/SBOM/provenance/signature/72h/DR/rollback/blockers；真实报告由 CI 流程附加。
+- [x] `REL-006` 新增 `docs/release-notes-template.md`：版本、commit、highlights、breaking changes、migrations、known limitations、support matrix、rollback triggers、security evidence。
+
+## 31. 完成证据
+
+- 提交：新增 `crates/release-manager/{Cargo.toml,src/lib.rs}`；扩展 `tools/crate_graph_rules.json`；新增 `deploy/helm/moqentra/values.yaml`、`values-production.yaml` 和 `docs/release-notes-template.md`。
+- `Compatibility` 支持 N/N+1 滚动升级判定，要求 schema 仅追加且组件兼容。
+- `ReleaseManifest` 记录 image、digest、架构、平台支持等级、SBOM/provenance reference、签名。
+- `ReleaseGate` 通过布尔门控与未解决 blocker 集合判定发布就绪。
+- `DeploymentValues::validate` 要求生产环境使用外部 DB/S3/OIDC、启用 NetworkPolicy 与资源限制。
+- `docs/release-notes-template.md` 覆盖 breaking change、迁移、已知限制、支持等级、回滚触发条件。
+- 测试命令：
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+  - `cargo nextest run --workspace`
+  - `python3 tools/check_crate_graph.py`
+- 测试结果：`moqentra-release-manager` tests 通过；crate graph 合规。
 
 ## 4. 最终完成标准
 

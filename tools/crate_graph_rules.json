@@ -105,6 +105,13 @@
         "moqentra-types", "moqentra-domain"
       ],
       "forbidden_external": []
+    },
+    "moqentra-release-manager": {
+      "description": "Release packaging, migration and rollback checks.",
+      "allowed_internal": [
+        "moqentra-types"
+      ],
+      "forbidden_external": []
     }
   },
   "apps": {
