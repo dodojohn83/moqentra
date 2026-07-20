@@ -285,14 +285,18 @@ impl PromotionPolicy {
                 "security scan required",
             ));
         }
-        for (name, (min, _tol)) in &self.required_metrics {
+        for (name, (min, tol)) in &self.required_metrics {
             let value = run
                 .metrics
                 .iter()
                 .find(|m| &m.name == name)
                 .map(|m| m.value)
                 .ok_or_else(|| moqentra_types::Error::invalid_argument("missing metric"))?;
-            if value.is_nan() || min.is_nan() || value < *min {
+            if value.is_nan() || min.is_nan() || tol.is_nan() {
+                return Err(moqentra_types::Error::invalid_argument("metric is NaN"));
+            }
+            let threshold = min - tol;
+            if value < threshold {
                 return Err(moqentra_types::Error::invalid_argument(
                     "metric below threshold",
                 ));
