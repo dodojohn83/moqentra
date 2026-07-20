@@ -135,11 +135,11 @@ impl QualityRun {
         for (asset_id, anns) in annotations {
             total_annotations += anns.len() as u64;
             for ann in anns {
+                if let Some(label) = ann.payload.get("label").and_then(|v| v.as_str()) {
+                    *all_classes.entry(label.to_string()).or_insert(0) += 1;
+                }
                 for rule in &self.rules {
                     if let Some(v) = self.check(rule, asset_id, ann) {
-                        if let Some(label) = ann.payload.get("label").and_then(|v| v.as_str()) {
-                            *all_classes.entry(label.to_string()).or_insert(0) += 1;
-                        }
                         violations.push(v);
                     }
                 }
@@ -256,19 +256,43 @@ impl QualityRun {
                 }
             }
             QualityRule::FrameRange { min, max } => {
-                let frame = ann.payload.get("frame").and_then(|v| v.as_u64())?;
-                if frame < *min || frame > *max {
-                    Some(QualityViolation {
+                let frame_i = ann.payload.get("frame").and_then(|v| v.as_i64());
+                if let Some(frame) = frame_i {
+                    if frame < 0 || (frame as u64) < *min || (frame as u64) > *max {
+                        return Some(QualityViolation {
+                            severity: Severity::Error,
+                            asset_id: asset_id.to_string(),
+                            annotation_id: Some(ann.id.to_string()),
+                            rule: "FrameRange".to_string(),
+                            message: format!("frame {} outside [{}, {}]", frame, min, max),
+                            evidence: ann.payload.clone(),
+                        });
+                    }
+                }
+                let frame_u = ann.payload.get("frame").and_then(|v| v.as_u64());
+                if let Some(frame) = frame_u {
+                    if frame < *min || frame > *max {
+                        return Some(QualityViolation {
+                            severity: Severity::Error,
+                            asset_id: asset_id.to_string(),
+                            annotation_id: Some(ann.id.to_string()),
+                            rule: "FrameRange".to_string(),
+                            message: format!("frame {} outside [{}, {}]", frame, min, max),
+                            evidence: ann.payload.clone(),
+                        });
+                    }
+                }
+                if frame_i.is_none() && frame_u.is_none() {
+                    return Some(QualityViolation {
                         severity: Severity::Error,
                         asset_id: asset_id.to_string(),
                         annotation_id: Some(ann.id.to_string()),
                         rule: "FrameRange".to_string(),
-                        message: format!("frame {} outside [{}, {}]", frame, min, max),
+                        message: "frame value is not an integer".to_string(),
                         evidence: ann.payload.clone(),
-                    })
-                } else {
-                    None
+                    });
                 }
+                None
             }
             QualityRule::SampleReview { .. } | QualityRule::ClassDistribution { .. } => None,
         }
