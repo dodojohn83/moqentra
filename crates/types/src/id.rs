@@ -142,6 +142,10 @@ define_id!(ModelId, "Model family identifier.");
 define_id!(ModelVersionId, "Versioned model artifact.");
 define_id!(ConversionJobId, "Model conversion job.");
 define_id!(EvaluationRunId, "Model evaluation run.");
+define_id!(PipelineId, "Pipeline definition.");
+define_id!(PipelineRunId, "Pipeline execution run.");
+define_id!(HpoRunId, "Hyper-parameter optimization run.");
+define_id!(NotebookId, "Interactive notebook instance.");
 define_id!(ApplicationVersionId, "Versioned application graph.");
 define_id!(
     DeploymentId,
