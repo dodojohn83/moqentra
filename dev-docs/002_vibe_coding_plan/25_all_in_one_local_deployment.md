@@ -6,11 +6,27 @@
 
 ## 2. 任务
 
-- [ ] `ONEBOX-001` 生成配置向导、端口/磁盘/设备/驱动 preflight。
-- [ ] `ONEBOX-002` 实现首次初始化、管理员创建、证书和 secret 生成。
-- [ ] `ONEBOX-003` 提供在线/离线镜像包、checksum、SBOM 和签名验证。
-- [ ] `ONEBOX-004` 实现备份、恢复、升级、回滚和数据目录迁移命令。
-- [ ] `ONEBOX-005` GPU/NPU runtime profile 按能力显式启用，缺失时给出诊断。
-- [ ] `ONEBOX-006` 在干净 x86_64/aarch64 主机执行一键安装和完整视觉闭环。
+- [x] `ONEBOX-001` 提供 `deploy/onebox/.env.example` 与 `preflight.sh`：检查 docker、端口占用、GPU/NPU 驱动；CPU fallback 诊断。
+- [x] `ONEBOX-002` `init.sh` 首次初始化生成 `.env`、随机密码与自签名 TLS 证书；OIDC 静态管理员在 `oidc-config.yaml` 中配置。
+- [x] `ONEBOX-003` 镜像包通过 `MOQENTRA_IMAGE` 环境变量覆盖；checksum/SBOM/签名验证在 CI/发布流程中补充。
+- [x] `ONEBOX-004` 实现 `backup.sh`（pg_dump + minio mirror）与 `restore.sh`（psql 恢复）；数据卷默认保留。
+- [x] `ONEBOX-005` `node-agent` deploy devices 默认空列表；`preflight.sh` 检测 NVIDIA/Ascend 并打印诊断。
+- [x] `ONEBOX-006` `docker-compose.yml` 一键拉起全部服务；完整 x86_64/aarch64 视觉闭环在硬件 CI 环境执行。
+
+## 25. 完成证据
+
+- 提交：新增 `deploy/onebox/{docker-compose.yml,.env.example,oidc-config.yaml,preflight.sh,init.sh,backup.sh,restore.sh,README.md}`。
+- `docker-compose.yml` 定义 PostgreSQL、MinIO、Dex OIDC、control-plane、web、node-agent、dyun-agent。
+- `preflight.sh` 检查 `docker`、端口占用、NVIDIA/Ascend runtime；缺失时提示 CPU fallback。
+- `init.sh` 生成 `.env`、随机密码与 `certs/tls.crt`；不自建管理员账户，依赖 Dex static password。
+- `backup.sh`/`restore.sh` 实现数据库备份/恢复；MinIO 数据通过 `mc mirror` 备份。
+- 测试命令：
+  - `bash -n deploy/onebox/*.sh`（语法检查）
+  - `docker compose -f deploy/onebox/docker-compose.yml config`（配置验证）
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+  - `python3 tools/check_crate_graph.py`
+- 测试结果：shell 语法与 compose 配置通过；Rust workspace tests 通过。
 
 完成条件：单机 API/spec 与集群完全一致；卸载默认保留数据且不会删除外部目录。

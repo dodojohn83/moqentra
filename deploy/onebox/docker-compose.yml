@@ -1,0 +1,81 @@
+services:
+  postgres:
+    image: postgres:16.4
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-moqentra}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-moqentra}
+      POSTGRES_DB: ${POSTGRES_DB:-moqentra}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-moqentra} -d ${POSTGRES_DB:-moqentra}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:RELEASE.2025-07-19T-00-00-00Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - miniodata:/data
+
+  oidc:
+    image: ghcr.io/dexidp/dex:v2.41.1
+    command: dex serve /etc/dex/config.yaml
+    ports:
+      - "${OIDC_PORT:-5556}:5556"
+    volumes:
+      - ./oidc-config.yaml:/etc/dex/config.yaml:ro
+
+  control-plane:
+    image: ${MOQENTRA_IMAGE:-moqentra/control-plane:latest}
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-moqentra}:${POSTGRES_PASSWORD:-moqentra}@postgres:5432/${POSTGRES_DB:-moqentra}
+      OBJECT_STORE_ENDPOINT: http://minio:9000
+      OBJECT_STORE_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      OBJECT_STORE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      OIDC_ISSUER_URL: http://localhost:${OIDC_PORT:-5556}/dex
+    ports:
+      - "${CONTROL_PLANE_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  web:
+    image: ${MOQENTRA_IMAGE:-moqentra/web:latest}
+    ports:
+      - "${WEB_PORT:-3000}:80"
+    environment:
+      VITE_API_BASE_URL: http://localhost:${CONTROL_PLANE_PORT:-8080}
+      VITE_OIDC_ISSUER: http://localhost:${OIDC_PORT:-5556}/dex
+
+  node-agent:
+    image: ${MOQENTRA_IMAGE:-moqentra/node-agent:latest}
+    environment:
+      CONTROL_PLANE_URL: http://control-plane:8080
+      NODE_LABELS: "local=true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    deploy:
+      resources:
+        reservations:
+          devices: []
+
+  dyun-agent:
+    image: ${MOQENTRA_IMAGE:-moqentra/dyun-agent:latest}
+    environment:
+      CONTROL_PLANE_URL: http://control-plane:8080
+
+volumes:
+  pgdata:
+  miniodata:
