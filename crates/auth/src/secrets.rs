@@ -54,13 +54,14 @@ impl SecretProvider {
     }
 
     fn is_path_within_root(path: &str, root: &Path) -> bool {
-        let abs = match std::path::absolute(path) {
+        let root = match root.canonicalize() {
             Ok(p) => p,
             Err(_) => return false,
         };
-        if abs.components().any(|c| c == std::path::Component::ParentDir) {
-            return false;
-        }
+        let abs = match std::fs::canonicalize(path) {
+            Ok(p) => p,
+            Err(_) => return false,
+        };
         abs.starts_with(root)
     }
 }

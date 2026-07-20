@@ -121,6 +121,12 @@ pub fn annotations_to_coco(
                     "bbox width and height must be positive",
                 ));
             }
+            let area = w * h;
+            if !area.is_finite() {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "bbox area overflow",
+                ));
+            }
             let segmentation =
                 if let Some(poly) = ann.payload.get("polygon").and_then(|v| v.as_array()) {
                     vec![poly
@@ -133,7 +139,6 @@ pub fn annotations_to_coco(
                 } else {
                     vec![]
                 };
-            let area = w * h;
 
             coco_annotations.push(CocoAnnotationEntry {
                 id: ann_id,
