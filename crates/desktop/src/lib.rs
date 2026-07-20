@@ -143,6 +143,18 @@ impl FileUpload {
         total_size: u64,
         chunk_size: u64,
     ) -> Result<Self, moqentra_types::Error> {
+        let file_id = file_id.into();
+        let file_path = file_path.into();
+        if file_id.trim().is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "file_id must be non-empty",
+            ));
+        }
+        if file_path.trim().is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "file_path must be non-empty",
+            ));
+        }
         if chunk_size == 0 {
             return Err(moqentra_types::Error::invalid_argument(
                 "chunk size must be greater than zero",
@@ -165,8 +177,8 @@ impl FileUpload {
             });
         }
         Ok(Self {
-            file_id: file_id.into(),
-            file_path: file_path.into(),
+            file_id,
+            file_path,
             total_size,
             chunk_size,
             chunks,

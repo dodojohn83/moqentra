@@ -78,19 +78,30 @@ impl QualityRun {
         rule_version: impl Into<String>,
         seed: u64,
         rules: Vec<QualityRule>,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        let rule_version = rule_version.into();
+        if rule_version.trim().is_empty() || rule_version.len() > 64 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "rule_version must be non-empty and at most 64 characters",
+            ));
+        }
+        if rules.is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "quality run must have at least one rule",
+            ));
+        }
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             dataset_version_id,
-            rule_version: rule_version.into(),
+            rule_version,
             seed,
             rules,
             state: QualityRunState::Pending,
             report: None,
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn start(&mut self) -> Result<(), moqentra_types::Error> {
@@ -550,7 +561,8 @@ mod tests {
             "1.0",
             42,
             vec![QualityRule::MissingLabel],
-        );
+        )
+        .unwrap();
         run.start().unwrap();
         let ann = make_annotation(None, json!({"bbox": [0.0, 0.0, 1.0, 1.0]}));
         let mut annotations = BTreeMap::new();
@@ -572,7 +584,8 @@ mod tests {
             vec![QualityRule::IllegalClass {
                 allowed: ["cat".to_string()].into_iter().collect(),
             }],
-        );
+        )
+        .unwrap();
         run.start().unwrap();
         let ann = make_annotation(Some("dog"), json!({}));
         let mut annotations = BTreeMap::new();
