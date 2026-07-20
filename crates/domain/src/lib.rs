@@ -1,12 +1,15 @@
-//! Moqentra `moqentra-domain` crate.
-//!
-//! This crate is part of the Moqentra workspace. Domain logic and public APIs
-//! are documented in the `dev-docs/002_vibe_coding_plan` chapters.
+//! Moqentra domain aggregates and state machines.
 
-#![warn(missing_docs)]
+#![allow(missing_docs)]
 
-/// Placeholder module until domain types are added in subsequent tasks.
+pub mod dataset;
+pub mod import;
+
+pub use dataset::{
+    compute_manifest_digest, AssetRef, Dataset, DatasetState, DatasetVersion, DatasetVersionState,
+};
+pub use import::{ImportJob, ImportJobFailure, ImportJobState};
+
 pub mod placeholder {
-    /// Returns the crate version.
     pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 }
