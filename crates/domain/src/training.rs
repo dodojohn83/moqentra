@@ -223,6 +223,9 @@ impl TrainingJob {
         ) {
             return Err(moqentra_types::Error::conflict("job cannot start attempt"));
         }
+        if self.attempts.len() >= self.spec.max_attempts as usize {
+            return Err(moqentra_types::Error::unavailable("max attempts reached"));
+        }
         self.attempts.push(attempt.id);
         self.current_attempt = Some(attempt);
         self.state = TrainingJobState::Starting;

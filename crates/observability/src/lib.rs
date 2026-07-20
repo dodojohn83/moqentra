@@ -99,7 +99,7 @@ impl StructuredLog {
         fields
             .iter()
             .map(|(k, v)| {
-                let redacted = SECRET_PATTERNS.iter().any(|p| k.to_lowercase().contains(p));
+                let redacted = SECRET_PATTERNS.iter().any(|p| is_secret_key(k, p));
                 let value = if redacted {
                     serde_json::json!("[REDACTED]")
                 } else {
@@ -116,7 +116,7 @@ impl StructuredLog {
             serde_json::Value::Object(map) => serde_json::Value::Object(
                 map.iter()
                     .map(|(k, v)| {
-                        let redacted = SECRET_PATTERNS.iter().any(|p| k.to_lowercase().contains(p));
+                        let redacted = SECRET_PATTERNS.iter().any(|p| is_secret_key(k, p));
                         if redacted {
                             (k.clone(), serde_json::json!("[REDACTED]"))
                         } else {
@@ -131,6 +131,21 @@ impl StructuredLog {
             other => other.clone(),
         }
     }
+}
+
+/// Returns true when `key` contains `pat` as a distinct token (case-insensitive).
+/// This prevents false positives such as "tokenization" while still matching
+/// keys like "my_password" or "api-key".
+fn is_secret_key(key: &str, pat: &str) -> bool {
+    let lower = key.to_lowercase();
+    let pat = pat.to_lowercase();
+    lower.match_indices(&pat).any(|(pos, _)| {
+        let before_ok = pos == 0 || !lower.as_bytes()[pos - 1].is_ascii_alphanumeric();
+        let after_pos = pos + pat.len();
+        let after_ok =
+            after_pos >= lower.len() || !lower.as_bytes()[after_pos].is_ascii_alphanumeric();
+        before_ok && after_ok
+    })
 }
 
 /// Metric name with namespace and unit budget.
@@ -196,10 +211,27 @@ impl DiagnosticBundle {
     }
 
     pub fn is_safe(&self) -> bool {
-        let Ok(raw) = serde_json::to_string(&self.redacted_logs) else {
-            return false;
-        };
-        !raw.contains("password=") && !raw.contains("token=") && !raw.contains("secret=")
+        self.redacted_logs.iter().all(|log| {
+            let fields: serde_json::Map<String, serde_json::Value> =
+                log.fields.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            Self::is_safe_value(&serde_json::Value::Object(fields))
+        })
+    }
+
+    fn is_safe_value(value: &serde_json::Value) -> bool {
+        match value {
+            serde_json::Value::Object(map) => map.iter().all(|(k, v)| {
+                const SECRET_PATTERNS: &[&str] =
+                    &["password", "secret", "token", "api_key", "private_key"];
+                if SECRET_PATTERNS.iter().any(|p| is_secret_key(k, p)) {
+                    v == &serde_json::json!("[REDACTED]")
+                } else {
+                    Self::is_safe_value(v)
+                }
+            }),
+            serde_json::Value::Array(arr) => arr.iter().all(Self::is_safe_value),
+            _ => true,
+        }
     }
 }
 

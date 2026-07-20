@@ -90,7 +90,10 @@ impl Replica {
     }
 
     pub fn verify_bundle(&self, trusted_keys: &[String]) -> Result<(), moqentra_types::Error> {
-        if !trusted_keys.iter().any(|k| self.bundle.signature.starts_with(k)) {
+        let valid_keys: Vec<&String> = trusted_keys.iter().filter(|k| !k.is_empty()).collect();
+        if valid_keys.is_empty()
+            || !valid_keys.iter().any(|k| self.bundle.signature.starts_with(k.as_str()))
+        {
             return Err(moqentra_types::Error::permission_denied(
                 "bundle signature not trusted",
             ));

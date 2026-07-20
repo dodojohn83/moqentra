@@ -96,11 +96,15 @@ impl ConversionJob {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(source.to_string().as_bytes());
+        hasher.update(profile.sdk_version.as_bytes());
         hasher.update(profile.toolchain_image_digest.as_bytes());
         hasher.update(profile.target_chip.as_bytes());
         hasher.update(profile.precision.as_bytes());
         hasher.update(profile.dynamic_shapes.to_string().as_bytes());
         hasher.update(format!("{:?}", profile.target).as_bytes());
+        for cap in &profile.capabilities {
+            hasher.update(cap.as_bytes());
+        }
         for (k, v) in parameters {
             hasher.update(k.as_bytes());
             hasher.update(v.as_bytes());

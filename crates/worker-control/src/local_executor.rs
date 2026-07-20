@@ -105,6 +105,11 @@ impl LocalExecutor {
         if request.cpu_cores > capabilities.cpu_cores {
             return Err(moqentra_types::Error::unavailable("insufficient cpu"));
         }
+        if request.devices.is_empty() && request.device_count > 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "device_count set but no device kinds requested",
+            ));
+        }
 
         let mut assigned = BTreeSet::new();
         for needed in &request.devices {
@@ -174,6 +179,24 @@ impl LocalExecutor {
             return Err(moqentra_types::Error::permission_denied(
                 "root execution not allowed",
             ));
+        }
+        if _config.image_digest.is_empty() || !_config.image_digest.contains(':') {
+            return Err(moqentra_types::Error::invalid_argument(
+                "image digest must be in algorithm:hex form",
+            ));
+        }
+        for (src, target) in &_config.bind_mounts {
+            for path in [src.as_str(), target.as_str()] {
+                if path.is_empty()
+                    || path.contains('\0')
+                    || !path.starts_with('/')
+                    || path.split('/').any(|c| c == "..")
+                {
+                    return Err(moqentra_types::Error::permission_denied(
+                        "bind mount path traversal not allowed",
+                    ));
+                }
+            }
         }
         Ok(format!(
             "container-{}",

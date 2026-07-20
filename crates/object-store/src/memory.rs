@@ -18,6 +18,7 @@ struct Object {
 
 #[derive(Debug, Clone, Default)]
 struct MultipartUpload {
+    object_key: String,
     media_type: Option<String>,
     parts: HashMap<i32, Bytes>,
 }
@@ -95,13 +96,14 @@ impl ObjectStorage for InMemoryObjectStore {
         Ok(format!("memory://{}", key))
     }
 
-    async fn start_multipart(&self, _key: &str, media_type: Option<&str>) -> Result<String, Error> {
+    async fn start_multipart(&self, key: &str, media_type: Option<&str>) -> Result<String, Error> {
         let mut counter = self.counter.lock().unwrap_or_else(|e| e.into_inner());
         *counter += 1;
         let upload_id = format!("upload-{}", counter);
         self.multipart.lock().unwrap_or_else(|e| e.into_inner()).insert(
             upload_id.clone(),
             MultipartUpload {
+                object_key: key.to_string(),
                 media_type: media_type.map(|s| s.to_string()),
                 parts: HashMap::new(),
             },
@@ -135,6 +137,9 @@ impl ObjectStorage for InMemoryObjectStore {
         let upload = multipart
             .remove(upload_id)
             .ok_or_else(|| Error::not_found("multipart upload"))?;
+        if upload.object_key != key {
+            return Err(Error::invalid_argument("multipart upload key mismatch"));
+        }
 
         let mut combined = Vec::new();
         let mut parts: Vec<_> = parts;

@@ -17,6 +17,18 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol
 
 
+def _is_allowed_path(path: Path) -> bool:
+    """Reject paths that are relative, contain traversal components, or include null bytes."""
+    s = str(path)
+    if "\x00" in s:
+        return False
+    if not path.is_absolute():
+        return False
+    if ".." in path.parts:
+        return False
+    return True
+
+
 class WorkerLifecycle(Protocol):
     """Framework-adapter lifecycle implemented by user training code."""
 
@@ -66,6 +78,10 @@ class WorkerSession:
         if self._cancelled:
             raise RuntimeError("worker has been cancelled")
         target = path or (self.output_dir / "checkpoints" / f"step-{len(self._metrics)}")
+        if path is not None and not _is_allowed_path(path):
+            raise ValueError(f"invalid checkpoint path: {path}")
+        if not target.resolve().is_relative_to(self.work_dir.resolve()) and not target.resolve().is_relative_to(self.output_dir.resolve()):
+            raise ValueError(f"checkpoint path outside of work/output directories: {target}")
         target.parent.mkdir(parents=True, exist_ok=True)
         digest = adapter.save_checkpoint(target)
         return digest
@@ -107,6 +123,10 @@ class WorkerRuntime:
         work_dir = Path(config.get("work_dir", "/tmp/moqentra/work"))
         input_dir = Path(config.get("input_dir", "/tmp/moqentra/input"))
         output_dir = Path(config.get("output_dir", "/tmp/moqentra/output"))
+
+        for path in (work_dir, input_dir, output_dir):
+            if not _is_allowed_path(path):
+                raise ValueError(f"invalid worker path: {path}")
 
         work_dir.mkdir(parents=True, exist_ok=True)
         input_dir.mkdir(parents=True, exist_ok=True)
