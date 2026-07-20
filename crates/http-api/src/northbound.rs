@@ -99,6 +99,9 @@ impl WebhookSubscription {
         delivery_id: &str,
         timestamp: i64,
     ) -> Result<String, Error> {
+        if self.secret_hmac.is_empty() {
+            return Err(Error::invalid_argument("webhook secret must not be empty"));
+        }
         let mut mac = HmacSha256::new_from_slice(self.secret_hmac.as_bytes())
             .map_err(|_| Error::invalid_argument("invalid hmac key length"))?;
         mac.update(delivery_id.as_bytes());
