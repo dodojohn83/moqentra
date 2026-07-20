@@ -135,6 +135,8 @@ pub struct FileUpload {
 }
 
 impl FileUpload {
+    const MAX_CHUNKS: u64 = 1_000_000;
+
     pub fn new(
         file_id: impl Into<String>,
         file_path: impl Into<String>,
@@ -147,6 +149,11 @@ impl FileUpload {
             ));
         }
         let chunk_count = total_size.div_ceil(chunk_size);
+        if chunk_count > Self::MAX_CHUNKS {
+            return Err(moqentra_types::Error::invalid_argument(
+                "file too large for configured chunk size",
+            ));
+        }
         let mut chunks = Vec::with_capacity(chunk_count as usize);
         for i in 0..chunk_count {
             chunks.push(FileChunk {
