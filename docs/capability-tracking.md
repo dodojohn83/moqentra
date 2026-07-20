@@ -26,16 +26,16 @@ that implement it, and the acceptance scenario that validates it.
 | CAP-019 | Pipeline, HPO & notebook services | R4 | 19 | TAS-016 |
 | CAP-020 | Application orchestration & compiler | R1 | 20 | TAS-017 |
 | CAP-021 | dyun agent & graph runtime | R1/R2 | 21 | TAS-018 |
-| CAP-022 | Inference platform layering & federation | R3 | 22 | TAS-019 |
-| CAP-023 | Northbound API, events, webhooks, partner SDK | R3/R4 | 23 | TAS-020 |
-| CAP-024 | Web frontend architecture & data security | R1 | 24 | TAS-021 |
-| CAP-025 | All-in-one local deployment | R1 | 25 | TAS-022 |
-| CAP-026 | Cluster HA reconciliation & multicluster | R3 | 26 | TAS-023 |
-| CAP-027 | Desktop clients & offline workflows | R4 | 27 | TAS-024 |
-| CAP-028 | Security, secrets & supply chain | R2 | 28 | TAS-025 |
-| CAP-029 | Observability, audit & operations | R2 | 29 | TAS-026 |
-| CAP-030 | Testing, simulators, hardware & performance | R2/R3 | 30 | TAS-027 |
-| CAP-031 | Packaging, migration, release & rollback | R2/R3 | 31 | TAS-028 |
+| CAP-022 | Inference platform layering & federation | R3 | 22 | TAS-032 |
+| CAP-023 | Northbound API, events, webhooks, partner SDK | R3/R4 | 23 | TAS-019 |
+| CAP-024 | Web frontend architecture & data security | R1 | 24 | TAS-020 |
+| CAP-025 | All-in-one local deployment | R1 | 25 | TAS-021 |
+| CAP-026 | Cluster HA reconciliation & multicluster | R3 | 26 | TAS-022 |
+| CAP-027 | Desktop clients & offline workflows | R4 | 27 | TAS-023 |
+| CAP-028 | Security, secrets & supply chain | R2 | 28 | TAS-024 |
+| CAP-029 | Observability, audit & operations | R2 | 29 | TAS-025 |
+| CAP-030 | Testing, simulators, hardware & performance | R2/R3 | 30 | TAS-026 |
+| CAP-031 | Packaging, migration, release & rollback | R2/R3 | 31 | TAS-027 |
 
 ## Definition of Release Columns
 
