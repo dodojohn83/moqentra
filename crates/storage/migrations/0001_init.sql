@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS outbox_events (
     payload JSONB NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     retry_count INT NOT NULL DEFAULT 0,
+    failure_reason TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
