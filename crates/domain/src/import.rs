@@ -90,6 +90,11 @@ impl ImportJob {
         if !matches!(self.state, ImportJobState::Transferring) {
             return Err(moqentra_types::Error::conflict("job is not transferring"));
         }
+        if self.transferred_bytes != self.total_bytes {
+            return Err(moqentra_types::Error::conflict(
+                "transfer not complete before validation",
+            ));
+        }
         self.state = ImportJobState::Validating;
         Ok(())
     }
