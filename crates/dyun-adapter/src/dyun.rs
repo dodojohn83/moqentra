@@ -3,6 +3,7 @@
 use moqentra_types::{AssetId, DeploymentId, NodeId, ReplicaId, UtcTimestamp};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 /// dyun graph bundle version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,7 +91,14 @@ impl Replica {
     }
 
     pub fn verify_bundle(&self, trusted_keys: &[String]) -> Result<(), moqentra_types::Error> {
-        if !trusted_keys.iter().any(|k| self.bundle.signature.starts_with(k)) {
+        let valid_keys: Vec<&String> = trusted_keys.iter().filter(|k| !k.is_empty()).collect();
+        let trusted = valid_keys.iter().any(|k| {
+            self.bundle.signature == k.as_str()
+                || (k.ends_with(':')
+                    && self.bundle.signature.starts_with(k.as_str())
+                    && self.bundle.signature.len() > k.len())
+        });
+        if valid_keys.is_empty() || !trusted {
             return Err(moqentra_types::Error::permission_denied(
                 "bundle signature not trusted",
             ));
@@ -163,14 +171,60 @@ pub enum RunnerState {
 }
 
 impl Runner {
-    pub fn validate_sandbox(&self) -> Result<(), moqentra_types::Error> {
-        if self.sandbox_path.contains("..") || !self.sandbox_path.starts_with('/') {
+    pub fn validate_sandbox(&self, root: impl AsRef<Path>) -> Result<(), moqentra_types::Error> {
+        if self.sandbox_path.is_empty() || self.sandbox_path.contains('\0') {
             return Err(moqentra_types::Error::invalid_argument(
                 "invalid sandbox path",
             ));
         }
+        if !is_within_root(&self.sandbox_path, root)? {
+            return Err(moqentra_types::Error::permission_denied(
+                "sandbox path outside workspace",
+            ));
+        }
         Ok(())
     }
+}
+
+/// Verifies `path` is confined to `root`, resolving symlinks on every
+/// existing ancestor so that a directory symlink cannot escape the workspace.
+fn is_within_root(
+    path: impl AsRef<Path>,
+    root: impl AsRef<Path>,
+) -> Result<bool, moqentra_types::Error> {
+    let root = root.as_ref();
+    std::fs::create_dir_all(root).map_err(|e| {
+        moqentra_types::Error::invalid_argument(format!("sandbox root not creatable: {e}"))
+    })?;
+    let root_canonical = std::fs::canonicalize(root)
+        .map_err(|e| moqentra_types::Error::internal(format!("canonicalize root: {e}")))?;
+    let abs = std::path::absolute(path.as_ref())
+        .map_err(|e| moqentra_types::Error::invalid_argument(format!("invalid path: {e}")))?;
+
+    for ancestor in abs.ancestors() {
+        if ancestor.exists() {
+            let canonical = std::fs::canonicalize(ancestor)
+                .map_err(|e| moqentra_types::Error::internal(format!("canonicalize path: {e}")))?;
+            if !canonical.starts_with(&root_canonical) {
+                return Ok(false);
+            }
+            let suffix = abs
+                .strip_prefix(ancestor)
+                .map_err(|_| moqentra_types::Error::internal("sandbox path prefix mismatch"))?;
+            for comp in suffix.components() {
+                if comp.as_os_str() == ".." || comp.as_os_str().is_empty() {
+                    return Ok(false);
+                }
+            }
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Returns the default sandbox workspace root.
+pub fn default_sandbox_root() -> PathBuf {
+    PathBuf::from("/tmp/moqentra-dyun")
 }
 
 #[cfg(test)]
@@ -237,6 +291,29 @@ mod tests {
             sandbox_path: "../etc".to_string(),
             exit_code: None,
         };
-        assert!(runner.validate_sandbox().is_err());
+        assert!(runner.validate_sandbox(default_sandbox_root()).is_err());
+    }
+
+    #[test]
+    fn sandbox_path_confined_to_workspace() {
+        let runner = Runner {
+            id: "r2".to_string(),
+            replica_id: ReplicaId::new_v7(&RandomIdGenerator),
+            state: RunnerState::Created,
+            image_digest: "sha256:img".to_string(),
+            sandbox_path: "/etc".to_string(),
+            exit_code: None,
+        };
+        assert!(runner.validate_sandbox(default_sandbox_root()).is_err());
+
+        let valid = Runner {
+            id: "r3".to_string(),
+            replica_id: ReplicaId::new_v7(&RandomIdGenerator),
+            state: RunnerState::Created,
+            image_digest: "sha256:img".to_string(),
+            sandbox_path: "/tmp/moqentra-dyun/run-1".to_string(),
+            exit_code: None,
+        };
+        assert!(valid.validate_sandbox(default_sandbox_root()).is_ok());
     }
 }

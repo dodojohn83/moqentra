@@ -223,6 +223,9 @@ impl TrainingJob {
         ) {
             return Err(moqentra_types::Error::conflict("job cannot start attempt"));
         }
+        if self.attempts.len() >= self.spec.max_attempts as usize {
+            return Err(moqentra_types::Error::unavailable("max attempts reached"));
+        }
         self.attempts.push(attempt.id);
         self.current_attempt = Some(attempt);
         self.state = TrainingJobState::Starting;
@@ -323,6 +326,11 @@ impl TrainingJob {
         points: Vec<MetricPoint>,
         max_cardinality: usize,
     ) -> Result<(), moqentra_types::Error> {
+        if points.iter().any(|p| !p.value.is_finite()) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "metric value must be finite",
+            ));
+        }
         let names: BTreeMap<String, usize> = points.iter().fold(BTreeMap::new(), |mut acc, p| {
             *acc.entry(p.name.clone()).or_insert(0) += 1;
             acc
@@ -540,6 +548,27 @@ mod tests {
             },
         ];
         assert!(job.append_metrics(points, 2).is_err());
+    }
+
+    #[test]
+    fn non_finite_metric_rejected() {
+        let mut job = make_job();
+        let nan = MetricPoint {
+            step: 1,
+            timestamp: UtcTimestamp::now(),
+            name: "loss".to_string(),
+            value: f64::NAN,
+            tags: BTreeMap::new(),
+        };
+        let inf = MetricPoint {
+            step: 1,
+            timestamp: UtcTimestamp::now(),
+            name: "loss".to_string(),
+            value: f64::INFINITY,
+            tags: BTreeMap::new(),
+        };
+        assert!(job.append_metrics(vec![nan], 10).is_err());
+        assert!(job.append_metrics(vec![inf], 10).is_err());
     }
 
     #[test]

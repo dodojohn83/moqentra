@@ -143,11 +143,19 @@ impl TaskLease {
         if !self.is_valid(clock) {
             return Err(moqentra_types::Error::conflict("lease expired"));
         }
+        if ttl_seconds <= 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "ttl must be positive",
+            ));
+        }
         let duration = std::time::Duration::from_secs(ttl_seconds as u64);
         self.expires_at = clock
             .add_std_duration(duration)
             .ok_or_else(|| moqentra_types::Error::internal("overflow"))?;
-        self.fencing_token += 1;
+        self.fencing_token = self
+            .fencing_token
+            .checked_add(1)
+            .ok_or_else(|| moqentra_types::Error::internal("fencing token overflow"))?;
         Ok(())
     }
 }

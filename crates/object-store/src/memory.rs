@@ -18,6 +18,7 @@ struct Object {
 
 #[derive(Debug, Clone, Default)]
 struct MultipartUpload {
+    object_key: String,
     media_type: Option<String>,
     parts: HashMap<i32, Bytes>,
 }
@@ -63,12 +64,15 @@ impl ObjectStorage for InMemoryObjectStore {
             etag: Some(etag),
             digest: Some(object.digest.clone()),
         };
-        self.objects.lock().expect("lock").insert(key.to_string(), object);
+        self.objects
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(key.to_string(), object);
         Ok(meta)
     }
 
     async fn get_object(&self, key: &str) -> Result<(Bytes, ObjectMetadata), Error> {
-        let objects = self.objects.lock().expect("lock");
+        let objects = self.objects.lock().unwrap_or_else(|e| e.into_inner());
         let object = objects
             .get(key)
             .ok_or_else(|| Error::not_found(format!("object not found: {}", key)))?;
@@ -83,7 +87,7 @@ impl ObjectStorage for InMemoryObjectStore {
     }
 
     async fn delete_object(&self, key: &str) -> Result<(), Error> {
-        self.objects.lock().expect("lock").remove(key);
+        self.objects.lock().unwrap_or_else(|e| e.into_inner()).remove(key);
         Ok(())
     }
 
@@ -92,13 +96,14 @@ impl ObjectStorage for InMemoryObjectStore {
         Ok(format!("memory://{}", key))
     }
 
-    async fn start_multipart(&self, _key: &str, media_type: Option<&str>) -> Result<String, Error> {
-        let mut counter = self.counter.lock().expect("lock");
+    async fn start_multipart(&self, key: &str, media_type: Option<&str>) -> Result<String, Error> {
+        let mut counter = self.counter.lock().unwrap_or_else(|e| e.into_inner());
         *counter += 1;
         let upload_id = format!("upload-{}", counter);
-        self.multipart.lock().expect("lock").insert(
+        self.multipart.lock().unwrap_or_else(|e| e.into_inner()).insert(
             upload_id.clone(),
             MultipartUpload {
+                object_key: key.to_string(),
                 media_type: media_type.map(|s| s.to_string()),
                 parts: HashMap::new(),
             },
@@ -113,7 +118,10 @@ impl ObjectStorage for InMemoryObjectStore {
         part_number: i32,
         data: Bytes,
     ) -> Result<String, Error> {
-        let mut multipart = self.multipart.lock().expect("lock");
+        if part_number <= 0 {
+            return Err(Error::invalid_argument("part number must be positive"));
+        }
+        let mut multipart = self.multipart.lock().unwrap_or_else(|e| e.into_inner());
         let upload = multipart
             .get_mut(upload_id)
             .ok_or_else(|| Error::not_found("multipart upload"))?;
@@ -128,18 +136,58 @@ impl ObjectStorage for InMemoryObjectStore {
         upload_id: &str,
         parts: Vec<(i32, String)>,
     ) -> Result<ObjectMetadata, Error> {
-        let mut multipart = self.multipart.lock().expect("lock");
+        let mut multipart = self.multipart.lock().unwrap_or_else(|e| e.into_inner());
         let upload = multipart
             .remove(upload_id)
             .ok_or_else(|| Error::not_found("multipart upload"))?;
+        if upload.object_key != key {
+            return Err(Error::invalid_argument("multipart upload key mismatch"));
+        }
 
         let mut combined = Vec::new();
-        for (part_number, _etag) in parts {
+        if parts.is_empty() {
+            return Err(Error::invalid_argument(
+                "multipart completion requires at least one part",
+            ));
+        }
+        let mut parts: Vec<_> = parts;
+        parts.sort_by_key(|(n, _)| *n);
+        let mut seen = std::collections::HashSet::new();
+        let mut expected = 1i32;
+        for (part_number, etag) in parts {
+            if part_number <= 0 {
+                return Err(Error::invalid_argument("part number must be positive"));
+            }
+            if part_number != expected {
+                return Err(Error::invalid_argument(format!(
+                    "expected part {} but got {}",
+                    expected, part_number
+                )));
+            }
+            expected += 1;
+            if !seen.insert(part_number) {
+                return Err(Error::invalid_argument(format!(
+                    "duplicate part {}",
+                    part_number
+                )));
+            }
             let part = upload
                 .parts
                 .get(&part_number)
                 .ok_or_else(|| Error::invalid_argument(format!("missing part {}", part_number)))?;
+            let expected = format!("\"{}\"", digest(part));
+            if etag != expected {
+                return Err(Error::invalid_argument(format!(
+                    "etag mismatch for part {}",
+                    part_number
+                )));
+            }
             combined.extend_from_slice(part);
+        }
+        if seen.len() != upload.parts.len() {
+            return Err(Error::invalid_argument(
+                "multipart completion must list all uploaded parts",
+            ));
         }
         let data = Bytes::from(combined);
         let etag = format!("\"{}\"", digest(&data));
@@ -157,12 +205,15 @@ impl ObjectStorage for InMemoryObjectStore {
             etag: Some(etag),
             digest: Some(object.digest.clone()),
         };
-        self.objects.lock().expect("lock").insert(key.to_string(), object);
+        self.objects
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(key.to_string(), object);
         Ok(meta)
     }
 
     async fn abort_multipart(&self, _key: &str, upload_id: &str) -> Result<(), Error> {
-        self.multipart.lock().expect("lock").remove(upload_id);
+        self.multipart.lock().unwrap_or_else(|e| e.into_inner()).remove(upload_id);
         Ok(())
     }
 }

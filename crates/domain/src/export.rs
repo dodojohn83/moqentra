@@ -65,7 +65,7 @@ pub fn annotations_to_coco(
     annotations: &BTreeMap<String, Vec<Annotation>>,
     asset_sizes: &BTreeMap<String, (u32, u32)>,
     labels: &[Label],
-) -> CocoDataset {
+) -> Result<CocoDataset, moqentra_types::Error> {
     let mut category_by_name: BTreeMap<String, u64> = BTreeMap::new();
     for (idx, label) in labels.iter().enumerate() {
         category_by_name.insert(label.name.clone(), idx as u64 + 1);
@@ -77,7 +77,9 @@ pub fn annotations_to_coco(
     let mut img_id = 1u64;
 
     for (asset_id, anns) in annotations {
-        let (width, height) = asset_sizes.get(asset_id).copied().unwrap_or((0, 0));
+        let (width, height) = asset_sizes.get(asset_id).copied().ok_or_else(|| {
+            moqentra_types::Error::invalid_argument(format!("missing asset size for {asset_id}"))
+        })?;
         images.push(CocoImage {
             id: img_id,
             file_name: asset_id.clone(),
@@ -86,18 +88,45 @@ pub fn annotations_to_coco(
         });
 
         for ann in anns {
-            let category_id = ann
+            let label_name = ann
                 .payload
                 .get("label")
                 .and_then(|v| v.as_str())
-                .and_then(|name| category_by_name.get(name).copied())
-                .unwrap_or(0);
-            let bbox = ann
+                .ok_or_else(|| moqentra_types::Error::invalid_argument("missing label"))?;
+            let category_id = category_by_name.get(label_name).copied().ok_or_else(|| {
+                moqentra_types::Error::invalid_argument(format!("unknown label {label_name}"))
+            })?;
+            let bbox_arr = ann
                 .payload
                 .get("bbox")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|x| x.as_f64()).collect::<Vec<_>>())
-                .unwrap_or_default();
+                .ok_or_else(|| moqentra_types::Error::invalid_argument("missing bbox"))?;
+            let bbox: Vec<f64> =
+                bbox_arr.iter().map(|x| x.as_f64()).collect::<Option<Vec<_>>>().ok_or_else(
+                    || moqentra_types::Error::invalid_argument("bbox must be numeric"),
+                )?;
+            if bbox.len() != 4 {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "bbox must contain exactly 4 values",
+                ));
+            }
+            let (x, y, w, h) = (bbox[0], bbox[1], bbox[2], bbox[3]);
+            if !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "bbox coordinates must be finite",
+                ));
+            }
+            if w <= 0.0 || h <= 0.0 {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "bbox width and height must be positive",
+                ));
+            }
+            let area = w * h;
+            if !area.is_finite() {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "bbox area overflow",
+                ));
+            }
             let segmentation =
                 if let Some(poly) = ann.payload.get("polygon").and_then(|v| v.as_array()) {
                     vec![poly
@@ -110,7 +139,6 @@ pub fn annotations_to_coco(
                 } else {
                     vec![]
                 };
-            let area = bbox.get(2).and_then(|w| bbox.get(3).map(|h| w * h)).unwrap_or(0.0);
 
             coco_annotations.push(CocoAnnotationEntry {
                 id: ann_id,
@@ -126,12 +154,12 @@ pub fn annotations_to_coco(
         img_id += 1;
     }
 
-    CocoDataset {
+    Ok(CocoDataset {
         info: serde_json::json!({"description":"Moqentra COCO export","version":"1.0"}),
         images,
         annotations: coco_annotations,
         categories: labels_to_coco_categories(labels),
-    }
+    })
 }
 
 /// YOLO line: `<class_id> <x_center> <y_center> <width> <height>` normalized.
@@ -148,10 +176,16 @@ pub fn annotation_to_yolo_line(
     let y = bbox[1];
     let w = bbox[2];
     let h = bbox[3];
-    let x_center = (x + w / 2.0) / image_width;
-    let y_center = (y + h / 2.0) / image_height;
-    let nw = w / image_width;
-    let nh = h / image_height;
+    if !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
+        return None;
+    }
+    if w <= 0.0 || h <= 0.0 {
+        return None;
+    }
+    let x_center = ((x + w / 2.0) / image_width).clamp(0.0, 1.0);
+    let y_center = ((y + h / 2.0) / image_height).clamp(0.0, 1.0);
+    let nw = (w / image_width).clamp(0.0, 1.0);
+    let nh = (h / image_height).clamp(0.0, 1.0);
     Some(format!(
         "{} {:.6} {:.6} {:.6} {:.6}",
         label_index, x_center, y_center, nw, nh
@@ -166,14 +200,14 @@ pub fn annotations_to_voc(_annotations: &[Annotation], _labels: &[Label]) -> Str
 /// Detect export format by file extension.
 pub fn format_by_extension(path: &str) -> Option<ExportFormat> {
     let lower = path.to_lowercase();
-    if lower.ends_with(".json") || lower.ends_with(".coco.json") {
+    if lower.ends_with(".moqentra.json") {
+        Some(ExportFormat::Native)
+    } else if lower.ends_with(".coco.json") || lower.ends_with(".json") {
         Some(ExportFormat::Coco)
     } else if lower.ends_with(".xml") {
         Some(ExportFormat::Voc)
-    } else if lower.ends_with(".txt") || lower.contains("yolo") {
+    } else if lower.ends_with(".txt") || lower.ends_with(".yolo") {
         Some(ExportFormat::Yolo)
-    } else if lower.ends_with(".moqentra.json") {
-        Some(ExportFormat::Native)
     } else {
         None
     }
@@ -220,7 +254,7 @@ mod tests {
         let mut sizes = BTreeMap::new();
         sizes.insert("cat.jpg".to_string(), (100, 100));
 
-        let coco = annotations_to_coco(&annotations, &sizes, &labels);
+        let coco = annotations_to_coco(&annotations, &sizes, &labels).unwrap();
         assert_eq!(coco.annotations.len(), 1);
         assert_eq!(coco.annotations[0].bbox, vec![10.0, 20.0, 30.0, 40.0]);
         assert_eq!(coco.categories[0].name, "cat");

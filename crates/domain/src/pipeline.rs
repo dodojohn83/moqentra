@@ -50,16 +50,17 @@ impl PipelineSpec {
         if visited.contains(id) {
             return Ok(());
         }
+        let node = self.nodes.get(id).ok_or_else(|| {
+            moqentra_types::Error::invalid_argument(format!("missing dependency: {id}"))
+        })?;
         stack.insert(id.to_string());
-        if let Some(node) = self.nodes.get(id) {
-            for dep in &node.dependencies {
-                if !self.nodes.contains_key(dep) {
-                    return Err(moqentra_types::Error::invalid_argument(
-                        "missing dependency",
-                    ));
-                }
-                self.visit(dep, visited, stack)?;
+        for dep in &node.dependencies {
+            if !self.nodes.contains_key(dep) {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "missing dependency",
+                ));
             }
+            self.visit(dep, visited, stack)?;
         }
         stack.remove(id);
         visited.insert(id.to_string());
@@ -270,10 +271,11 @@ impl HpoRun {
         &mut self,
         parameters: BTreeMap<String, String>,
     ) -> Result<u32, moqentra_types::Error> {
-        if self.trials.len() as u32 >= self.trial_budget {
+        let number = u32::try_from(self.trials.len())
+            .map_err(|_| moqentra_types::Error::internal("trial count overflow"))?;
+        if number >= self.trial_budget {
             return Err(moqentra_types::Error::unavailable("trial budget exhausted"));
         }
-        let number = self.trials.len() as u32;
         self.trials.push(Trial {
             number,
             parameters,
@@ -291,6 +293,11 @@ impl HpoRun {
         metric: f64,
         job_id: TrainingJobId,
     ) -> Result<(), moqentra_types::Error> {
+        if !metric.is_finite() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "metric must be finite",
+            ));
+        }
         let trial = self
             .trials
             .get_mut(number as usize)

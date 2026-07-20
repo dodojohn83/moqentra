@@ -108,9 +108,10 @@ impl DatasetVersion {
                 "version has no assets",
             ));
         }
+        let digest = compute_manifest_digest(self)?;
         self.state = DatasetVersionState::Published;
         self.published_at = Some(UtcTimestamp::now());
-        self.manifest_digest = Some(compute_manifest_digest(self));
+        self.manifest_digest = Some(digest);
         Ok(())
     }
 
@@ -179,11 +180,13 @@ impl Dataset {
 }
 
 /// Compute a canonical digest for a version manifest.
-pub fn compute_manifest_digest(version: &DatasetVersion) -> String {
+pub fn compute_manifest_digest(version: &DatasetVersion) -> Result<String, moqentra_types::Error> {
     use sha2::{Digest, Sha256};
-    let canonical = serde_json::to_string(&version).unwrap_or_default();
+    let canonical = serde_json::to_string(version).map_err(|e| {
+        moqentra_types::Error::internal(format!("manifest digest serialization failed: {e}"))
+    })?;
     let hash = Sha256::digest(canonical.as_bytes());
-    format!("sha256:{:x}", hash)
+    Ok(format!("sha256:{:x}", hash))
 }
 
 #[cfg(test)]

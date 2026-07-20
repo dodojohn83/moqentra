@@ -20,6 +20,7 @@ def test_metric_and_cancel():
     config = {
         "attempt_id": "attempt-1",
         "fencing_token": "token-1",
+        "worker_root": "/tmp/moqentra-test",
         "work_dir": "/tmp/moqentra-test/work",
         "input_dir": "/tmp/moqentra-test/input",
         "output_dir": "/tmp/moqentra-test/output",
