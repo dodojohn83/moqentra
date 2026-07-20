@@ -146,8 +146,9 @@ impl Configuration {
     /// Loads configuration from built-in defaults, an optional file, and
     /// environment variables prefixed with `MOQENTRA_`.
     pub fn load(file: Option<&Path>) -> Result<Self, ConfigError> {
-        let defaults =
-            serde_json::to_string(&Configuration::default()).expect("default config serializes");
+        let defaults = serde_json::to_string(&Configuration::default()).map_err(|e| {
+            ConfigError::Message(format!("default config serialization failed: {e}"))
+        })?;
         let mut builder =
             Config::builder().add_source(File::from_str(&defaults, config::FileFormat::Json));
 

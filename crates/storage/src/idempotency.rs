@@ -76,7 +76,7 @@ impl IdempotencyStore for InMemoryIdempotencyStore {
         scope: IdempotencyScope,
         ttl: std::time::Duration,
     ) -> Result<IdempotencyResult, Error> {
-        let mut entries = self.entries.lock().expect("lock");
+        let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
         let now = UtcTimestamp::now();
         if let Some(entry) = entries.get(&scope) {
             if entry.expires_at >= now {
@@ -99,7 +99,7 @@ impl IdempotencyStore for InMemoryIdempotencyStore {
     }
 
     async fn complete(&self, id: Uuid, response: Value) -> Result<(), Error> {
-        let mut entries = self.entries.lock().expect("lock");
+        let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
         for entry in entries.values_mut() {
             if entry.id == id {
                 entry.status = IdempotencyStatus::Completed;
@@ -111,7 +111,7 @@ impl IdempotencyStore for InMemoryIdempotencyStore {
     }
 
     async fn cleanup(&self, before: UtcTimestamp) -> Result<u64, Error> {
-        let mut entries = self.entries.lock().expect("lock");
+        let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
         let before_count = entries.len();
         entries.retain(|_, entry| entry.expires_at > before);
         let removed = before_count - entries.len();

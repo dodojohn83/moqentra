@@ -63,12 +63,15 @@ impl ObjectStorage for InMemoryObjectStore {
             etag: Some(etag),
             digest: Some(object.digest.clone()),
         };
-        self.objects.lock().expect("lock").insert(key.to_string(), object);
+        self.objects
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(key.to_string(), object);
         Ok(meta)
     }
 
     async fn get_object(&self, key: &str) -> Result<(Bytes, ObjectMetadata), Error> {
-        let objects = self.objects.lock().expect("lock");
+        let objects = self.objects.lock().unwrap_or_else(|e| e.into_inner());
         let object = objects
             .get(key)
             .ok_or_else(|| Error::not_found(format!("object not found: {}", key)))?;
@@ -83,7 +86,7 @@ impl ObjectStorage for InMemoryObjectStore {
     }
 
     async fn delete_object(&self, key: &str) -> Result<(), Error> {
-        self.objects.lock().expect("lock").remove(key);
+        self.objects.lock().unwrap_or_else(|e| e.into_inner()).remove(key);
         Ok(())
     }
 
@@ -93,10 +96,10 @@ impl ObjectStorage for InMemoryObjectStore {
     }
 
     async fn start_multipart(&self, _key: &str, media_type: Option<&str>) -> Result<String, Error> {
-        let mut counter = self.counter.lock().expect("lock");
+        let mut counter = self.counter.lock().unwrap_or_else(|e| e.into_inner());
         *counter += 1;
         let upload_id = format!("upload-{}", counter);
-        self.multipart.lock().expect("lock").insert(
+        self.multipart.lock().unwrap_or_else(|e| e.into_inner()).insert(
             upload_id.clone(),
             MultipartUpload {
                 media_type: media_type.map(|s| s.to_string()),
@@ -113,7 +116,7 @@ impl ObjectStorage for InMemoryObjectStore {
         part_number: i32,
         data: Bytes,
     ) -> Result<String, Error> {
-        let mut multipart = self.multipart.lock().expect("lock");
+        let mut multipart = self.multipart.lock().unwrap_or_else(|e| e.into_inner());
         let upload = multipart
             .get_mut(upload_id)
             .ok_or_else(|| Error::not_found("multipart upload"))?;
@@ -128,7 +131,7 @@ impl ObjectStorage for InMemoryObjectStore {
         upload_id: &str,
         parts: Vec<(i32, String)>,
     ) -> Result<ObjectMetadata, Error> {
-        let mut multipart = self.multipart.lock().expect("lock");
+        let mut multipart = self.multipart.lock().unwrap_or_else(|e| e.into_inner());
         let upload = multipart
             .remove(upload_id)
             .ok_or_else(|| Error::not_found("multipart upload"))?;
@@ -157,12 +160,15 @@ impl ObjectStorage for InMemoryObjectStore {
             etag: Some(etag),
             digest: Some(object.digest.clone()),
         };
-        self.objects.lock().expect("lock").insert(key.to_string(), object);
+        self.objects
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(key.to_string(), object);
         Ok(meta)
     }
 
     async fn abort_multipart(&self, _key: &str, upload_id: &str) -> Result<(), Error> {
-        self.multipart.lock().expect("lock").remove(upload_id);
+        self.multipart.lock().unwrap_or_else(|e| e.into_inner()).remove(upload_id);
         Ok(())
     }
 }
