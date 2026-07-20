@@ -144,9 +144,15 @@ class WorkerRuntime:
             or os.environ.get("MOQENTRA_WORKER_ROOT")
             or "/tmp/moqentra"
         )
-        work_dir = Path(config.get("work_dir", "/tmp/moqentra/work"))
-        input_dir = Path(config.get("input_dir", "/tmp/moqentra/input"))
-        output_dir = Path(config.get("output_dir", "/tmp/moqentra/output"))
+        if not _is_allowed_path(base_dir, base_dir):
+            raise ValueError(f"invalid worker root: {base_dir}")
+        real_base = Path(os.path.realpath(str(base_dir)))
+        if real_base != base_dir:
+            raise ValueError(f"worker root must not contain symlinks: {base_dir}")
+
+        work_dir = Path(config.get("work_dir", str(base_dir / "work")))
+        input_dir = Path(config.get("input_dir", str(base_dir / "input")))
+        output_dir = Path(config.get("output_dir", str(base_dir / "output")))
 
         for path in (work_dir, input_dir, output_dir):
             if not _is_allowed_path(path, base_dir):

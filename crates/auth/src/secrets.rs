@@ -2,6 +2,7 @@
 
 use moqentra_types::UtcTimestamp;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 /// How a secret value is supplied to the runtime.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -20,10 +21,15 @@ pub enum SecretProvider {
 }
 
 impl SecretProvider {
-    pub fn resolve(&self) -> Option<String> {
+    /// Resolves a secret value. For `File` variants the resolved path must be
+    /// absolute and confined to `allowed_root`.
+    pub fn resolve(&self, allowed_root: impl AsRef<Path>) -> Option<String> {
         match self {
             SecretProvider::File { path } => {
                 if Self::is_dangerous_path(path) {
+                    return None;
+                }
+                if !Self::is_path_within_root(path, allowed_root.as_ref()) {
                     return None;
                 }
                 let meta = std::fs::symlink_metadata(path).ok()?;
@@ -45,6 +51,17 @@ impl SecretProvider {
             || path.contains('\0')
             || !path.starts_with('/')
             || path.split('/').any(|c| c == "..")
+    }
+
+    fn is_path_within_root(path: &str, root: &Path) -> bool {
+        let abs = match std::path::absolute(path) {
+            Ok(p) => p,
+            Err(_) => return false,
+        };
+        if abs.components().any(|c| c == std::path::Component::ParentDir) {
+            return false;
+        }
+        abs.starts_with(root)
     }
 }
 
@@ -303,6 +320,25 @@ mod tests {
         let out = redactor.redact("password=foo token=bar");
         assert!(!out.contains("password"));
         assert!(!out.contains("token"));
+    }
+
+    #[test]
+    fn secret_provider_file_confined_to_root() {
+        let root = format!("/tmp/moqentra-secret-test-{}", std::process::id());
+        std::fs::remove_dir_all(&root).ok();
+        std::fs::create_dir_all(&root).unwrap();
+        let path = format!("{}/secret.txt", root);
+        std::fs::write(&path, "hunter2").unwrap();
+
+        let provider = SecretProvider::File { path: path.clone() };
+        assert_eq!(provider.resolve(&root).unwrap(), "hunter2");
+
+        let outside = SecretProvider::File {
+            path: "/etc/passwd".to_string(),
+        };
+        assert!(outside.resolve(&root).is_none());
+
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
