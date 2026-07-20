@@ -18,8 +18,8 @@ pub use error::{Error, ErrorKind, FieldViolation};
 pub use id::{
     AnnotationId, AnnotationProjectId, AnnotationTaskId, ApplicationVersionId, ArtifactDigest,
     AssetId, AttemptId, AutoLabelJobId, CheckpointId, DatasetId, DatasetVersionId, DeploymentId,
-    ExperimentId, IdGenerator, ModelVersionId, NodeId, OperationId, ProjectId, QualityRunId,
-    RandomIdGenerator, RankId, StaticIdGenerator, TenantId, TrainingJobId, UserId,
+    ExperimentId, IdGenerator, ModelId, ModelVersionId, NodeId, OperationId, ProjectId,
+    QualityRunId, RandomIdGenerator, RankId, StaticIdGenerator, TenantId, TrainingJobId, UserId,
 };
 pub use pagination::{Page, PageRequest};
 pub use request::{Principal, RequestContext, ResourceQuantity, ResourceRef};

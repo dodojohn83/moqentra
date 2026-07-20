@@ -6,6 +6,7 @@ pub mod annotation;
 pub mod dataset;
 pub mod export;
 pub mod import;
+pub mod model_registry;
 pub mod quality;
 pub mod training;
 
@@ -17,6 +18,10 @@ pub use dataset::{
     compute_manifest_digest, AssetRef, Dataset, DatasetState, DatasetVersion, DatasetVersionState,
 };
 pub use import::{ImportJob, ImportJobFailure, ImportJobState};
+pub use model_registry::{
+    Artifact, Attachment, Model, ModelArtifactManifest, ModelLineage, ModelSignature, ModelVersion,
+    ModelVersionState, TensorSpec,
+};
 pub use quality::{
     AutoLabelJob, AutoLabelJobState, AutoLabelSuggestion, MultimodalAnnotation, MultimodalMeta,
     QualityReport, QualityRule, QualityRun, QualityRunState, QualityViolation, ReviewDecision,
