@@ -135,6 +135,9 @@ define_id!(
     AttemptId,
     "Execution attempt of a training or conversion job."
 );
+define_id!(ExperimentId, "Experiment grouping training jobs.");
+define_id!(CheckpointId, "Training checkpoint artifact.");
+define_id!(RankId, "Distributed training rank.");
 define_id!(ModelVersionId, "Versioned model artifact.");
 define_id!(ApplicationVersionId, "Versioned application graph.");
 define_id!(

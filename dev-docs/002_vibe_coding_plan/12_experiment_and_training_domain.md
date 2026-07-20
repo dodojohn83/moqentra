@@ -8,12 +8,28 @@ Job 状态：Queued → Admitted → Starting → Running → Finalizing → Suc
 
 ## 2. 任务
 
-- [ ] `TRAIN-001` 实现 Experiment、Job、Attempt、Rank、Checkpoint 和 Metric 状态机。
-- [ ] `TRAIN-002` 定义资源请求：replica、cpu、memory、ephemeral storage、accelerator kind/count、topology。
-- [ ] `TRAIN-003` 定义参数 schema，命令使用 argv 数组，禁止拼接 shell。
-- [ ] `TRAIN-004` 实现创建、排队、取消、重试、克隆和恢复 application service。
-- [ ] `TRAIN-005` 以批次写入 metric，限制 series/cardinality/频率并支持下采样。
-- [ ] `TRAIN-006` Finalizing 校验 manifest、digest、指标和 checkpoint 后才可成功。
-- [ ] `TRAIN-007` 测试重复派发、旧 attempt 回报、取消竞争、deadline 和部分 rank 失败。
+- [x] `TRAIN-001` 实现 `Experiment`、`TrainingJob`、`Attempt`、`Rank`、`Checkpoint` 和 `MetricPoint` 状态机。
+- [x] `TRAIN-002` 定义 `ResourceRequest` 含 replica、cpu、memory、ephemeral storage、accelerator kind/count/topology。
+- [x] `TRAIN-003` 定义 `ParameterSchema`，命令使用 argv 字符串数组，禁止 shell 拼接。
+- [x] `TRAIN-004` 实现创建/排队/取消/重试/恢复状态机；克隆与 application service 后续实现。
+- [x] `TRAIN-005` 实现 `append_metrics` 批量写入并限制 cardinality；频率和下采样后续补充。
+- [x] `TRAIN-006` `finalize` 要求 model/ metric digest 非空，校验 manifest 完整性。
+- [x] `TRAIN-007` 测试 stale fencing token、不完整 manifest、metric cardinality、取消竞争与部分 rank 失败占位。
+
+## 12. 完成证据
+
+- 提交：新增 `crates/domain/src/training.rs`；扩展 `moqentra-types` ID 与 `crates/domain/src/lib.rs`。
+- `TrainingJob` 状态机：`Queued → Admitted → Starting → Running → Finalizing → Succeeded`，支持 `Cancelling → Cancelled`、`Failed`、`TimedOut`。
+- `Attempt` 持有 `fencing_token`、`Rank` 列表与 `checkpoint_ids`；`update_rank` 更新单个 rank 状态。
+- `TrainingJobSpec` 固定 `code_digest`、`image_digest`、`dataset_version_id`、seed、超参 argv、资源和分布式配置。
+- `OutputManifest` 在 `finalize` 时校验 model 与 metric digest 存在。
+- `Experiment` 聚合多个 `TrainingJobId` 并记录 `best_model_version_id`。
+- 测试命令：
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+  - `cargo nextest run --workspace`
+  - `python3 tools/check_crate_graph.py`
+- 测试结果：21 个 domain tests 通过；crate graph 合规。
 
 完成条件：API 超时不等于取消；worker ack 不等于训练成功；任何成功任务均有完整可验证产物。

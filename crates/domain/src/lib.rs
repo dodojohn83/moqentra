@@ -7,6 +7,7 @@ pub mod dataset;
 pub mod export;
 pub mod import;
 pub mod quality;
+pub mod training;
 
 pub use annotation::{
     Annotation, AnnotationLog, AnnotationProject, AnnotationProjectState, AnnotationTask,
@@ -20,6 +21,10 @@ pub use quality::{
     AutoLabelJob, AutoLabelJobState, AutoLabelSuggestion, MultimodalAnnotation, MultimodalMeta,
     QualityReport, QualityRule, QualityRun, QualityRunState, QualityViolation, ReviewDecision,
     ReviewItem, Severity,
+};
+pub use training::{
+    Attempt, Checkpoint, DistributedConfig, Experiment, MetricPoint, OutputManifest, Rank,
+    RankState, ResourceRequest, TrainingJob, TrainingJobSpec, TrainingJobState,
 };
 
 pub mod placeholder {
