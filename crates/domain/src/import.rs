@@ -138,6 +138,19 @@ impl ImportJob {
         self.failure = Some(ImportJobFailure::Cancelled);
         Ok(())
     }
+
+    /// Retry a failed import from the beginning.
+    pub fn retry(&mut self) -> Result<(), moqentra_types::Error> {
+        if !matches!(self.state, ImportJobState::Failed) {
+            return Err(moqentra_types::Error::conflict(
+                "only failed jobs can be retried",
+            ));
+        }
+        self.state = ImportJobState::Pending;
+        self.failure = None;
+        self.transferred_bytes = 0;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -163,6 +176,10 @@ mod tests {
         job.fail(ImportJobFailure::Network).unwrap();
         assert_eq!(job.state, ImportJobState::Failed);
         assert_eq!(job.retry_count, 1);
+        job.retry().unwrap();
+        assert_eq!(job.state, ImportJobState::Pending);
+        assert!(job.failure.is_none());
+        assert_eq!(job.transferred_bytes, 0);
     }
 
     #[test]

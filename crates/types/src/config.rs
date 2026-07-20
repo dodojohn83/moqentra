@@ -154,6 +154,19 @@ pub struct Configuration {
     pub auth: AuthConfig,
 }
 
+fn percent_encode_userinfo(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push('%');
+            out.push_str(&format!("{:02X}", b));
+        }
+    }
+    out
+}
+
 impl Configuration {
     /// Loads configuration from built-in defaults, an optional file, and
     /// environment variables prefixed with `MOQENTRA_`.
@@ -175,11 +188,12 @@ impl Configuration {
     }
 
     /// Returns the database DSN without exposing the password in a string.
+    /// Userinfo characters that would break the URL are percent-encoded.
     pub fn database_dsn(&self) -> SecretString {
         SecretString::new(format!(
             "postgresql://{}:{}@{}:{}/{}",
-            self.database.username,
-            self.database.password.expose_secret(),
+            percent_encode_userinfo(&self.database.username),
+            percent_encode_userinfo(self.database.password.expose_secret()),
             self.database.host,
             self.database.port,
             self.database.name
@@ -215,5 +229,15 @@ mod tests {
         let config = Configuration::default();
         let dsn = config.database_dsn();
         assert!(!format!("{:?}", dsn).contains("moqentra"));
+    }
+
+    #[test]
+    fn database_dsn_encodes_special_characters() {
+        let mut config = Configuration::default();
+        config.database.username = "user@dom:ain".to_string();
+        config.database.password = SecretString::new("p@ss:w0rd#");
+        let dsn = config.database_dsn().expose_secret().to_string();
+        assert!(dsn.starts_with("postgresql://user%40dom%3Aain:p%40ss%3Aw0rd%23@"));
+        assert!(!dsn.contains("p@ss:w0rd#"));
     }
 }

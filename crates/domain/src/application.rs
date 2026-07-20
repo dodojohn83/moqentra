@@ -240,9 +240,18 @@ impl Application {
         self.updated_at = UtcTimestamp::now();
     }
 
-    pub fn set_latest_published(&mut self, version_id: ApplicationVersionId) {
+    pub fn set_latest_published(
+        &mut self,
+        version_id: ApplicationVersionId,
+    ) -> Result<(), moqentra_types::Error> {
+        if !self.version_ids.contains(&version_id) {
+            return Err(moqentra_types::Error::not_found(
+                "version not in application",
+            ));
+        }
         self.latest_published = Some(version_id);
         self.updated_at = UtcTimestamp::now();
+        Ok(())
     }
 }
 

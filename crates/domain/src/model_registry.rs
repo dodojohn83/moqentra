@@ -18,7 +18,7 @@ pub struct Artifact {
 }
 
 impl Artifact {
-    fn validate(&self) -> Result<(), moqentra_types::Error> {
+    pub(crate) fn validate(&self) -> Result<(), moqentra_types::Error> {
         if self.size_bytes == 0 {
             return Err(moqentra_types::Error::invalid_argument(
                 "artifact size must be greater than zero",
@@ -32,6 +32,17 @@ impl Artifact {
         if !self.digest.contains(':') || self.digest.split(':').any(|part| part.is_empty()) {
             return Err(moqentra_types::Error::invalid_argument(
                 "artifact digest must be algorithm:hex",
+            ));
+        }
+        if self.scan_status.trim().is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "artifact scan_status is empty",
+            ));
+        }
+        const ALLOWED: &[&str] = &["clean", "infected", "pending", "unknown"];
+        if !ALLOWED.contains(&self.scan_status.as_str()) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "artifact scan_status is not a recognized value",
             ));
         }
         Ok(())
@@ -260,9 +271,16 @@ impl Model {
         self.updated_at = UtcTimestamp::now();
     }
 
-    pub fn set_latest_approved(&mut self, version_id: ModelVersionId) {
+    pub fn set_latest_approved(
+        &mut self,
+        version_id: ModelVersionId,
+    ) -> Result<(), moqentra_types::Error> {
+        if !self.version_ids.contains(&version_id) {
+            return Err(moqentra_types::Error::not_found("version not in model"));
+        }
         self.latest_approved = Some(version_id);
         self.updated_at = UtcTimestamp::now();
+        Ok(())
     }
 }
 

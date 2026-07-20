@@ -124,6 +124,7 @@ impl PlanCompiler {
         job: &TrainingJob,
         attempt_id: AttemptId,
     ) -> Result<ExecutionPlan, moqentra_types::Error> {
+        job.spec.validate()?;
         let spec = &job.spec;
         fn valid_digest(d: &str) -> bool {
             !d.is_empty() && d.contains(':') && d.split(':').all(|part| !part.is_empty())
@@ -268,7 +269,7 @@ mod tests {
 
     fn make_job(replicas: u32, kind: Option<&str>) -> TrainingJob {
         let gen = RandomIdGenerator;
-        let mut spec = TrainingJobSpec {
+        let spec = TrainingJobSpec {
             code_digest: "sha256:code".to_string(),
             image_digest: "sha256:image".to_string(),
             dataset_version_id: DatasetVersionId::new_v7(&gen),
@@ -297,9 +298,6 @@ mod tests {
             max_attempts: 1,
             deadline_seconds: 3600,
         };
-        if replicas == 0 {
-            spec.resources.replicas = 0;
-        }
         TrainingJob::new(
             TrainingJobId::new_v7(&gen),
             ExperimentId::new_v7(&gen),
@@ -307,11 +305,13 @@ mod tests {
             ProjectId::new_v7(&gen),
             spec,
         )
+        .unwrap()
     }
 
     #[test]
     fn compile_rejects_zero_replicas() {
-        let job = make_job(0, None);
+        let mut job = make_job(1, None);
+        job.spec.resources.replicas = 0;
         let gen = RandomIdGenerator;
         let plan = PlanCompiler::compile(&job, AttemptId::new_v7(&gen));
         assert!(plan.is_err());

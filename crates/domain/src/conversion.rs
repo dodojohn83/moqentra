@@ -129,10 +129,18 @@ impl ConversionJob {
         if !matches!(self.state, ConversionJobState::Running) {
             return Err(moqentra_types::Error::conflict("conversion not running"));
         }
-        if artifacts.iter().any(|a| a.scan_status != "clean") {
+        if artifacts.is_empty() {
             return Err(moqentra_types::Error::invalid_argument(
-                "output artifact not clean",
+                "conversion must produce at least one artifact",
             ));
+        }
+        for artifact in &artifacts {
+            artifact.validate()?;
+            if artifact.scan_status != "clean" {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "output artifact not clean",
+                ));
+            }
         }
         self.output_artifacts = artifacts;
         self.log_digest = Some(log_digest);

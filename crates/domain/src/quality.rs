@@ -90,6 +90,41 @@ impl QualityRun {
                 "quality run must have at least one rule",
             ));
         }
+        for rule in &rules {
+            match rule {
+                QualityRule::DuplicateObjects { threshold } => {
+                    if *threshold == 0 {
+                        return Err(moqentra_types::Error::invalid_argument(
+                            "DuplicateObjects threshold must be greater than zero",
+                        ));
+                    }
+                }
+                QualityRule::FrameRange { min, max } => {
+                    if min > max {
+                        return Err(moqentra_types::Error::invalid_argument(
+                            "FrameRange min cannot exceed max",
+                        ));
+                    }
+                }
+                QualityRule::ClassDistribution {
+                    min_count_per_class,
+                } => {
+                    if *min_count_per_class == 0 {
+                        return Err(moqentra_types::Error::invalid_argument(
+                            "ClassDistribution min_count_per_class must be greater than zero",
+                        ));
+                    }
+                }
+                QualityRule::SampleReview { ratio_permille } => {
+                    if *ratio_permille == 0 || *ratio_permille > 1000 {
+                        return Err(moqentra_types::Error::invalid_argument(
+                            "SampleReview ratio_permille must be between 1 and 1000",
+                        ));
+                    }
+                }
+                _ => {}
+            }
+        }
         let now = UtcTimestamp::now();
         Ok(Self {
             id,
@@ -424,6 +459,11 @@ impl AutoLabelJob {
         &mut self,
         suggestion_id: AnnotationId,
     ) -> Result<AutoLabelSuggestion, moqentra_types::Error> {
+        if !matches!(self.state, AutoLabelJobState::Completed) {
+            return Err(moqentra_types::Error::conflict(
+                "auto-label job is not completed",
+            ));
+        }
         let pos = self
             .suggestions
             .iter()
