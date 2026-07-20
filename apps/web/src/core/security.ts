@@ -13,9 +13,21 @@ export function isAllowedDownloadType(contentType: string): boolean {
 }
 
 export function stripSecrets(input: string): string {
-  return input
-    .replace(/token=[^&\s]+/gi, "token=<redacted>")
-    .replace(/api[_-]?key=[^&\s]+/gi, "api_key=<redacted>");
+  const patterns = [
+    /password=[^&\s]+/gi,
+    /token=[^&\s]+/gi,
+    /api[_-]?key=[^&\s]+/gi,
+    /private[_-]?key=[^&\s]+/gi,
+    /secret=[^&\s]+/gi,
+  ];
+  return patterns.reduce(
+    (acc, pattern) =>
+      acc.replace(pattern, (match) => {
+        const key = match.slice(0, match.indexOf("=") ?? 0);
+        return `${key}=<redacted>`;
+      }),
+    input,
+  );
 }
 
 export function sanitizeTrustedHtml(dirty: string): string {

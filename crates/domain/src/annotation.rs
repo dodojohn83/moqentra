@@ -82,20 +82,26 @@ impl AnnotationProject {
         name: impl Into<String>,
         task_type: TaskType,
         ontology: Ontology,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        let name = name.into();
+        if name.trim().is_empty() || name.len() > 128 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "annotation project name must be non-empty and at most 128 characters",
+            ));
+        }
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             tenant_id,
             project_id,
             dataset_version_id,
-            name: name.into(),
+            name,
             task_type,
             ontology,
             state: AnnotationProjectState::Draft,
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn activate(&mut self) {
@@ -143,11 +149,19 @@ impl TaskLease {
         if !self.is_valid(clock) {
             return Err(moqentra_types::Error::conflict("lease expired"));
         }
+        if ttl_seconds <= 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "ttl must be positive",
+            ));
+        }
         let duration = std::time::Duration::from_secs(ttl_seconds as u64);
         self.expires_at = clock
             .add_std_duration(duration)
             .ok_or_else(|| moqentra_types::Error::internal("overflow"))?;
-        self.fencing_token += 1;
+        self.fencing_token = self
+            .fencing_token
+            .checked_add(1)
+            .ok_or_else(|| moqentra_types::Error::internal("fencing token overflow"))?;
         Ok(())
     }
 }

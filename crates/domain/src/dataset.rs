@@ -32,6 +32,37 @@ pub struct AssetRef {
     pub metadata: Value,
 }
 
+impl AssetRef {
+    fn validate(&self) -> Result<(), moqentra_types::Error> {
+        if self.name.trim().is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "asset name is empty",
+            ));
+        }
+        if self.object_key.is_empty() || self.object_key.contains('\0') {
+            return Err(moqentra_types::Error::invalid_argument(
+                "asset object_key is invalid",
+            ));
+        }
+        if self.size == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "asset size must be greater than zero",
+            ));
+        }
+        if self.media_type.trim().is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "asset media_type is empty",
+            ));
+        }
+        if !self.digest.contains(':') || self.digest.split(':').any(|part| part.is_empty()) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "asset digest must be algorithm:hex",
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// An immutable dataset version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DatasetVersion {
@@ -77,6 +108,7 @@ impl DatasetVersion {
                 "cannot modify a published or deprecated dataset version",
             ));
         }
+        asset.validate()?;
         self.assets.push(asset);
         Ok(())
     }
@@ -108,9 +140,10 @@ impl DatasetVersion {
                 "version has no assets",
             ));
         }
+        let digest = compute_manifest_digest(self)?;
         self.state = DatasetVersionState::Published;
         self.published_at = Some(UtcTimestamp::now());
-        self.manifest_digest = Some(compute_manifest_digest(self));
+        self.manifest_digest = Some(digest);
         Ok(())
     }
 
@@ -146,20 +179,26 @@ impl Dataset {
         tenant_id: TenantId,
         project_id: ProjectId,
         name: impl Into<String>,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        let name = name.into();
+        if name.trim().is_empty() || name.len() > 128 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "dataset name must be non-empty and at most 128 characters",
+            ));
+        }
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             tenant_id,
             project_id,
-            name: name.into(),
+            name,
             state: DatasetState::Active,
             version_ids: Vec::new(),
             latest_published_version: None,
             labels: BTreeMap::new(),
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn add_version(&mut self, version_id: DatasetVersionId) {
@@ -179,11 +218,13 @@ impl Dataset {
 }
 
 /// Compute a canonical digest for a version manifest.
-pub fn compute_manifest_digest(version: &DatasetVersion) -> String {
+pub fn compute_manifest_digest(version: &DatasetVersion) -> Result<String, moqentra_types::Error> {
     use sha2::{Digest, Sha256};
-    let canonical = serde_json::to_string(&version).unwrap_or_default();
+    let canonical = serde_json::to_string(version).map_err(|e| {
+        moqentra_types::Error::internal(format!("manifest digest serialization failed: {e}"))
+    })?;
     let hash = Sha256::digest(canonical.as_bytes());
-    format!("sha256:{:x}", hash)
+    Ok(format!("sha256:{:x}", hash))
 }
 
 #[cfg(test)]

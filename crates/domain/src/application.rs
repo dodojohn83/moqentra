@@ -68,8 +68,14 @@ impl ApplicationSpec {
 
         // Validate port types on edges.
         for (src, src_port, dst, dst_port) in &self.edges {
-            let s = self.nodes.get(src).unwrap();
-            let d = self.nodes.get(dst).unwrap();
+            let s = self
+                .nodes
+                .get(src)
+                .ok_or_else(|| moqentra_types::Error::internal("missing source node"))?;
+            let d = self
+                .nodes
+                .get(dst)
+                .ok_or_else(|| moqentra_types::Error::internal("missing destination node"))?;
             let s_type = s
                 .outputs
                 .iter()
@@ -148,15 +154,21 @@ impl ApplicationVersion {
         version: impl Into<String>,
         spec: ApplicationSpec,
     ) -> Result<Self, moqentra_types::Error> {
+        let version = version.into();
+        if version.trim().is_empty() || version.len() > 64 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "application version must be non-empty and at most 64 characters",
+            ));
+        }
         spec.validate()?;
-        let digest = Self::canonical_digest(&spec);
+        let digest = Self::canonical_digest(&spec)?;
         let now = UtcTimestamp::now();
         Ok(Self {
             id,
             application_id,
             tenant_id,
             project_id,
-            version: version.into(),
+            version,
             spec,
             digest,
             state: ApplicationVersionState::Draft,
@@ -174,13 +186,13 @@ impl ApplicationVersion {
         Ok(())
     }
 
-    fn canonical_digest(spec: &ApplicationSpec) -> String {
-        let json = serde_json::to_string(spec).unwrap_or_default();
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        json.hash(&mut hasher);
-        format!("sha256:{:x}", hasher.finish())
+    fn canonical_digest(spec: &ApplicationSpec) -> Result<String, moqentra_types::Error> {
+        use sha2::{Digest, Sha256};
+        let json = serde_json::to_string(spec).map_err(|e| {
+            moqentra_types::Error::internal(format!("canonical serialization failed: {e}"))
+        })?;
+        let hash = Sha256::digest(json.as_bytes());
+        Ok(format!("sha256:{:x}", hash))
     }
 }
 
@@ -203,18 +215,24 @@ impl Application {
         tenant_id: TenantId,
         project_id: ProjectId,
         name: impl Into<String>,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        let name = name.into();
+        if name.trim().is_empty() || name.len() > 128 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "application name must be non-empty and at most 128 characters",
+            ));
+        }
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             tenant_id,
             project_id,
-            name: name.into(),
+            name,
             version_ids: Vec::new(),
             latest_published: None,
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn add_version(&mut self, version_id: ApplicationVersionId) {

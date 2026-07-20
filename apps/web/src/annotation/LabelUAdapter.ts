@@ -66,8 +66,8 @@ export function toLabelUProjectConfig(
   };
 
   const tools: LabelUToolConfig[] = ontology.tools
-    .map((tool) => toolMap[tool] || tool)
-    .filter((tool) => tool !== undefined)
+    .map((tool) => toolMap[tool])
+    .filter((tool): tool is string => tool !== undefined)
     .map((tool) => ({
       tool,
       config: {

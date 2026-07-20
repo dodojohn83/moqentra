@@ -78,19 +78,30 @@ impl QualityRun {
         rule_version: impl Into<String>,
         seed: u64,
         rules: Vec<QualityRule>,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        let rule_version = rule_version.into();
+        if rule_version.trim().is_empty() || rule_version.len() > 64 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "rule_version must be non-empty and at most 64 characters",
+            ));
+        }
+        if rules.is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "quality run must have at least one rule",
+            ));
+        }
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             dataset_version_id,
-            rule_version: rule_version.into(),
+            rule_version,
             seed,
             rules,
             state: QualityRunState::Pending,
             report: None,
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn start(&mut self) -> Result<(), moqentra_types::Error> {
@@ -135,11 +146,11 @@ impl QualityRun {
         for (asset_id, anns) in annotations {
             total_annotations += anns.len() as u64;
             for ann in anns {
+                if let Some(label) = ann.payload.get("label").and_then(|v| v.as_str()) {
+                    *all_classes.entry(label.to_string()).or_insert(0) += 1;
+                }
                 for rule in &self.rules {
                     if let Some(v) = self.check(rule, asset_id, ann) {
-                        if let Some(label) = ann.payload.get("label").and_then(|v| v.as_str()) {
-                            *all_classes.entry(label.to_string()).or_insert(0) += 1;
-                        }
                         violations.push(v);
                     }
                 }
@@ -256,19 +267,43 @@ impl QualityRun {
                 }
             }
             QualityRule::FrameRange { min, max } => {
-                let frame = ann.payload.get("frame").and_then(|v| v.as_u64())?;
-                if frame < *min || frame > *max {
-                    Some(QualityViolation {
+                let frame_i = ann.payload.get("frame").and_then(|v| v.as_i64());
+                if let Some(frame) = frame_i {
+                    if frame < 0 || (frame as u64) < *min || (frame as u64) > *max {
+                        return Some(QualityViolation {
+                            severity: Severity::Error,
+                            asset_id: asset_id.to_string(),
+                            annotation_id: Some(ann.id.to_string()),
+                            rule: "FrameRange".to_string(),
+                            message: format!("frame {} outside [{}, {}]", frame, min, max),
+                            evidence: ann.payload.clone(),
+                        });
+                    }
+                }
+                let frame_u = ann.payload.get("frame").and_then(|v| v.as_u64());
+                if let Some(frame) = frame_u {
+                    if frame < *min || frame > *max {
+                        return Some(QualityViolation {
+                            severity: Severity::Error,
+                            asset_id: asset_id.to_string(),
+                            annotation_id: Some(ann.id.to_string()),
+                            rule: "FrameRange".to_string(),
+                            message: format!("frame {} outside [{}, {}]", frame, min, max),
+                            evidence: ann.payload.clone(),
+                        });
+                    }
+                }
+                if frame_i.is_none() && frame_u.is_none() {
+                    return Some(QualityViolation {
                         severity: Severity::Error,
                         asset_id: asset_id.to_string(),
                         annotation_id: Some(ann.id.to_string()),
                         rule: "FrameRange".to_string(),
-                        message: format!("frame {} outside [{}, {}]", frame, min, max),
+                        message: "frame value is not an integer".to_string(),
                         evidence: ann.payload.clone(),
-                    })
-                } else {
-                    None
+                    });
                 }
+                None
             }
             QualityRule::SampleReview { .. } | QualityRule::ClassDistribution { .. } => None,
         }
@@ -317,9 +352,14 @@ impl AutoLabelJob {
         dataset_version_id: DatasetVersionId,
         model_version_id: ModelVersionId,
         confidence_threshold: f64,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        if !(0.0..=1.0).contains(&confidence_threshold) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "confidence_threshold must be finite and in [0, 1]",
+            ));
+        }
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             dataset_version_id,
             model_version_id,
@@ -329,7 +369,7 @@ impl AutoLabelJob {
             accepted_count: 0,
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn start(&mut self) -> Result<(), moqentra_types::Error> {
@@ -351,6 +391,18 @@ impl AutoLabelJob {
             return Err(moqentra_types::Error::conflict(
                 "auto-label job is not running",
             ));
+        }
+        for suggestion in &suggestions {
+            if suggestion.label.trim().is_empty() {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "suggestion label is empty",
+                ));
+            }
+            if !(0.0..=1.0).contains(&suggestion.confidence) {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "suggestion confidence must be finite and in [0, 1]",
+                ));
+            }
         }
         self.suggestions.extend(suggestions);
         self.updated_at = UtcTimestamp::now();
@@ -435,8 +487,14 @@ impl ReviewItem {
                 "review item is not pending",
             ));
         }
+        let reason = reason.into();
+        if reason.trim().is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "rejection reason must be non-empty",
+            ));
+        }
         self.decision = ReviewDecision::Rejected;
-        self.reason = Some(reason.into());
+        self.reason = Some(reason);
         self.rework_task_id = Some(rework_task_id);
         self.reviewed_at = Some(UtcTimestamp::now());
         Ok(())
@@ -503,7 +561,8 @@ mod tests {
             "1.0",
             42,
             vec![QualityRule::MissingLabel],
-        );
+        )
+        .unwrap();
         run.start().unwrap();
         let ann = make_annotation(None, json!({"bbox": [0.0, 0.0, 1.0, 1.0]}));
         let mut annotations = BTreeMap::new();
@@ -525,7 +584,8 @@ mod tests {
             vec![QualityRule::IllegalClass {
                 allowed: ["cat".to_string()].into_iter().collect(),
             }],
-        );
+        )
+        .unwrap();
         run.start().unwrap();
         let ann = make_annotation(Some("dog"), json!({}));
         let mut annotations = BTreeMap::new();
@@ -544,7 +604,8 @@ mod tests {
             DatasetVersionId::new_v7(&gen),
             ModelVersionId::new_v7(&gen),
             0.5,
-        );
+        )
+        .unwrap();
         job.start().unwrap();
         let suggestion = AutoLabelSuggestion {
             id: AnnotationId::new_v7(&gen),

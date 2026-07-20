@@ -17,6 +17,27 @@ pub struct Artifact {
     pub scan_status: String,
 }
 
+impl Artifact {
+    fn validate(&self) -> Result<(), moqentra_types::Error> {
+        if self.size_bytes == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "artifact size must be greater than zero",
+            ));
+        }
+        if self.media_type.trim().is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "artifact media_type is empty",
+            ));
+        }
+        if !self.digest.contains(':') || self.digest.split(':').any(|part| part.is_empty()) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "artifact digest must be algorithm:hex",
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Input/output signature of a model version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelSignature {
@@ -118,13 +139,27 @@ impl ModelVersion {
                 "model version not in draft",
             ));
         }
-        if self.artifacts.iter().any(|a| a.scan_status != "clean") {
+        if self.version.trim().is_empty() {
             return Err(moqentra_types::Error::invalid_argument(
-                "artifact not clean",
+                "model version string is empty",
             ));
         }
+        if self.artifacts.is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "model version has no artifacts",
+            ));
+        }
+        for artifact in &self.artifacts {
+            artifact.validate()?;
+            if artifact.scan_status != "clean" {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "artifact not clean",
+                ));
+            }
+        }
         if self.lineage.code_digest.is_empty()
-            || self.lineage.dataset_version_id.to_string().is_empty()
+            || self.lineage.image_digest.is_empty()
+            || self.lineage.hyperparameter_digest.is_empty()
         {
             return Err(moqentra_types::Error::invalid_argument("missing lineage"));
         }
@@ -200,18 +235,24 @@ impl Model {
         tenant_id: TenantId,
         project_id: ProjectId,
         name: impl Into<String>,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        let name = name.into();
+        if name.trim().is_empty() || name.len() > 128 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "model name must be non-empty and at most 128 characters",
+            ));
+        }
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             tenant_id,
             project_id,
-            name: name.into(),
+            name,
             version_ids: Vec::new(),
             latest_approved: None,
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn register_version(&mut self, version_id: ModelVersionId) {

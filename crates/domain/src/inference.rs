@@ -36,6 +36,34 @@ pub struct RolloutPolicy {
     pub max_surge_percent: u32,
 }
 
+impl RolloutPolicy {
+    pub fn validate(&self) -> Result<(), moqentra_types::Error> {
+        if let RolloutStrategy::Canary { percent } = self.strategy {
+            if percent > 100 {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "canary percent cannot exceed 100",
+                ));
+            }
+        }
+        if !(0.0..=1.0).contains(&self.slo_error_rate) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "slo error rate must be between 0.0 and 1.0",
+            ));
+        }
+        if self.min_available_percent > 100 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "min available percent cannot exceed 100",
+            ));
+        }
+        if self.max_surge_percent > 100 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "max surge percent cannot exceed 100",
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Inference cluster.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cluster {
@@ -95,10 +123,16 @@ pub struct ReplicaObservedState {
 }
 
 impl Deployment {
-    pub fn apply_release(&mut self, bundle: ReleaseBundle, generation: u64) {
+    pub fn apply_release(
+        &mut self,
+        bundle: ReleaseBundle,
+        generation: u64,
+    ) -> Result<(), moqentra_types::Error> {
+        bundle.policy.validate()?;
         self.release_bundle = bundle;
         self.observed_generation = generation;
         self.desired_state = DeploymentState::Rolling;
+        Ok(())
     }
 
     pub fn pause(&mut self) -> Result<(), moqentra_types::Error> {
@@ -141,6 +175,12 @@ impl Deployment {
         if generation < self.observed_generation {
             // Old generation reports are ignored (idempotent reconciliation).
             return Ok(());
+        }
+        if let Some((name, _)) = metrics.iter().find(|(_, v)| !v.is_finite()) {
+            return Err(moqentra_types::Error::invalid_argument(format!(
+                "replica metric must be finite: {}",
+                name
+            )));
         }
         self.replicas.insert(
             replica_id.into(),
@@ -195,16 +235,16 @@ impl PlacementPolicy {
     pub fn score(&self, cluster: &Cluster, model: ModelVersionId) -> i64 {
         let mut score = 0i64;
         if self.regions.contains(&cluster.region) {
-            score += 10;
+            score = score.saturating_add(10);
         }
         if self.data_locality && cluster.cached_models.contains(&model) {
-            score += 20;
+            score = score.saturating_add(20);
         }
         for cap in &self.required_capabilities {
             if cluster.capabilities.contains(cap) {
-                score += 5;
+                score = score.saturating_add(5);
             } else {
-                score -= 100;
+                score = score.saturating_sub(100);
             }
         }
         score
@@ -253,7 +293,7 @@ mod tests {
     #[test]
     fn rollout_lifecycle() {
         let mut d = make_deployment();
-        d.apply_release(make_bundle(), 2);
+        d.apply_release(make_bundle(), 2).unwrap();
         assert!(matches!(d.desired_state, DeploymentState::Rolling));
         d.pause().unwrap();
         d.resume().unwrap();

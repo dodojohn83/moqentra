@@ -2,6 +2,7 @@
 
 use moqentra_types::UtcTimestamp;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 /// How a secret value is supplied to the runtime.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -20,9 +21,21 @@ pub enum SecretProvider {
 }
 
 impl SecretProvider {
-    pub fn resolve(&self) -> Option<String> {
+    /// Resolves a secret value. For `File` variants the resolved path must be
+    /// absolute and confined to `allowed_root`.
+    pub fn resolve(&self, allowed_root: impl AsRef<Path>) -> Option<String> {
         match self {
             SecretProvider::File { path } => {
+                if Self::is_dangerous_path(path) {
+                    return None;
+                }
+                if !Self::is_path_within_root(path, allowed_root.as_ref()) {
+                    return None;
+                }
+                let meta = std::fs::symlink_metadata(path).ok()?;
+                if meta.file_type().is_symlink() {
+                    return None;
+                }
                 std::fs::read_to_string(path).ok().map(|s| s.trim().to_string())
             }
             SecretProvider::Env { name } => std::env::var(name).ok(),
@@ -31,6 +44,25 @@ impl SecretProvider {
                 None
             }
         }
+    }
+
+    fn is_dangerous_path(path: &str) -> bool {
+        path.is_empty()
+            || path.contains('\0')
+            || !path.starts_with('/')
+            || path.split('/').any(|c| c == "..")
+    }
+
+    fn is_path_within_root(path: &str, root: &Path) -> bool {
+        let root = match root.canonicalize() {
+            Ok(p) => p,
+            Err(_) => return false,
+        };
+        let abs = match std::fs::canonicalize(path) {
+            Ok(p) => p,
+            Err(_) => return false,
+        };
+        abs.starts_with(root)
     }
 }
 
@@ -83,9 +115,76 @@ impl SecretRedactor {
     pub fn redact(&self, input: &str) -> String {
         let mut output = input.to_string();
         for pat in &self.patterns {
-            output = output.replace(pat, "[REDACTED]");
+            output = Self::redact_pattern(&output, pat);
         }
         output
+    }
+
+    fn redact_pattern(input: &str, pat: &str) -> String {
+        let pat_lower = pat.to_lowercase();
+        let mut output = String::with_capacity(input.len());
+        let mut rest = input;
+        while let Some(pos) = Self::find_ci(rest, &pat_lower) {
+            let match_end = pos + pat.len();
+            // The match is only a secret key if the character before it (if any)
+            // is not an ASCII alphanumeric character and the match is followed by
+            // an '=' or ':' separator (with optional whitespace).
+            let before_ok = pos == 0 || {
+                let b = rest.as_bytes()[pos - 1];
+                !b.is_ascii_alphanumeric()
+            };
+            let (sep_len, has_sep) = Self::skip_value_separator(&rest[match_end..]);
+            if !before_ok || !has_sep {
+                // Not a key/value pair; copy the matched text and continue.
+                output.push_str(&rest[..match_end]);
+                rest = &rest[match_end..];
+                continue;
+            }
+            let value_start = match_end + sep_len;
+            let value_str = &rest[value_start..];
+            let consumed = value_str
+                .char_indices()
+                .find(|(_, c)| c.is_whitespace() || matches!(c, '&' | ',' | ';' | '}' | ']'))
+                .map(|(i, _)| i)
+                .unwrap_or(value_str.len());
+            output.push_str(&rest[..pos]);
+            output.push_str("[REDACTED]");
+            rest = &rest[value_start + consumed..];
+        }
+        output.push_str(rest);
+        output
+    }
+
+    /// Case-insensitive search for an ASCII pattern in `haystack`.
+    /// Returns the byte index of the first match, or `None` if not found.
+    fn find_ci(haystack: &str, needle: &str) -> Option<usize> {
+        if needle.is_empty() {
+            return None;
+        }
+        let hay = haystack.as_bytes();
+        let n = needle.len();
+        hay.windows(n).position(|w| {
+            w.iter().zip(needle.as_bytes()).all(|(a, b)| a.to_ascii_lowercase() == *b)
+        })
+    }
+
+    /// If `s` starts with optional whitespace then '=' or ':', returns the
+    /// total byte length of that prefix and `true`. Otherwise returns `(0, false)`.
+    fn skip_value_separator(s: &str) -> (usize, bool) {
+        let bytes = s.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i < bytes.len() && (bytes[i] == b'=' || bytes[i] == b':') {
+            i += 1;
+            while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                i += 1;
+            }
+            (i, true)
+        } else {
+            (0, false)
+        }
     }
 }
 
@@ -129,8 +228,34 @@ impl SecurityLimits {
     }
 
     pub fn check_url_length(&self, len: usize) -> Result<(), moqentra_types::Error> {
-        if len as u32 > self.max_url_length {
+        if len as u64 > self.max_url_length as u64 {
             Err(moqentra_types::Error::invalid_argument("url too long"))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn check_json_size(&self, size: usize) -> Result<(), moqentra_types::Error> {
+        if size as u64 > self.max_json_size {
+            Err(moqentra_types::Error::invalid_argument("json too large"))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn check_proto_message_size(&self, size: u64) -> Result<(), moqentra_types::Error> {
+        if size > self.max_proto_message_size {
+            Err(moqentra_types::Error::invalid_argument(
+                "protobuf message too large",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn check_log_line_length(&self, len: usize) -> Result<(), moqentra_types::Error> {
+        if len as u64 > self.max_log_line_length as u64 {
+            Err(moqentra_types::Error::invalid_argument("log line too long"))
         } else {
             Ok(())
         }
@@ -199,6 +324,25 @@ mod tests {
     }
 
     #[test]
+    fn secret_provider_file_confined_to_root() {
+        let root = format!("/tmp/moqentra-secret-test-{}", std::process::id());
+        std::fs::remove_dir_all(&root).ok();
+        std::fs::create_dir_all(&root).unwrap();
+        let path = format!("{}/secret.txt", root);
+        std::fs::write(&path, "hunter2").unwrap();
+
+        let provider = SecretProvider::File { path: path.clone() };
+        assert_eq!(provider.resolve(&root).unwrap(), "hunter2");
+
+        let outside = SecretProvider::File {
+            path: "/etc/passwd".to_string(),
+        };
+        assert!(outside.resolve(&root).is_none());
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
     fn security_limits_enforced() {
         let limits = SecurityLimits::default();
         assert!(limits.check_upload_size(1024).is_ok());
@@ -207,5 +351,12 @@ mod tests {
 
         let deep = (0..40).fold(serde_json::json!("leaf"), |acc, _| serde_json::json!([acc]));
         assert!(limits.check_json_depth(&deep, 0).is_err());
+
+        assert!(limits.check_json_size(1024).is_ok());
+        assert!(limits.check_json_size(usize::MAX).is_err());
+        assert!(limits.check_proto_message_size(1024).is_ok());
+        assert!(limits.check_proto_message_size(u64::MAX).is_err());
+        assert!(limits.check_log_line_length(1024).is_ok());
+        assert!(limits.check_log_line_length(usize::MAX).is_err());
     }
 }

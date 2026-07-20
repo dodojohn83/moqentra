@@ -2,9 +2,10 @@
 
 use moqentra_types::{AttemptId, NodeId, UtcTimestamp};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::path::{Path, PathBuf};
 
 /// Kind of accelerator.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum AcceleratorKind {
     Nvidia,
     Amd,
@@ -80,16 +81,48 @@ pub struct ContainerConfig {
     pub security: ContainerSecurityProfile,
 }
 
+fn is_allowed_bind_mount_path(path: &str, base: &Path) -> bool {
+    let base = match base.canonicalize() {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    let abs = match std::fs::canonicalize(path) {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    abs.starts_with(base)
+}
+
 /// Local executor managing node resources and containers.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct LocalExecutor {
     allocations: HashMap<String, Allocation>,
     device_usage: BTreeMap<String, String>,
+    allocated_cpu_cores: u64,
+    allocated_memory_mib: u64,
+    workspace_root: PathBuf,
+}
+
+impl Default for LocalExecutor {
+    fn default() -> Self {
+        Self {
+            allocations: HashMap::new(),
+            device_usage: BTreeMap::new(),
+            allocated_cpu_cores: 0,
+            allocated_memory_mib: 0,
+            workspace_root: PathBuf::from("/tmp/moqentra"),
+        }
+    }
 }
 
 impl LocalExecutor {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_workspace_root(mut self, root: impl Into<PathBuf>) -> Self {
+        self.workspace_root = root.into();
+        self
     }
 
     pub fn allocate(
@@ -99,11 +132,35 @@ impl LocalExecutor {
         capabilities: &NodeCapabilities,
         fencing_token: u64,
     ) -> Result<Allocation, moqentra_types::Error> {
-        if request.memory_mib > capabilities.memory_mib {
+        if request.cpu_cores == 0 || request.memory_mib == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "cpu_cores and memory_mib must be greater than zero",
+            ));
+        }
+        let available_cpu =
+            (capabilities.cpu_cores as u64).saturating_sub(self.allocated_cpu_cores);
+        if (request.cpu_cores as u64) > available_cpu {
+            return Err(moqentra_types::Error::unavailable("insufficient cpu"));
+        }
+        let available_memory = capabilities.memory_mib.saturating_sub(self.allocated_memory_mib);
+        if request.memory_mib > available_memory {
             return Err(moqentra_types::Error::unavailable("insufficient memory"));
         }
-        if request.cpu_cores > capabilities.cpu_cores {
-            return Err(moqentra_types::Error::unavailable("insufficient cpu"));
+        if request.device_count == 0 && !request.devices.is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "device_count must be greater than zero",
+            ));
+        }
+        if request.devices.is_empty() && request.device_count > 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "device_count set but no device kinds requested",
+            ));
+        }
+        let unique_kinds: BTreeSet<_> = request.devices.iter().collect();
+        if unique_kinds.len() != request.devices.len() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "duplicate device kinds in request",
+            ));
         }
 
         let mut assigned = BTreeSet::new();
@@ -137,6 +194,14 @@ impl LocalExecutor {
             created_at: UtcTimestamp::now(),
             released_at: None,
         };
+        self.allocated_cpu_cores =
+            self.allocated_cpu_cores
+                .checked_add(request.cpu_cores as u64)
+                .ok_or_else(|| moqentra_types::Error::unavailable("cpu allocation overflow"))?;
+        self.allocated_memory_mib = self
+            .allocated_memory_mib
+            .checked_add(request.memory_mib)
+            .ok_or_else(|| moqentra_types::Error::unavailable("memory allocation overflow"))?;
         self.allocations.insert(allocation.id.clone(), allocation.clone());
         Ok(allocation)
     }
@@ -146,10 +211,16 @@ impl LocalExecutor {
             .allocations
             .get_mut(allocation_id)
             .ok_or_else(|| moqentra_types::Error::not_found("allocation"))?;
-        for uuid in &allocation.device_uuids {
-            self.device_usage.remove(uuid);
+        if allocation.released_at.is_none() {
+            for uuid in &allocation.device_uuids {
+                self.device_usage.remove(uuid);
+            }
+            self.allocated_cpu_cores =
+                self.allocated_cpu_cores.saturating_sub(allocation.cpu_cores as u64);
+            self.allocated_memory_mib =
+                self.allocated_memory_mib.saturating_sub(allocation.memory_mib);
+            allocation.released_at = Some(UtcTimestamp::now());
         }
-        allocation.released_at = Some(UtcTimestamp::now());
         Ok(())
     }
 
@@ -174,6 +245,32 @@ impl LocalExecutor {
             return Err(moqentra_types::Error::permission_denied(
                 "root execution not allowed",
             ));
+        }
+        fn valid_digest(d: &str) -> bool {
+            !d.is_empty() && d.contains(':') && d.split(':').all(|part| !part.is_empty())
+        }
+        if !valid_digest(&_config.image_digest) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "image digest must be in algorithm:hex form",
+            ));
+        }
+        for (src, target) in &_config.bind_mounts {
+            for path in [src.as_str(), target.as_str()] {
+                if path.is_empty()
+                    || path.contains('\0')
+                    || !path.starts_with('/')
+                    || path.split('/').any(|c| c == "..")
+                {
+                    return Err(moqentra_types::Error::permission_denied(
+                        "bind mount path traversal not allowed",
+                    ));
+                }
+            }
+            if !is_allowed_bind_mount_path(src, &self.workspace_root) {
+                return Err(moqentra_types::Error::permission_denied(
+                    "bind mount source outside workspace",
+                ));
+            }
         }
         Ok(format!(
             "container-{}",

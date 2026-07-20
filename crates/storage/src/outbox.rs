@@ -36,6 +36,7 @@ pub struct OutboxEvent {
     pub payload: Value,
     pub status: OutboxStatus,
     pub retry_count: u32,
+    pub failure_reason: Option<String>,
     pub created_at: UtcTimestamp,
 }
 
@@ -66,12 +67,12 @@ impl OutboxStore for InMemoryOutbox {
         if event.id == Uuid::nil() {
             event.id = Uuid::new_v4();
         }
-        self.events.lock().expect("lock").push(event.clone());
+        self.events.lock().unwrap_or_else(|e| e.into_inner()).push(event.clone());
         Ok(event)
     }
 
     async fn poll_pending(&self, limit: u32) -> Result<Vec<OutboxEvent>, Error> {
-        let mut events = self.events.lock().expect("lock");
+        let mut events = self.events.lock().unwrap_or_else(|e| e.into_inner());
         let mut pending: Vec<OutboxEvent> = events
             .iter_mut()
             .filter(|e| e.status == OutboxStatus::Pending)
@@ -90,17 +91,19 @@ impl OutboxStore for InMemoryOutbox {
     }
 
     async fn mark_completed(&self, event_id: Uuid) -> Result<(), Error> {
-        let mut events = self.events.lock().expect("lock");
+        let mut events = self.events.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(e) = events.iter_mut().find(|e| e.id == event_id) {
             e.status = OutboxStatus::Completed;
         }
         Ok(())
     }
 
-    async fn mark_failed(&self, event_id: Uuid, _reason: String) -> Result<(), Error> {
-        let mut events = self.events.lock().expect("lock");
+    async fn mark_failed(&self, event_id: Uuid, reason: String) -> Result<(), Error> {
+        let mut events = self.events.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(e) = events.iter_mut().find(|e| e.id == event_id) {
             e.status = OutboxStatus::Failed;
+            e.retry_count += 1;
+            e.failure_reason = Some(reason);
         }
         Ok(())
     }
@@ -124,6 +127,7 @@ mod tests {
             payload: serde_json::json!({}),
             status: OutboxStatus::Pending,
             retry_count: 0,
+            failure_reason: None,
             created_at: UtcTimestamp::now(),
         };
         store.append(event).await.unwrap();

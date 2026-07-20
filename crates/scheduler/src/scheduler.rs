@@ -125,14 +125,22 @@ impl PlanCompiler {
         attempt_id: AttemptId,
     ) -> Result<ExecutionPlan, moqentra_types::Error> {
         let spec = &job.spec;
-        if spec.image_digest.is_empty() || spec.code_digest.is_empty() {
+        fn valid_digest(d: &str) -> bool {
+            !d.is_empty() && d.contains(':') && d.split(':').all(|part| !part.is_empty())
+        }
+        if !valid_digest(&spec.image_digest) || !valid_digest(&spec.code_digest) {
             return Err(moqentra_types::Error::invalid_argument(
-                "missing image or code digest",
+                "image and code digests must be in algorithm:hex form",
             ));
         }
         if spec.resources.replicas == 0 {
             return Err(moqentra_types::Error::invalid_argument(
                 "replicas must be > 0",
+            ));
+        }
+        if spec.resources.cpu_milli == 0 || spec.resources.memory_mib == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "cpu_milli and memory_mib must be greater than zero",
             ));
         }
         let mut labels = BTreeMap::new();
@@ -149,12 +157,19 @@ impl PlanCompiler {
                 total_members: 1,
                 topology: "none".to_string(),
             },
-            moqentra_domain::training::DistributedConfig::Ddp { world_size } => GangGroup {
-                name: format!("gang-{}", attempt_id),
-                min_available: world_size,
-                total_members: world_size,
-                topology: spec.resources.topology.clone().unwrap_or_default(),
-            },
+            moqentra_domain::training::DistributedConfig::Ddp { world_size } => {
+                if world_size == 0 {
+                    return Err(moqentra_types::Error::invalid_argument(
+                        "ddp world_size must be > 0",
+                    ));
+                }
+                GangGroup {
+                    name: format!("gang-{}", attempt_id),
+                    min_available: world_size,
+                    total_members: world_size,
+                    topology: spec.resources.topology.clone().unwrap_or_default(),
+                }
+            }
         };
 
         Ok(ExecutionPlan {
@@ -196,12 +211,17 @@ impl ClusterTopology {
         &self,
         request: &ResourceRequest,
     ) -> Result<String, moqentra_types::Error> {
+        let total_cpu_milli = (request.replicas as u64)
+            .checked_mul(request.cpu_milli)
+            .ok_or_else(|| moqentra_types::Error::invalid_argument("cpu request overflow"))?;
+        let total_memory_mib = (request.replicas as u64)
+            .checked_mul(request.memory_mib)
+            .ok_or_else(|| moqentra_types::Error::invalid_argument("memory request overflow"))?;
         for (name, node) in &self.nodes {
-            let total_cpu_milli = (request.replicas as u64) * request.cpu_milli;
-            if (node.cpu_cores as u64) * 1000 < total_cpu_milli {
+            if (node.cpu_cores as u64).checked_mul(1000).is_none_or(|c| c < total_cpu_milli) {
                 continue;
             }
-            if node.memory_mib < request.memory_mib {
+            if node.memory_mib < total_memory_mib {
                 continue;
             }
             if request.accelerator_count > 0 {
@@ -212,8 +232,13 @@ impl ClusterTopology {
                         a.kind == request.accelerator_kind.as_deref().unwrap_or("")
                             && !node.taints.contains(&format!("no-{}", a.kind))
                     })
-                    .count() as u32;
-                if available < request.accelerator_count * request.replicas {
+                    .count() as u64;
+                let needed = (request.accelerator_count as u64)
+                    .checked_mul(request.replicas as u64)
+                    .ok_or_else(|| {
+                        moqentra_types::Error::invalid_argument("accelerator request overflow")
+                    })?;
+                if available < needed {
                     continue;
                 }
             }

@@ -26,13 +26,18 @@ pub struct Rendezvous {
 }
 
 impl Rendezvous {
-    pub fn new(attempt_id: AttemptId, world_size: u32) -> Self {
-        Self {
+    pub fn new(attempt_id: AttemptId, world_size: u32) -> Result<Self, moqentra_types::Error> {
+        if world_size == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "rendezvous world_size must be > 0",
+            ));
+        }
+        Ok(Self {
             attempt_id,
             world_size,
             members: BTreeMap::new(),
             finalized: false,
-        }
+        })
     }
 
     pub fn join(
@@ -48,7 +53,8 @@ impl Rendezvous {
         if self.members.contains_key(&rank_id) {
             return Err(moqentra_types::Error::conflict("rank already joined"));
         }
-        let rank_index = self.members.len() as u32;
+        let rank_index = u32::try_from(self.members.len())
+            .map_err(|_| moqentra_types::Error::internal("rank index overflow"))?;
         self.members.insert(rank_id, endpoint.into());
         Ok(rank_index)
     }
@@ -57,7 +63,12 @@ impl Rendezvous {
         if self.finalized {
             return Ok(());
         }
-        if self.members.len() as u32 != self.world_size {
+        if self.world_size == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "rendezvous world_size must be > 0",
+            ));
+        }
+        if self.members.len() != self.world_size as usize {
             return Err(moqentra_types::Error::unavailable("rendezvous incomplete"));
         }
         self.finalized = true;
@@ -141,13 +152,18 @@ pub struct DistributedJobState {
 }
 
 impl DistributedJobState {
-    pub fn new(attempt_id: AttemptId, world_size: u32) -> Self {
-        Self {
+    pub fn new(attempt_id: AttemptId, world_size: u32) -> Result<Self, moqentra_types::Error> {
+        if world_size == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "distributed job world_size must be > 0",
+            ));
+        }
+        Ok(Self {
             attempt_id,
             world_size,
             rank_exit_codes: BTreeMap::new(),
             global_cancelled: false,
-        }
+        })
     }
 
     pub fn report_exit(&mut self, rank_id: RankId, code: i32) {
@@ -155,7 +171,8 @@ impl DistributedJobState {
     }
 
     pub fn all_finished(&self) -> bool {
-        self.rank_exit_codes.len() as u32 == self.world_size
+        self.world_size > 0
+            && self.rank_exit_codes.len() == self.world_size as usize
             && self.rank_exit_codes.values().all(|c| c.is_some())
     }
 
@@ -197,7 +214,7 @@ mod tests {
     #[test]
     fn rendezvous_finalizes_when_full() {
         let gen = RandomIdGenerator;
-        let mut r = Rendezvous::new(AttemptId::new_v7(&gen), 2);
+        let mut r = Rendezvous::new(AttemptId::new_v7(&gen), 2).unwrap();
         let r1 = RankId::new_v7(&gen);
         let r2 = RankId::new_v7(&gen);
         r.join(r1, "10.0.0.1:1111").unwrap();
@@ -221,7 +238,7 @@ mod tests {
     #[test]
     fn distributed_job_requires_all_ranks_succeed() {
         let gen = RandomIdGenerator;
-        let mut state = DistributedJobState::new(AttemptId::new_v7(&gen), 2);
+        let mut state = DistributedJobState::new(AttemptId::new_v7(&gen), 2).unwrap();
         let r1 = RankId::new_v7(&gen);
         let r2 = RankId::new_v7(&gen);
         state.report_exit(r1, 0);

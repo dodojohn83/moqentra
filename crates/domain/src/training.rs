@@ -223,6 +223,9 @@ impl TrainingJob {
         ) {
             return Err(moqentra_types::Error::conflict("job cannot start attempt"));
         }
+        if self.attempts.len() >= self.spec.max_attempts as usize {
+            return Err(moqentra_types::Error::unavailable("max attempts reached"));
+        }
         self.attempts.push(attempt.id);
         self.current_attempt = Some(attempt);
         self.state = TrainingJobState::Starting;
@@ -323,6 +326,11 @@ impl TrainingJob {
         points: Vec<MetricPoint>,
         max_cardinality: usize,
     ) -> Result<(), moqentra_types::Error> {
+        if points.iter().any(|p| !p.value.is_finite()) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "metric value must be finite",
+            ));
+        }
         let names: BTreeMap<String, usize> = points.iter().fold(BTreeMap::new(), |mut acc, p| {
             *acc.entry(p.name.clone()).or_insert(0) += 1;
             acc
@@ -371,20 +379,32 @@ impl Experiment {
         name: impl Into<String>,
         dataset_version_id: DatasetVersionId,
         target_metric: impl Into<String>,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        let name = name.into();
+        let target_metric = target_metric.into();
+        if name.trim().is_empty() || name.len() > 128 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "experiment name must be non-empty and at most 128 characters",
+            ));
+        }
+        if target_metric.trim().is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "experiment target_metric must be non-empty",
+            ));
+        }
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             tenant_id,
             project_id,
-            name: name.into(),
+            name,
             dataset_version_id,
-            target_metric: target_metric.into(),
+            target_metric,
             job_ids: Vec::new(),
             best_model_version_id: None,
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn add_job(&mut self, job_id: TrainingJobId) {
@@ -543,6 +563,27 @@ mod tests {
     }
 
     #[test]
+    fn non_finite_metric_rejected() {
+        let mut job = make_job();
+        let nan = MetricPoint {
+            step: 1,
+            timestamp: UtcTimestamp::now(),
+            name: "loss".to_string(),
+            value: f64::NAN,
+            tags: BTreeMap::new(),
+        };
+        let inf = MetricPoint {
+            step: 1,
+            timestamp: UtcTimestamp::now(),
+            name: "loss".to_string(),
+            value: f64::INFINITY,
+            tags: BTreeMap::new(),
+        };
+        assert!(job.append_metrics(vec![nan], 10).is_err());
+        assert!(job.append_metrics(vec![inf], 10).is_err());
+    }
+
+    #[test]
     fn experiment_tracks_best_model() {
         let gen = RandomIdGenerator;
         let mut exp = Experiment::new(
@@ -552,7 +593,8 @@ mod tests {
             "exp-1",
             DatasetVersionId::new_v7(&gen),
             "accuracy",
-        );
+        )
+        .unwrap();
         let model = ModelVersionId::new_v7(&gen);
         exp.set_best(model);
         assert_eq!(exp.best_model_version_id, Some(model));

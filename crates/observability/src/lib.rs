@@ -4,6 +4,7 @@
 
 use moqentra_types::{RequestContext, UtcTimestamp};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
 /// OpenTelemetry trace context propagated across HTTP/gRPC and agent boundaries.
@@ -25,9 +26,10 @@ impl TraceContext {
 
     pub fn inject_headers(&self) -> BTreeMap<String, String> {
         let mut headers = BTreeMap::new();
+        let flags = if self.sampled { "01" } else { "00" };
         headers.insert(
             "traceparent".to_string(),
-            format!("00-{}-{}-01", self.trace_id, self.span_id),
+            format!("00-{}-{}-{}", self.trace_id, self.span_id, flags),
         );
         headers
     }
@@ -86,13 +88,64 @@ impl StructuredLog {
     /// Redacts known sensitive keys before serialization.
     pub fn sanitize(self) -> Self {
         let mut s = self;
-        for key in &["password", "secret", "token", "api_key", "private_key"] {
-            if s.fields.contains_key(*key) {
-                s.fields.insert((*key).to_string(), serde_json::json!("[REDACTED]"));
-            }
-        }
+        s.fields = Self::redact_fields(&s.fields);
         s
     }
+
+    fn redact_fields(
+        fields: &BTreeMap<String, serde_json::Value>,
+    ) -> BTreeMap<String, serde_json::Value> {
+        const SECRET_PATTERNS: &[&str] = &["password", "secret", "token", "api_key", "private_key"];
+        fields
+            .iter()
+            .map(|(k, v)| {
+                let redacted = SECRET_PATTERNS.iter().any(|p| is_secret_key(k, p));
+                let value = if redacted {
+                    serde_json::json!("[REDACTED]")
+                } else {
+                    Self::redact_value(v)
+                };
+                (k.clone(), value)
+            })
+            .collect()
+    }
+
+    fn redact_value(value: &serde_json::Value) -> serde_json::Value {
+        const SECRET_PATTERNS: &[&str] = &["password", "secret", "token", "api_key", "private_key"];
+        match value {
+            serde_json::Value::Object(map) => serde_json::Value::Object(
+                map.iter()
+                    .map(|(k, v)| {
+                        let redacted = SECRET_PATTERNS.iter().any(|p| is_secret_key(k, p));
+                        if redacted {
+                            (k.clone(), serde_json::json!("[REDACTED]"))
+                        } else {
+                            (k.clone(), Self::redact_value(v))
+                        }
+                    })
+                    .collect(),
+            ),
+            serde_json::Value::Array(arr) => {
+                serde_json::Value::Array(arr.iter().map(Self::redact_value).collect())
+            }
+            other => other.clone(),
+        }
+    }
+}
+
+/// Returns true when `key` contains `pat` as a distinct token (case-insensitive).
+/// This prevents false positives such as "tokenization" while still matching
+/// keys like "my_password" or "api-key".
+fn is_secret_key(key: &str, pat: &str) -> bool {
+    let lower = key.to_lowercase();
+    let pat = pat.to_lowercase();
+    lower.match_indices(&pat).any(|(pos, _)| {
+        let before_ok = pos == 0 || !lower.as_bytes()[pos - 1].is_ascii_alphanumeric();
+        let after_pos = pos + pat.len();
+        let after_ok =
+            after_pos >= lower.len() || !lower.as_bytes()[after_pos].is_ascii_alphanumeric();
+        before_ok && after_ok
+    })
 }
 
 /// Metric name with namespace and unit budget.
@@ -131,16 +184,15 @@ pub struct AuditRecord {
 
 impl AuditRecord {
     pub fn verify_integrity(&self) -> bool {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        self.id.hash(&mut hasher);
-        self.tenant_id.hash(&mut hasher);
-        self.actor.hash(&mut hasher);
-        self.action.hash(&mut hasher);
-        self.resource.hash(&mut hasher);
-        self.outcome.hash(&mut hasher);
-        let computed = format!("{:x}", hasher.finish());
+        let mut hasher = Sha256::new();
+        hasher.update(self.id.as_bytes());
+        hasher.update(self.tenant_id.as_bytes());
+        hasher.update(self.actor.as_bytes());
+        hasher.update(self.action.as_bytes());
+        hasher.update(self.resource.as_bytes());
+        hasher.update(self.outcome.as_bytes());
+        hasher.update(self.timestamp.to_string().as_bytes());
+        let computed = format!("{:x}", hasher.finalize());
         self.integrity_hash == computed
     }
 }
@@ -159,8 +211,27 @@ impl DiagnosticBundle {
     }
 
     pub fn is_safe(&self) -> bool {
-        let raw = serde_json::to_string(&self.redacted_logs).unwrap_or_default();
-        !raw.contains("password=") && !raw.contains("token=")
+        self.redacted_logs.iter().all(|log| {
+            let fields: serde_json::Map<String, serde_json::Value> =
+                log.fields.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            Self::is_safe_value(&serde_json::Value::Object(fields))
+        })
+    }
+
+    fn is_safe_value(value: &serde_json::Value) -> bool {
+        match value {
+            serde_json::Value::Object(map) => map.iter().all(|(k, v)| {
+                const SECRET_PATTERNS: &[&str] =
+                    &["password", "secret", "token", "api_key", "private_key"];
+                if SECRET_PATTERNS.iter().any(|p| is_secret_key(k, p)) {
+                    v == &serde_json::json!("[REDACTED]")
+                } else {
+                    Self::is_safe_value(v)
+                }
+            }),
+            serde_json::Value::Array(arr) => arr.iter().all(Self::is_safe_value),
+            _ => true,
+        }
     }
 }
 
