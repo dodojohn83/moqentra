@@ -3,6 +3,7 @@
 #![allow(missing_docs)]
 
 pub mod annotation;
+pub mod application;
 pub mod conversion;
 pub mod dataset;
 pub mod export;
@@ -15,6 +16,10 @@ pub mod training;
 pub use annotation::{
     Annotation, AnnotationLog, AnnotationProject, AnnotationProjectState, AnnotationTask,
     AnnotationTaskState, AutosaveResult, ExportFormat, Label, Ontology, TaskLease, TaskType,
+};
+pub use application::{
+    Application, ApplicationNode, ApplicationSpec, ApplicationVersion, ApplicationVersionState,
+    Binding, Port, ResourceRef,
 };
 pub use conversion::{
     ConversionJob, ConversionJobState, ConversionProfile, ConversionTarget, EvaluationMetric,

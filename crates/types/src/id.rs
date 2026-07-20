@@ -146,6 +146,7 @@ define_id!(PipelineId, "Pipeline definition.");
 define_id!(PipelineRunId, "Pipeline execution run.");
 define_id!(HpoRunId, "Hyper-parameter optimization run.");
 define_id!(NotebookId, "Interactive notebook instance.");
+define_id!(ApplicationId, "Application family identifier.");
 define_id!(ApplicationVersionId, "Versioned application graph.");
 define_id!(
     DeploymentId,
