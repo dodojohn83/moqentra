@@ -108,9 +108,10 @@ impl DatasetVersion {
                 "version has no assets",
             ));
         }
+        let digest = compute_manifest_digest(self)?;
         self.state = DatasetVersionState::Published;
         self.published_at = Some(UtcTimestamp::now());
-        self.manifest_digest = Some(compute_manifest_digest(self)?);
+        self.manifest_digest = Some(digest);
         Ok(())
     }
 
