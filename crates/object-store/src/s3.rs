@@ -25,7 +25,7 @@ impl std::fmt::Debug for S3Config {
             .field("bucket", &self.bucket)
             .field("endpoint", &self.endpoint)
             .field("region", &self.region)
-            .field("access_key_id", &self.access_key_id)
+            .field("access_key_id", &"[REDACTED]")
             .field("secret_access_key", &"[REDACTED]")
             .field("force_path_style", &self.force_path_style)
             .finish()
