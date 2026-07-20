@@ -98,6 +98,20 @@
         "moqentra-types"
       ],
       "forbidden_external": []
+    },
+    "moqentra-test-harness": {
+      "description": "Test harness fakes and simulators.",
+      "allowed_internal": [
+        "moqentra-types", "moqentra-domain"
+      ],
+      "forbidden_external": []
+    },
+    "moqentra-release-manager": {
+      "description": "Release packaging, migration and rollback checks.",
+      "allowed_internal": [
+        "moqentra-types"
+      ],
+      "forbidden_external": []
     }
   },
   "apps": {

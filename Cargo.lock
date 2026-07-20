@@ -2073,6 +2073,21 @@ dependencies = [
 [[package]]
 name = "moqentra-observability"
 version = "0.1.0"
+dependencies = [
+ "moqentra-types",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "moqentra-release-manager"
+version = "0.1.0"
+dependencies = [
+ "moqentra-types",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "moqentra-scheduler"
@@ -2109,6 +2124,16 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "moqentra-test-harness"
+version = "0.1.0"
+dependencies = [
+ "moqentra-domain",
+ "moqentra-types",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

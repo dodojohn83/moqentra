@@ -1,5 +1,5 @@
 [package]
-name = "moqentra-observability"
+name = "moqentra-test-harness"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,6 +8,6 @@ repository.workspace = true
 
 [dependencies]
 moqentra-types = { path = "../types" }
+moqentra-domain = { path = "../domain" }
 serde = { workspace = true }
 serde_json = "1.0"
-tracing = { workspace = true }

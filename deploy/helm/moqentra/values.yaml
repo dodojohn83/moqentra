@@ -1,0 +1,33 @@
+replicaCount: 2
+
+image:
+  repository: moqentra/control-plane
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+external:
+  db: false
+  s3: false
+  oidc: false
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+networkPolicy:
+  enabled: false
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+upgrade:
+  hooks: true

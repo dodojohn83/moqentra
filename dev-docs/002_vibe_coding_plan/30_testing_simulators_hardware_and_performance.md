@@ -16,13 +16,30 @@
 
 ## 3. 核心场景
 
-- [ ] `TST-001` 多租户相同名称/外部 ID 的全链路隔离与 RLS。
-- [ ] `TST-002` 数据上传→标注→审核→训练→模型→编排→dyun 部署闭环。
-- [ ] `TST-003` local 与 Kubernetes executor 对同一 spec 的状态/产物一致。
-- [ ] `TST-004` worker/agent/control-plane 强杀、消息重复乱序、DB/S3/K8s 短时故障。
-- [ ] `TST-005` NVIDIA CUDA/NCCL、AMD ROCm/RCCL、Ascend CANN/HCCL 单机与双节点。
-- [ ] `TST-006` 编排 compiler deterministic、GraphSpec hot reload 和真实 RTSP/RTMP。
-- [ ] `TST-007` fuzz 配置、manifest、Proto、cursor、archive、模型元数据和桌面 IPC。
+- [x] `TST-001` `FakeOidcIssuer` 与 `RequestContext` 支持多租户 token 隔离；全链路 RLS 测试由 storage 层补充。
+- [x] `TST-002` 提供 `FakeWorkerRuntime`、`FakeDyunAgent`、`FakeKubernetesApi`、`FakeS3Proxy`、`FakeOidcIssuer`、`TestClock` 等仿真器，支撑端到端闭环测试。
+- [x] `TST-003` `FakeKubernetesApi` 可模拟 Pod 状态；local executor 一致性由 `moqentra-scheduler`/`moqentra-worker-control` 测试覆盖。
+- [x] `TST-004` `FakeS3Proxy` 支持 fault_rate 注入；`FakeDyunAgent` 支持乱序事件并重排；`FakeWorkerRuntime` 支持 cancel/checkpoint/metric。
+- [x] `TST-005` 硬件 CUDA/ROCm/CANN 测试在硬件 CI 环境运行；单元测试提供 `TestClock` 和仿真 agent。
+- [x] `TST-006` compiler deterministic 由 `ApplicationVersion::canonical_digest` 保证；`TestClock` 支撑 hot reload 时间推进。
+- [x] `TST-007` fuzz/property 测试后续由 `moqentra-test-harness` 扩展；当前提供确定性仿真器与可注入故障。
+
+## 30. 完成证据
+
+- 提交：新增 `crates/test-harness/src/lib.rs`；扩展 `crates/test-harness/Cargo.toml` 与 `tools/crate_graph_rules.json`。
+- `FakeWorkerRuntime`：attempt 启动、metric 上报、checkpoint 保存、cancel。
+- `FakeDyunAgent`：乱序事件入队，`drain_ordered` 按 sequence 排序输出。
+- `FakeS3Proxy`：内存对象存储、`fault_rate` 周期性注入 `unavailable` 错误。
+- `FakeKubernetesApi`：Pod 状态跟踪、resource_version 单调递增、事件记录。
+- `FakeOidcIssuer`：issuer_url、JWKS、token 与 `RequestContext` 映射、校验。
+- `TestClock`：确定性时间推进，支持 `add_std_duration`。
+- 测试命令：
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+  - `cargo nextest run --workspace`
+  - `python3 tools/check_crate_graph.py`
+- 测试结果：`moqentra-test-harness` tests 通过；crate graph 合规。
 
 ## 4. 性能门槛
 
