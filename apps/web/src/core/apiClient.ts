@@ -39,7 +39,8 @@ export async function apiRequest(
   if (req.idempotencyKey) headers["Idempotency-Key"] = req.idempotencyKey;
   if (req.ifMatch) headers["If-Match"] = req.ifMatch;
 
-  const url = `${baseUrl.replace(/\/$/, "")}${req.path}`;
+  const path = req.path.startsWith("/") ? req.path : `/${req.path}`;
+  const url = `${baseUrl.replace(/\/$/, "")}${path}`;
   const response = await fetch(url, {
     method: req.method,
     headers,
@@ -88,7 +89,8 @@ export async function* apiStream<T>(
   path: string,
   token?: string,
 ): AsyncGenerator<T, void, unknown> {
-  const url = `${baseUrl.replace(/\/$/, "")}${path}`;
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const url = `${baseUrl.replace(/\/$/, "")}${normalizedPath}`;
   const response = await fetch(url, {
     headers: {
       Accept: "text/event-stream",
