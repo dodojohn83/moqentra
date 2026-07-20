@@ -50,6 +50,9 @@ impl HmacValidator {
 
 impl TokenValidator for HmacValidator {
     fn validate(&self, token: &str) -> Result<Principal, Error> {
+        if self.secret.is_empty() {
+            return Err(Error::unauthenticated("HMAC secret must not be empty"));
+        }
         let header = decode_header(token)
             .map_err(|e| Error::unauthenticated(format!("invalid token header: {}", e)))?;
         let algorithm = header.alg;
@@ -97,6 +100,11 @@ impl ServiceAccountValidator {
 
 impl TokenValidator for ServiceAccountValidator {
     fn validate(&self, token: &str) -> Result<Principal, Error> {
+        if token.is_empty() {
+            return Err(Error::unauthenticated(
+                "service account token must not be empty",
+            ));
+        }
         if let Some(name) = self.credentials.get(token) {
             Ok(Principal::service(name.clone()))
         } else {
