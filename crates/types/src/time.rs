@@ -120,7 +120,8 @@ impl Deadline {
 
     /// Creates a deadline from a `std::time::Duration` relative to the clock.
     pub fn after_std(clock: &dyn Clock, duration: std::time::Duration) -> Option<Self> {
-        let d = Duration::new(duration.as_secs() as i64, duration.subsec_nanos() as i32);
+        let secs = i64::try_from(duration.as_secs()).ok()?;
+        let d = Duration::new(secs, duration.subsec_nanos() as i32);
         Self::after(clock, d)
     }
 
