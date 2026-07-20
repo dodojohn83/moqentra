@@ -65,8 +65,11 @@ export class UploadManager {
             Math.min((i + 1) * CHUNK_SIZE, state.file.size),
           );
           const result = await uploadChunk(chunk, i, state.abortController.signal);
-          if (result.chunkIndex !== i) {
+          if (result.chunkIndex < 0 || result.chunkIndex >= totalChunks || result.chunkIndex !== i) {
             throw new Error(`chunk index mismatch: expected ${i}, got ${result.chunkIndex}`);
+          }
+          if (!result.etag) {
+            throw new Error(`missing etag for chunk ${i}`);
           }
           state.etags[result.chunkIndex] = result.etag;
           state.completedChunks = i + 1;
