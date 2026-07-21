@@ -3,11 +3,12 @@
 //! Composes application services with auth, rate limiting and a minimal
 //! northbound REST surface. Health endpoints stay unauthenticated.
 
-use axum::extract::{Path, State};
+use axum::extract::{DefaultBodyLimit, Path, Request, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::response::IntoResponse;
+use axum::middleware::Next;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::{middleware, Json, Router};
 use moqentra_application::{
     plan_dispatch, ApplicationCompiler, CompileResult, DispatchAction, InMemoryAnnotationRegistry,
     InMemoryDatasetRegistry, InMemoryModelRegistry, InMemoryTrainingRegistry,
@@ -798,6 +799,48 @@ async fn list_outbox(
     Ok(Json(items))
 }
 
+/// Global security response headers.
+async fn security_headers(req: Request, next: Next) -> Response {
+    let mut response = next.run(req).await;
+    let headers = response.headers_mut();
+    headers.insert("x-content-type-options", "nosniff".parse().unwrap());
+    headers.insert("x-frame-options", "DENY".parse().unwrap());
+    headers.insert(
+        "content-security-policy",
+        "default-src 'self'".parse().unwrap(),
+    );
+    headers.insert(
+        "referrer-policy",
+        "strict-origin-when-cross-origin".parse().unwrap(),
+    );
+    response
+}
+
+/// Rejects requests without an Authorization header for protected routes when
+/// authentication is required. Health/ready endpoints stay unauthenticated;
+/// the handler-layer `resolve_context` performs full token validation.
+async fn require_auth_middleware(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next,
+) -> Response {
+    let path = req.uri().path();
+    if state.require_auth
+        && !matches!(path, "/healthz" | "/readyz")
+        && bearer_token(req.headers()).is_none()
+    {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ProblemDetails::from_error(
+                &Error::unauthenticated("authorization required"),
+                "",
+            )),
+        )
+            .into_response();
+    }
+    next.run(req).await
+}
+
 fn app_router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
@@ -824,7 +867,13 @@ fn app_router(state: AppState) -> Router {
             post(activate_annotation_project),
         )
         .route("/v1/outbox", get(list_outbox))
-        .with_state(state)
+        .with_state(state.clone())
+        .layer(DefaultBodyLimit::max(1024 * 1024))
+        .layer(middleware::from_fn(security_headers))
+        .layer(middleware::from_fn_with_state(
+            state,
+            require_auth_middleware,
+        ))
 }
 
 /// Background worker: poll outbox and apply side-effects (scheduler enqueue,
