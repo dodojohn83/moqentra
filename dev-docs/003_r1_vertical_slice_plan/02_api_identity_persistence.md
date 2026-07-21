@@ -37,9 +37,11 @@
 
 - [ ] `R1-IAM-001` 实现 OIDC discovery、JWKS 缓存与轮换、issuer/audience/nonce 校验、clock skew 和失败降级；移除生产 HMAC 开发 token 路径。
 - [ ] `R1-IAM-002` 从 token 得到 principal，只从数据库成员关系解析 tenant/project role；切换租户必须重新授权。
-- [ ] `R1-IAM-003` 实现 tenant admin、data engineer、annotator、reviewer、algorithm engineer、operator 的 deny-by-default 权限矩阵。
+- [x] `R1-IAM-003` 实现 tenant admin、data engineer、annotator、reviewer、algorithm engineer、operator 的 deny-by-default 权限矩阵。
+  - Evidence: `crates/auth/src/rbac.rs` (`Authorizer` with `Role::{TenantAdmin,DataEngineer,Annotator,Reviewer,AlgorithmEngineer,Operator}`, deny-by-default, project/tenant isolation, tests).
 - [ ] `R1-IAM-004` 每个写操作、审核、发布、下载授权和拒绝结果写入结构化审计；审计内容脱敏且不可被普通租户用户修改。
-- [ ] `R1-IAM-005` 对 health 以外路由启用认证、限流、请求大小、timeout、request/correlation ID 和安全响应头 middleware。
+- [~] `R1-IAM-005` 对 health 以外路由启用认证、限流、请求大小、timeout、request/correlation ID 和安全响应头 middleware。
+  - Evidence: `apps/control-plane/src/main.rs` `require_auth_middleware` (auth for non-health), `security_headers` middleware, `DefaultBodyLimit`, `x-request-id` handling in `resolve_context`; per-tenant rate limiting in `check_rate_limit`. Timeout layer pending.
 
 ## 5. 完成条件与测试
 
