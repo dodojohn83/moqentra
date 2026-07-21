@@ -15,12 +15,12 @@
 
 ## 2. 任务
 
-- [ ] `R1-GOV-001` 在 `docs/capability-tracking.md` 为能力增加 `designed / implemented / integrated / accepted` 四级状态和证据链接；初始状态按仓库真实实现填写。
-- [ ] `R1-GOV-002` 核对 OpenAPI、Proto、JSON Schema、运行路由和数据库表，建立差距清单；每个差距绑定本执行包唯一任务 ID。
-- [ ] `R1-GOV-003` 建立 R1 风险登记，至少覆盖 LabelU v5.11.1 不可用、dyun-gu 未发布 tag、k3s kubeconfig 权限、RTX 3090 仅 preview 和真实 RTSP/RTMP 环境。
-- [ ] `R1-GOV-004` 为集成测试定义固定环境清单：PostgreSQL、MinIO、Dex、Docker、k3s、Volcano、NVIDIA device plugin、RTX 3090、dyun-gu pinned commit。
-- [ ] `R1-GOV-005` 建立 `artifacts/r1-evidence/<build-id>/` 或等价 CI artifact 约定，统一保存版本、命令、JUnit、日志、摘要、媒体输出和故障注入结果；仓库不提交大体积证据。
-- [ ] `R1-GOV-006` 把 `.github/workflows/ci-staged.yml` 从“空骨架手工任务”改为按变更路径自动触发，并建立 required checks 清单。
+- [x] `R1-GOV-001` 在 `docs/capability-tracking.md` 为能力增加 `designed / implemented / integrated / accepted` 四级状态和证据链接；初始状态按仓库真实实现填写。
+- [x] `R1-GOV-002` 核对 OpenAPI、Proto、JSON Schema、运行路由和数据库表，建立差距清单；每个差距绑定本执行包唯一任务 ID。
+- [x] `R1-GOV-003` 建立 R1 风险登记，至少覆盖 LabelU v5.11.1 不可用、dyun-gu 未发布 tag、k3s kubeconfig 权限、RTX 3090 仅 preview 和真实 RTSP/RTMP 环境。
+- [x] `R1-GOV-004` 为集成测试定义固定环境清单：PostgreSQL、MinIO、Dex、Docker、k3s、Volcano、NVIDIA device plugin、RTX 3090、dyun-gu pinned commit。
+- [x] `R1-GOV-005` 建立 `artifacts/r1-evidence/<build-id>/` 或等价 CI artifact 约定，统一保存版本、命令、JUnit、日志、摘要、媒体输出和故障注入结果；仓库不提交大体积证据。
+- [x] `R1-GOV-006` 把 `.github/workflows/ci-staged.yml` 从“空骨架手工任务”改为按变更路径自动触发，并建立 required checks 清单。
 
 ## 3. 状态推进规则
 
@@ -38,3 +38,19 @@
 - 任何开发者能从追踪矩阵定位能力、任务、代码、测试和证据。
 - R1 阻塞项具有 owner、解除条件和失败门禁，不使用“后续补充”关闭任务。
 - 002 文档保持历史事实，不回写或伪造其完成证据。
+
+## 5. 完成证据
+
+- 提交：本 PR
+- 变更：
+  - `docs/capability-tracking.md` 增加 `Status`（designed/implemented/integrated/accepted）和 `Evidence` 列，并按仓库真实实现填写初始状态。
+  - 新增 `gap-register.md`、 `risk-register.md`、 `environment-manifest.md`。
+  - 新增 `artifacts/r1-evidence/` 目录约定与 `.gitignore` 规则。
+  - 更新 `.github/workflows/ci-staged.yml`，从手工触发改为按路径自动触发，并注释 required checks 清单。
+  - 修复 `apps/node-agent/src/main.rs` 与 `apps/scheduler/src/main.rs` 中未使用的 `post` 导入，保证 `cargo clippy --workspace --all-targets -- -D warnings` 通过。
+- 测试：
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+- 结果：全部通过（Rust workspace 单元测试）。
+- 限制：本任务为治理与基线校准，未修改业务代码；后续 `R1-API-*`、`R1-DB-*` 等任务负责持久化与真实集成。

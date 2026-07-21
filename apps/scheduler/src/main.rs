@@ -3,7 +3,7 @@
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::{get, post};
+use axum::routing::get;
 use axum::{Json, Router};
 use moqentra_scheduler::{LeaderElection, QueueEntry, Reconciler, SchedulingQueue};
 use moqentra_types::{RandomIdGenerator, TenantId, UtcTimestamp};

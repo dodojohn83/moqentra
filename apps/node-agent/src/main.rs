@@ -3,7 +3,7 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get};
 use axum::{Json, Router};
 use moqentra_types::{AttemptId, NodeId, RandomIdGenerator, UtcTimestamp};
 use moqentra_worker_control::local_executor::{

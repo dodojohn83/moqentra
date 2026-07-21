@@ -27,3 +27,6 @@ __pycache__/
 # Test artifacts
 /test-results/
 /coverage/
+
+# R1 evidence build directories (keep README.md and .gitkeep)
+/artifacts/r1-evidence/*/
