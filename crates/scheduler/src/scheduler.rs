@@ -47,8 +47,13 @@ impl SchedulingQueue {
         if self.entries.len() >= self.max_jobs {
             return Err(moqentra_types::Error::unavailable("queue full"));
         }
+        let tenant_count = u64::try_from(self.entries.len()).unwrap_or(u64::MAX);
+        if tenant_count >= self.tenant_quota {
+            return Err(moqentra_types::Error::unavailable("tenant quota exceeded"));
+        }
         let project_count =
-            self.entries.iter().filter(|e| e.project_id == entry.project_id).count() as u64;
+            u64::try_from(self.entries.iter().filter(|e| e.project_id == entry.project_id).count())
+                .unwrap_or(u64::MAX);
         let quota = self.project_quota.get(&entry.project_id).copied().unwrap_or(u64::MAX);
         if project_count >= quota {
             return Err(moqentra_types::Error::unavailable("project quota exceeded"));
@@ -61,7 +66,7 @@ impl SchedulingQueue {
         let mut best_idx = 0usize;
         let mut best_score = None;
         for (idx, e) in self.entries.iter().enumerate() {
-            let score = (e.priority as u64, std::cmp::Reverse(e.submitted_at));
+            let score = (u64::from(e.priority), std::cmp::Reverse(e.submitted_at));
             if best_score.as_ref().is_none_or(|s: &(u64, _)| score > *s) {
                 best_score = Some(score);
                 best_idx = idx;
@@ -126,14 +131,6 @@ impl PlanCompiler {
     ) -> Result<ExecutionPlan, moqentra_types::Error> {
         job.spec.validate()?;
         let spec = &job.spec;
-        fn valid_digest(d: &str) -> bool {
-            !d.is_empty() && d.contains(':') && d.split(':').all(|part| !part.is_empty())
-        }
-        if !valid_digest(&spec.image_digest) || !valid_digest(&spec.code_digest) {
-            return Err(moqentra_types::Error::invalid_argument(
-                "image and code digests must be in algorithm:hex form",
-            ));
-        }
         if spec.resources.replicas == 0 {
             return Err(moqentra_types::Error::invalid_argument(
                 "replicas must be > 0",
@@ -212,30 +209,32 @@ impl ClusterTopology {
         &self,
         request: &ResourceRequest,
     ) -> Result<String, moqentra_types::Error> {
-        let total_cpu_milli = (request.replicas as u64)
+        let total_cpu_milli = u64::from(request.replicas)
             .checked_mul(request.cpu_milli)
             .ok_or_else(|| moqentra_types::Error::invalid_argument("cpu request overflow"))?;
-        let total_memory_mib = (request.replicas as u64)
+        let total_memory_mib = u64::from(request.replicas)
             .checked_mul(request.memory_mib)
             .ok_or_else(|| moqentra_types::Error::invalid_argument("memory request overflow"))?;
         for (name, node) in &self.nodes {
-            if (node.cpu_cores as u64).checked_mul(1000).is_none_or(|c| c < total_cpu_milli) {
+            if u64::from(node.cpu_cores).checked_mul(1000).is_none_or(|c| c < total_cpu_milli) {
                 continue;
             }
             if node.memory_mib < total_memory_mib {
                 continue;
             }
             if request.accelerator_count > 0 {
-                let available = node
-                    .accelerators
-                    .iter()
-                    .filter(|a| {
-                        a.kind == request.accelerator_kind.as_deref().unwrap_or("")
-                            && !node.taints.contains(&format!("no-{}", a.kind))
-                    })
-                    .count() as u64;
-                let needed = (request.accelerator_count as u64)
-                    .checked_mul(request.replicas as u64)
+                let available = u64::try_from(
+                    node.accelerators
+                        .iter()
+                        .filter(|a| {
+                            a.kind == request.accelerator_kind.as_deref().unwrap_or("")
+                                && !node.taints.contains(&format!("no-{}", a.kind))
+                        })
+                        .count(),
+                )
+                .map_err(|_| moqentra_types::Error::internal("accelerator count overflow"))?;
+                let needed = u64::from(request.accelerator_count)
+                    .checked_mul(u64::from(request.replicas))
                     .ok_or_else(|| {
                         moqentra_types::Error::invalid_argument("accelerator request overflow")
                     })?;
@@ -270,8 +269,10 @@ mod tests {
     fn make_job(replicas: u32, kind: Option<&str>) -> TrainingJob {
         let gen = RandomIdGenerator;
         let spec = TrainingJobSpec {
-            code_digest: "sha256:code".to_string(),
-            image_digest: "sha256:image".to_string(),
+            code_digest: "sha256:5694d08a2e53ffcae0c3103e5ad6f6076abd960eb1f8a56577040bc1028f702b"
+                .to_string(),
+            image_digest: "sha256:6105d6cc76af400325e94d588ce511be5bfdbb73b437dc51eca43917d7a43e3d"
+                .to_string(),
             dataset_version_id: DatasetVersionId::new_v7(&gen),
             hyperparameters: moqentra_domain::training::ParameterSchema {
                 argv: vec!["train.py".to_string()],

@@ -50,7 +50,8 @@ async fn main() -> Result<()> {
             let applied: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
                 .fetch_one(&pool)
                 .await?;
-            if (applied.max(0) as usize) == migrations.len() {
+            let applied_count = usize::try_from(applied.max(0)).unwrap_or(usize::MAX);
+            if applied_count == migrations.len() {
                 println!("Database is up to date.");
             } else {
                 anyhow::bail!("Database is not at the latest migration");

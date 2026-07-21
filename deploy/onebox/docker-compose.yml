@@ -44,7 +44,7 @@ services:
       OBJECT_STORE_ENDPOINT: http://minio:9000
       OBJECT_STORE_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       OBJECT_STORE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
-      OIDC_ISSUER_URL: http://oidc:${OIDC_PORT:-5556}/dex
+      OIDC_ISSUER_URL: http://oidc:5556/dex
     ports:
       - "${CONTROL_PLANE_PORT:-8080}:8080"
     depends_on:

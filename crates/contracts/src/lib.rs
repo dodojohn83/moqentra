@@ -13,6 +13,7 @@ pub mod placeholder {
 include!(concat!(env!("OUT_DIR"), "/prost_generated.rs"));
 
 #[cfg(test)]
+#[allow(clippy::as_conversions)]
 mod tests {
     use crate::moqentra::common::v1::{Error as ProtoError, ErrorKind, Pagination, RequestContext};
     use prost::Message;

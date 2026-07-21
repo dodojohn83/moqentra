@@ -213,7 +213,7 @@ class PyTorchAdapter(WorkerLifecycle):
 
     def save_checkpoint(self, path: Path) -> str:
         path.write_text("checkpoint")
-        return "sha256:checkpoint"
+        return "sha256:47320987f9a49d5b00119b960f247a956773f57543982b8bfcb6da5bb3afd9ef"
 
     def finalize(self) -> Dict[str, Any]:
         return {"status": "ok"}

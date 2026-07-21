@@ -54,9 +54,9 @@ impl AssetRef {
                 "asset media_type is empty",
             ));
         }
-        if !self.digest.contains(':') || self.digest.split(':').any(|part| part.is_empty()) {
+        if !moqentra_types::valid_content_digest(&self.digest) {
             return Err(moqentra_types::Error::invalid_argument(
-                "asset digest must be algorithm:hex",
+                "asset digest must be a valid content digest",
             ));
         }
         Ok(())
@@ -294,7 +294,8 @@ mod tests {
             .add_asset(AssetRef {
                 name: "train.parquet".to_string(),
                 object_key: "tenants/.../train.parquet".to_string(),
-                digest: "sha256:abc".to_string(),
+                digest: "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                    .to_string(),
                 size: 1024,
                 media_type: "application/octet-stream".to_string(),
                 metadata: serde_json::json!({}),
@@ -310,7 +311,8 @@ mod tests {
             .add_asset(AssetRef {
                 name: "extra.parquet".to_string(),
                 object_key: "x".to_string(),
-                digest: "sha256:def".to_string(),
+                digest: "sha256:cb8379ac2098aa165029e3938a51da0bcecfc008fd6795f401178647f96c5b34"
+                    .to_string(),
                 size: 1,
                 media_type: "application/octet-stream".to_string(),
                 metadata: serde_json::json!({}),
@@ -330,7 +332,8 @@ mod tests {
             .add_asset(AssetRef {
                 name: "a.bin".to_string(),
                 object_key: "a".to_string(),
-                digest: "sha256:x".to_string(),
+                digest: "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+                    .to_string(),
                 size: 1,
                 media_type: "application/octet-stream".to_string(),
                 metadata: serde_json::json!({}),

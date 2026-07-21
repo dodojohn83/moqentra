@@ -177,12 +177,10 @@ impl PipelineRun {
             .all(|s| matches!(s, NodeRunState::Succeeded | NodeRunState::Cached))
         {
             self.state = PipelineRunState::Succeeded;
-        } else if self
-            .node_states
-            .values()
-            .any(|s| matches!(s, NodeRunState::Failed | NodeRunState::Cancelled))
-        {
+        } else if self.node_states.values().any(|s| matches!(s, NodeRunState::Failed)) {
             self.state = PipelineRunState::Failed;
+        } else if self.node_states.values().any(|s| matches!(s, NodeRunState::Cancelled)) {
+            self.state = PipelineRunState::Cancelled;
         }
     }
 }
@@ -309,9 +307,11 @@ impl HpoRun {
                 "metric must be finite",
             ));
         }
+        let number_usize = usize::try_from(number)
+            .map_err(|_| moqentra_types::Error::invalid_argument("trial number too large"))?;
         let trial = self
             .trials
-            .get_mut(number as usize)
+            .get_mut(number_usize)
             .ok_or_else(|| moqentra_types::Error::not_found("trial"))?;
         if !matches!(trial.state, TrialState::Pending | TrialState::Running) {
             return Err(moqentra_types::Error::conflict("trial is not active"));
@@ -319,9 +319,17 @@ impl HpoRun {
         trial.metric = Some(metric);
         trial.training_job_id = Some(job_id);
         trial.state = TrialState::Completed;
-        if self.best_trial.is_none_or(|best| {
-            self.trials[best as usize].metric.unwrap_or(f64::NEG_INFINITY) < metric
-        }) {
+        let is_better = match self.best_trial {
+            None => true,
+            Some(best) => {
+                let best_idx = usize::try_from(best)
+                    .map_err(|_| moqentra_types::Error::internal("best trial index overflow"))?;
+                self.trials
+                    .get(best_idx)
+                    .is_none_or(|t| t.metric.unwrap_or(f64::NEG_INFINITY) < metric)
+            }
+        };
+        if is_better {
             self.best_trial = Some(number);
         }
         self.updated_at = UtcTimestamp::now();
@@ -386,9 +394,9 @@ impl Notebook {
                 "hostPath not allowed",
             ));
         }
-        if self.image_digest.is_empty() {
+        if !moqentra_types::valid_content_digest(&self.image_digest) {
             return Err(moqentra_types::Error::invalid_argument(
-                "missing image digest",
+                "image digest must be a valid content digest",
             ));
         }
         Ok(())
@@ -517,7 +525,8 @@ mod tests {
             id: NotebookId::new_v7(&gen),
             tenant_id: TenantId::new_v7(&gen),
             project_id: ProjectId::new_v7(&gen),
-            image_digest: "sha256:nb".to_string(),
+            image_digest: "sha256:665077f5ca5d20c727acdc837412a42d19fe9ec8004165726592a54ba56e628b"
+                .to_string(),
             resource_profile: "small".to_string(),
             allowed_egress: vec![],
             allow_privileged: true,

@@ -72,11 +72,13 @@ impl OutboxStore for InMemoryOutbox {
     }
 
     async fn poll_pending(&self, limit: u32) -> Result<Vec<OutboxEvent>, Error> {
+        let limit =
+            usize::try_from(limit).map_err(|_| Error::invalid_argument("limit too large"))?;
         let mut events = self.events.lock().unwrap_or_else(|e| e.into_inner());
         let mut pending: Vec<OutboxEvent> = events
             .iter_mut()
             .filter(|e| e.status == OutboxStatus::Pending)
-            .take(limit as usize)
+            .take(limit)
             .map(|e| {
                 e.status = OutboxStatus::Processing;
                 e.clone()

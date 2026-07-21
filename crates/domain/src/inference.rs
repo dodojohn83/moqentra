@@ -209,7 +209,10 @@ impl Deployment {
             .values()
             .filter(|r| r.ready && r.generation >= self.observed_generation)
             .count();
-        ready as f64 / self.replicas.len() as f64
+        #[allow(clippy::as_conversions)]
+        {
+            ready as f64 / self.replicas.len() as f64
+        }
     }
 
     pub fn should_rollback(&self) -> bool {
@@ -269,7 +272,9 @@ mod tests {
             version: "v1".to_string(),
             model_version_id: ModelVersionId::new_v7(&RandomIdGenerator),
             application_version_id: ApplicationVersionId::new_v7(&RandomIdGenerator),
-            dyun_bundle_digest: "sha256:dyun".to_string(),
+            dyun_bundle_digest:
+                "sha256:7a7e905718bfae8a192a97981a0e32622172777a08d2b2d3b2f4abf0632235c4"
+                    .to_string(),
             policy: RolloutPolicy {
                 strategy: RolloutStrategy::RollingUpdate,
                 auto_rollback: true,

@@ -250,7 +250,7 @@ impl SecurityLimits {
     }
 
     pub fn check_url_length(&self, len: usize) -> Result<(), moqentra_types::Error> {
-        if len as u64 > self.max_url_length as u64 {
+        if u64::try_from(len).is_ok_and(|n| n > u64::from(self.max_url_length)) {
             Err(moqentra_types::Error::invalid_argument("url too long"))
         } else {
             Ok(())
@@ -258,7 +258,7 @@ impl SecurityLimits {
     }
 
     pub fn check_json_size(&self, size: usize) -> Result<(), moqentra_types::Error> {
-        if size as u64 > self.max_json_size {
+        if u64::try_from(size).is_ok_and(|n| n > self.max_json_size) {
             Err(moqentra_types::Error::invalid_argument("json too large"))
         } else {
             Ok(())
@@ -276,7 +276,7 @@ impl SecurityLimits {
     }
 
     pub fn check_log_line_length(&self, len: usize) -> Result<(), moqentra_types::Error> {
-        if len as u64 > self.max_log_line_length as u64 {
+        if u64::try_from(len).is_ok_and(|n| n > u64::from(self.max_log_line_length)) {
             Err(moqentra_types::Error::invalid_argument("log line too long"))
         } else {
             Ok(())

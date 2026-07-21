@@ -138,8 +138,8 @@ impl LocalExecutor {
             ));
         }
         let available_cpu =
-            (capabilities.cpu_cores as u64).saturating_sub(self.allocated_cpu_cores);
-        if (request.cpu_cores as u64) > available_cpu {
+            u64::from(capabilities.cpu_cores).saturating_sub(self.allocated_cpu_cores);
+        if u64::from(request.cpu_cores) > available_cpu {
             return Err(moqentra_types::Error::unavailable("insufficient cpu"));
         }
         let available_memory = capabilities.memory_mib.saturating_sub(self.allocated_memory_mib);
@@ -163,6 +163,8 @@ impl LocalExecutor {
             ));
         }
 
+        let device_count = usize::try_from(request.device_count)
+            .map_err(|_| moqentra_types::Error::invalid_argument("device_count too large"))?;
         let mut assigned = BTreeSet::new();
         for needed in &request.devices {
             let available = capabilities
@@ -172,9 +174,9 @@ impl LocalExecutor {
                     d.kind == *needed && d.healthy && !self.device_usage.contains_key(&d.uuid)
                 })
                 .map(|d| d.uuid.clone())
-                .take(request.device_count as usize)
+                .take(device_count)
                 .collect::<BTreeSet<_>>();
-            if available.len() < request.device_count as usize {
+            if available.len() < device_count {
                 return Err(moqentra_types::Error::unavailable("insufficient devices"));
             }
             for uuid in available {
@@ -194,10 +196,10 @@ impl LocalExecutor {
             created_at: UtcTimestamp::now(),
             released_at: None,
         };
-        self.allocated_cpu_cores =
-            self.allocated_cpu_cores
-                .checked_add(request.cpu_cores as u64)
-                .ok_or_else(|| moqentra_types::Error::unavailable("cpu allocation overflow"))?;
+        self.allocated_cpu_cores = self
+            .allocated_cpu_cores
+            .checked_add(u64::from(request.cpu_cores))
+            .ok_or_else(|| moqentra_types::Error::unavailable("cpu allocation overflow"))?;
         self.allocated_memory_mib = self
             .allocated_memory_mib
             .checked_add(request.memory_mib)
@@ -216,7 +218,7 @@ impl LocalExecutor {
                 self.device_usage.remove(uuid);
             }
             self.allocated_cpu_cores =
-                self.allocated_cpu_cores.saturating_sub(allocation.cpu_cores as u64);
+                self.allocated_cpu_cores.saturating_sub(u64::from(allocation.cpu_cores));
             self.allocated_memory_mib =
                 self.allocated_memory_mib.saturating_sub(allocation.memory_mib);
             allocation.released_at = Some(UtcTimestamp::now());
@@ -246,12 +248,9 @@ impl LocalExecutor {
                 "root execution not allowed",
             ));
         }
-        fn valid_digest(d: &str) -> bool {
-            !d.is_empty() && d.contains(':') && d.split(':').all(|part| !part.is_empty())
-        }
-        if !valid_digest(&_config.image_digest) {
+        if !moqentra_types::valid_content_digest(&_config.image_digest) {
             return Err(moqentra_types::Error::invalid_argument(
-                "image digest must be in algorithm:hex form",
+                "image digest must be a valid content digest",
             ));
         }
         for (src, target) in &_config.bind_mounts {
@@ -347,7 +346,8 @@ mod tests {
     #[test]
     fn root_container_rejected() {
         let config = ContainerConfig {
-            image_digest: "sha256:abc".to_string(),
+            image_digest: "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                .to_string(),
             entrypoint: vec!["train".to_string()],
             env: BTreeMap::new(),
             bind_mounts: BTreeMap::new(),

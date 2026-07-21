@@ -41,6 +41,10 @@ fn digest(data: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(data))
 }
 
+fn u64_len(len: usize) -> Result<u64, Error> {
+    u64::try_from(len).map_err(|_| Error::invalid_argument("object size overflow"))
+}
+
 #[async_trait::async_trait]
 impl ObjectStorage for InMemoryObjectStore {
     async fn put_object(
@@ -59,7 +63,7 @@ impl ObjectStorage for InMemoryObjectStore {
         };
         let meta = ObjectMetadata {
             key: key.to_string(),
-            size: object.data.len() as u64,
+            size: u64_len(object.data.len())?,
             media_type: object.media_type.clone(),
             etag: Some(etag),
             digest: Some(object.digest.clone()),
@@ -78,7 +82,7 @@ impl ObjectStorage for InMemoryObjectStore {
             .ok_or_else(|| Error::not_found(format!("object not found: {}", key)))?;
         let meta = ObjectMetadata {
             key: key.to_string(),
-            size: object.data.len() as u64,
+            size: u64_len(object.data.len())?,
             media_type: object.media_type.clone(),
             etag: Some(object.etag.clone()),
             digest: Some(object.digest.clone()),
@@ -203,7 +207,7 @@ impl ObjectStorage for InMemoryObjectStore {
         };
         let meta = ObjectMetadata {
             key: key.to_string(),
-            size: object.data.len() as u64,
+            size: u64_len(object.data.len())?,
             media_type: object.media_type.clone(),
             etag: Some(etag),
             digest: Some(object.digest.clone()),

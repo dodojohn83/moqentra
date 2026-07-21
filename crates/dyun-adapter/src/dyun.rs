@@ -103,9 +103,11 @@ impl Replica {
                 "bundle signature not trusted",
             ));
         }
-        if self.bundle.application_digest.is_empty() || self.bundle.graph_spec_digest.is_empty() {
+        if !moqentra_types::valid_content_digest(&self.bundle.application_digest)
+            || !moqentra_types::valid_content_digest(&self.bundle.graph_spec_digest)
+        {
             return Err(moqentra_types::Error::invalid_argument(
-                "bundle missing digests",
+                "bundle digests must be valid content digests",
             ));
         }
         Ok(())
@@ -235,8 +237,12 @@ mod tests {
     fn make_bundle() -> DyunGraphBundle {
         DyunGraphBundle {
             version: "DyunGraphBundle/v1".to_string(),
-            application_digest: "sha256:app".to_string(),
-            graph_spec_digest: "sha256:graph".to_string(),
+            application_digest:
+                "sha256:a172cedcae47474b615c54d510a5d84a8dea3032e958587430b413538be3f333"
+                    .to_string(),
+            graph_spec_digest:
+                "sha256:eef93e1d14482804277fca0172464032d1a4fdbcc338524059fa1e861454ad4d"
+                    .to_string(),
             artifact_bindings: BTreeMap::new(),
             runtime_profile: "rtsp-track-rtmp".to_string(),
             resource_limits: ResourceLimits {
@@ -287,7 +293,8 @@ mod tests {
             id: "r1".to_string(),
             replica_id: ReplicaId::new_v7(&RandomIdGenerator),
             state: RunnerState::Created,
-            image_digest: "sha256:img".to_string(),
+            image_digest: "sha256:b29814cf5792e684cd75d6a7fce7a67a11887e312f87ca2ac2496d81f365ff72"
+                .to_string(),
             sandbox_path: "../etc".to_string(),
             exit_code: None,
         };
@@ -300,7 +307,8 @@ mod tests {
             id: "r2".to_string(),
             replica_id: ReplicaId::new_v7(&RandomIdGenerator),
             state: RunnerState::Created,
-            image_digest: "sha256:img".to_string(),
+            image_digest: "sha256:b29814cf5792e684cd75d6a7fce7a67a11887e312f87ca2ac2496d81f365ff72"
+                .to_string(),
             sandbox_path: "/etc".to_string(),
             exit_code: None,
         };
@@ -310,7 +318,8 @@ mod tests {
             id: "r3".to_string(),
             replica_id: ReplicaId::new_v7(&RandomIdGenerator),
             state: RunnerState::Created,
-            image_digest: "sha256:img".to_string(),
+            image_digest: "sha256:b29814cf5792e684cd75d6a7fce7a67a11887e312f87ca2ac2496d81f365ff72"
+                .to_string(),
             sandbox_path: "/tmp/moqentra-dyun/run-1".to_string(),
             exit_code: None,
         };

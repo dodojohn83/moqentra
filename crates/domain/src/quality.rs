@@ -179,7 +179,7 @@ impl QualityRun {
         let mut all_classes: BTreeMap<String, u64> = BTreeMap::new();
 
         for (asset_id, anns) in annotations {
-            total_annotations += anns.len() as u64;
+            total_annotations += u64::try_from(anns.len()).unwrap_or(u64::MAX);
             for ann in anns {
                 if let Some(label) = ann.payload.get("label").and_then(|v| v.as_str()) {
                     *all_classes.entry(label.to_string()).or_insert(0) += 1;
@@ -213,7 +213,7 @@ impl QualityRun {
         }
 
         QualityReport {
-            total_assets: annotations.len() as u64,
+            total_assets: u64::try_from(annotations.len()).unwrap_or(u64::MAX),
             total_annotations,
             violations,
         }
@@ -304,7 +304,8 @@ impl QualityRun {
             QualityRule::FrameRange { min, max } => {
                 let frame_i = ann.payload.get("frame").and_then(|v| v.as_i64());
                 if let Some(frame) = frame_i {
-                    if frame < 0 || (frame as u64) < *min || (frame as u64) > *max {
+                    let frame_u = u64::try_from(frame).unwrap_or(0);
+                    if frame < 0 || frame_u < *min || frame_u > *max {
                         return Some(QualityViolation {
                             severity: Severity::Error,
                             asset_id: asset_id.to_string(),

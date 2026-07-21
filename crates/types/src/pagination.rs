@@ -66,7 +66,7 @@ impl<T> Page<T> {
     }
 
     pub fn has_more(&self) -> bool {
-        (self.offset as u64).saturating_add(self.limit as u64) < self.total
+        u64::from(self.offset).saturating_add(u64::from(self.limit)) < self.total
     }
 }
 

@@ -36,7 +36,7 @@ if [[ "${POSTGRES_PASSWORD:-moqentra}" == "moqentra" ]]; then
   ADMIN_PASSWORD_HASH=$(python3 - "$ADMIN_PASSWORD" <<'PY'
 import crypt, sys
 password = sys.argv[1]
-salt = crypt.mksalt(crypt.METHOD_BLOWFISH, rounds=1024)
+salt = crypt.mksalt(crypt.METHOD_BLOWFISH, rounds=10)
 print(crypt.crypt(password, salt))
 PY
 )

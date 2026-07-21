@@ -68,7 +68,9 @@ impl Rendezvous {
                 "rendezvous world_size must be > 0",
             ));
         }
-        if self.members.len() != self.world_size as usize {
+        let expected = usize::try_from(self.world_size)
+            .map_err(|_| moqentra_types::Error::internal("world_size too large"))?;
+        if self.members.len() != expected {
             return Err(moqentra_types::Error::unavailable("rendezvous incomplete"));
         }
         self.finalized = true;
@@ -172,8 +174,10 @@ impl DistributedJobState {
 
     pub fn all_finished(&self) -> bool {
         self.world_size > 0
-            && self.rank_exit_codes.len() == self.world_size as usize
-            && self.rank_exit_codes.values().all(|c| c.is_some())
+            && usize::try_from(self.world_size).is_ok_and(|ws| {
+                self.rank_exit_codes.len() == ws
+                    && self.rank_exit_codes.values().all(|c| c.is_some())
+            })
     }
 
     pub fn all_succeeded(&self) -> bool {
@@ -201,8 +205,11 @@ mod tests {
             attempt_id: AttemptId::new_v7(&gen),
             step,
             state,
-            digest: "sha256:ckpt".to_string(),
-            manifest_digest: "sha256:manifest".to_string(),
+            digest: "sha256:be4e4dc1f1e4907ebc4040e2a6c2ebcba6bf79cc8211367a3aceedb760503840"
+                .to_string(),
+            manifest_digest:
+                "sha256:05b3abf2579a5eb66403cd78be557fd860633a1fe2103c7642030defe32c657f"
+                    .to_string(),
             framework_version: "pytorch-2.4".to_string(),
             world_size,
             optimizer_signature: "adam".to_string(),

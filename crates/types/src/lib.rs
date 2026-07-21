@@ -12,6 +12,7 @@ pub mod id;
 pub mod pagination;
 pub mod request;
 pub mod time;
+pub mod validation;
 
 pub use config::Configuration;
 pub use error::{Error, ErrorKind, FieldViolation};
@@ -26,6 +27,7 @@ pub use id::{
 pub use pagination::{Page, PageRequest};
 pub use request::{Principal, RequestContext, ResourceQuantity, ResourceRef};
 pub use time::{Clock, Deadline, FencingToken, Revision, StaticClock, SystemClock, UtcTimestamp};
+pub use validation::valid_content_digest;
 
 /// Crate version placeholder.
 pub mod placeholder {

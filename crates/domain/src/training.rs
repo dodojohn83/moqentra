@@ -37,6 +37,41 @@ pub struct OutputManifest {
     pub log_digest: Option<String>,
 }
 
+impl OutputManifest {
+    /// Validates any present digests are valid content-addressed digests.
+    pub fn validate(&self) -> Result<(), moqentra_types::Error> {
+        if let Some(d) = &self.model_artifact_digest {
+            if !moqentra_types::valid_content_digest(d) {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "model_artifact_digest must be a valid content digest",
+                ));
+            }
+        }
+        if let Some(d) = &self.metric_digest {
+            if !moqentra_types::valid_content_digest(d) {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "metric_digest must be a valid content digest",
+                ));
+            }
+        }
+        if let Some(d) = &self.log_digest {
+            if !moqentra_types::valid_content_digest(d) {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "log_digest must be a valid content digest",
+                ));
+            }
+        }
+        for d in &self.checkpoint_digests {
+            if !moqentra_types::valid_content_digest(d) {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "checkpoint digests must be valid content digests",
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Training job specification; immutable after creation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TrainingJobSpec {
@@ -54,12 +89,11 @@ pub struct TrainingJobSpec {
 impl TrainingJobSpec {
     /// Validates that the spec defines a runnable, non-degenerate job.
     pub fn validate(&self) -> Result<(), moqentra_types::Error> {
-        fn valid_digest(d: &str) -> bool {
-            !d.is_empty() && d.contains(':') && d.split(':').all(|part| !part.is_empty())
-        }
-        if !valid_digest(&self.code_digest) || !valid_digest(&self.image_digest) {
+        if !moqentra_types::valid_content_digest(&self.code_digest)
+            || !moqentra_types::valid_content_digest(&self.image_digest)
+        {
             return Err(moqentra_types::Error::invalid_argument(
-                "code and image digests must be in algorithm:hex form",
+                "code and image digests must be valid content digests",
             ));
         }
         if self.max_attempts == 0 {
@@ -301,13 +335,17 @@ impl TrainingJob {
         ) {
             return Err(moqentra_types::Error::conflict("job cannot start attempt"));
         }
-        if self.attempts.len() >= self.spec.max_attempts as usize {
+        let max_attempts = usize::try_from(self.spec.max_attempts)
+            .map_err(|_| moqentra_types::Error::internal("max_attempts too large"))?;
+        if self.attempts.len() >= max_attempts {
             return Err(moqentra_types::Error::unavailable("max attempts reached"));
         }
-        let expected_ranks = match self.spec.distributed {
-            DistributedConfig::Single => 1,
+        let world_size = match self.spec.distributed {
+            DistributedConfig::Single => 1u32,
             DistributedConfig::Ddp { world_size } => world_size,
-        } as usize;
+        };
+        let expected_ranks = usize::try_from(world_size)
+            .map_err(|_| moqentra_types::Error::internal("world_size too large"))?;
         if attempt.ranks.len() != expected_ranks {
             return Err(moqentra_types::Error::invalid_argument(
                 "attempt rank count does not match distributed configuration",
@@ -349,6 +387,7 @@ impl TrainingJob {
         if !matches!(self.state, TrainingJobState::Finalizing) {
             return Err(moqentra_types::Error::conflict("job is not finalizing"));
         }
+        manifest.validate()?;
         if manifest.model_artifact_digest.is_none() || manifest.metric_digest.is_none() {
             return Err(moqentra_types::Error::invalid_argument(
                 "incomplete output manifest",
@@ -517,8 +556,10 @@ mod tests {
     fn make_job() -> TrainingJob {
         let gen = RandomIdGenerator;
         let spec = TrainingJobSpec {
-            code_digest: "sha256:abc".to_string(),
-            image_digest: "sha256:image".to_string(),
+            code_digest: "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                .to_string(),
+            image_digest: "sha256:6105d6cc76af400325e94d588ce511be5bfdbb73b437dc51eca43917d7a43e3d"
+                .to_string(),
             dataset_version_id: DatasetVersionId::new_v7(&gen),
             hyperparameters: ParameterSchema {
                 argv: vec![
@@ -571,9 +612,18 @@ mod tests {
         job.mark_running(7).unwrap();
         job.mark_finalizing(7).unwrap();
         let manifest = OutputManifest {
-            model_artifact_digest: Some("sha256:model".to_string()),
-            checkpoint_digests: vec!["sha256:ckpt".to_string()],
-            metric_digest: Some("sha256:metrics".to_string()),
+            model_artifact_digest: Some(
+                "sha256:9372c470eeadd5ecd9c3c74c2b3cb633f8e2f2fad799250a0f70d652b6b825e4"
+                    .to_string(),
+            ),
+            checkpoint_digests: vec![
+                "sha256:be4e4dc1f1e4907ebc4040e2a6c2ebcba6bf79cc8211367a3aceedb760503840"
+                    .to_string(),
+            ],
+            metric_digest: Some(
+                "sha256:177a7ea3611fe6b138557deaf44941614b66c0ece1766308044c8b65c8ba2123"
+                    .to_string(),
+            ),
             log_digest: None,
         };
         job.finalize(7, manifest).unwrap();
@@ -619,7 +669,10 @@ mod tests {
         let manifest = OutputManifest {
             model_artifact_digest: None,
             checkpoint_digests: vec![],
-            metric_digest: Some("sha256:metrics".to_string()),
+            metric_digest: Some(
+                "sha256:177a7ea3611fe6b138557deaf44941614b66c0ece1766308044c8b65c8ba2123"
+                    .to_string(),
+            ),
             log_digest: None,
         };
         assert!(job.finalize(1, manifest).is_err());

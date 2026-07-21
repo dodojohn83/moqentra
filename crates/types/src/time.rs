@@ -31,7 +31,8 @@ impl UtcTimestamp {
     /// Adds a `std::time::Duration`, returning `None` on overflow.
     pub fn add_std_duration(self, duration: std::time::Duration) -> Option<Self> {
         let secs = i64::try_from(duration.as_secs()).ok()?;
-        let d = Duration::new(secs, duration.subsec_nanos() as i32);
+        let nanos = i32::try_from(duration.subsec_nanos()).ok()?;
+        let d = Duration::new(secs, nanos);
         self.add_duration(d)
     }
 
@@ -121,7 +122,8 @@ impl Deadline {
     /// Creates a deadline from a `std::time::Duration` relative to the clock.
     pub fn after_std(clock: &dyn Clock, duration: std::time::Duration) -> Option<Self> {
         let secs = i64::try_from(duration.as_secs()).ok()?;
-        let d = Duration::new(secs, duration.subsec_nanos() as i32);
+        let nanos = i32::try_from(duration.subsec_nanos()).ok()?;
+        let d = Duration::new(secs, nanos);
         Self::after(clock, d)
     }
 
