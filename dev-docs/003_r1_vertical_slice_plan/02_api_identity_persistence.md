@@ -24,8 +24,10 @@
 - [x] `R1-DB-001` 从 `0002` 起追加核心资源表、不可变版本表、关系表、状态历史、Operation、租约和对象引用；为所有租户查询和调度查询建立复合索引。
   - Evidence: `crates/storage/migrations/0002_init_resources.sql` (dataset_versions, annotation_projects, annotation_tasks, training_jobs, models, model_versions, applications, application_versions, deployments, operations, operation_events, leases, object_references, resource_state_history plus indexes).
 - [ ] `R1-DB-002` 实现全部 PostgreSQL repositories，使用显式 SQL 和行数校验；更新以 `(id, tenant_id, revision)` 实现乐观并发。
-- [ ] `R1-DB-003` 实现 PostgreSQL outbox：`FOR UPDATE SKIP LOCKED` 有界领取、lease、重试退避、dead-letter、processed message 去重和重启恢复。
-- [ ] `R1-DB-004` 实现 PostgreSQL idempotency：请求指纹冲突、in-progress、完成响应回放、TTL 和安全 GC；同 key 不得关联不同请求。
+- [x] `R1-DB-003` 实现 PostgreSQL outbox：`FOR UPDATE SKIP LOCKED` 有界领取、lease、重试退避、dead-letter、processed message 去重和重启恢复。
+  - Evidence: `crates/storage/src/pg_outbox.rs` (`PgOutboxStore`), `crates/storage/migrations/0003_outbox_lease.sql` (lease/retry columns), tests `pg_outbox_append_poll_and_complete` and `pg_outbox_retry_then_dead_letter`.
+- [x] `R1-DB-004` 实现 PostgreSQL idempotency：请求指纹冲突、in-progress、完成响应回放、TTL 和安全 GC；同 key 不得关联不同请求。
+  - Evidence: `crates/storage/src/pg_idempotency.rs` (`PgIdempotencyStore`), `IdempotencyScope.fingerprint`, `crates/storage/migrations/0005_idempotency_id.sql`, `crates/storage/migrations/0004_idempotency_admin.sql`; tests `pg_idempotency_begin_complete_and_replay`, `pg_idempotency_fingerprint_conflict`, `pg_idempotency_in_progress_conflict`.
 - [x] `R1-DB-005` 修正 RLS 为 fail-closed。没有 `app.current_tenant` 时业务表返回零行/拒绝写入；tenant 表的跨租户管理只允许独立管理员策略。
   - Evidence: `crates/storage/migrations/0002_init_resources.sql` (`tenant_matches()` helper, fail-closed policies on all new tables, `tenants` policy scoped to tenant id or `current_admin()`).
 - [x] `R1-DB-006` 连接池 checkout 设置租户事务上下文，归还前强制 reset。
