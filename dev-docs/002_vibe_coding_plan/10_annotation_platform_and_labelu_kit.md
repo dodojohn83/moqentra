@@ -17,7 +17,7 @@ LabelU-Kit 只负责浏览器标注交互。项目、任务、分配、版本、
 - [x] `LABEL-003` 实现任务状态机、领取/释放/续租、lease fencing token、过期校验和批量/进度占位。
 - [x] `LABEL-004` 实现 `AnnotationLog` 自动保存、幂等 `(task_id, revision, client_update_id)` 与冲突 diff 返回。
 - [x] `LABEL-005` 短期签名 URL 由后端生成，前端 adapter 在导出前剔除 payload 中的 `url`/`signedUrl`/`presignedUrl`/`s3Key`/`secret` 字段。
-- [x] `LABEL-006` 实现 COCO 导出（categories/images/annotations/bbox/segmentation）、YOLO 行生成、VOC XML 占位、native JSON 占位和格式探测。
+- [x] `LABEL-006` 实现 COCO 导出（categories/images/annotations/bbox/segmentation）、YOLO 行生成、完整 VOC XML、native JSON 导出和格式探测。
 - [x] `LABEL-007` 测试 lease 过期/stale fencing token、幂等保存与冲突、跨租户字段隔离、恶意/超长跑马灯 payload 拒绝（通过 JSON 解析约束）。
 
 ## 10. 完成证据
@@ -25,7 +25,7 @@ LabelU-Kit 只负责浏览器标注交互。项目、任务、分配、版本、
 - 提交：新增/扩展 `crates/domain/src/annotation.rs` 与 `export.rs`；新增 `apps/web/src/annotation/LabelUAdapter.ts`。
 - `AnnotationProject` / `AnnotationTask` / `Annotation` / `Ontology` 状态机实现。
 - `TaskLease` 支持 fencing token 与续租；自动保存幂等键为 `(task_id, revision, client_update_id)`；冲突返回 `server_revision` 和 diff。
-- `export.rs` 支持 `CocoDataset`、`yolo_line`、`voc` 占位和 `format_by_extension`。
+- `export.rs` 支持 `CocoDataset`、`yolo_line`、完整 `annotations_to_voc`、`annotations_to_native` 和 `format_by_extension`。
 - `apps/web/src/annotation/LabelUAdapter.ts` 提供 `toLabelUProjectConfig` 与 `fromLabelUAnnotations` 以及 `maskLabelFromPayload`（脱敏 URL）。
 - 测试命令：
   - `cargo fmt --all -- --check`

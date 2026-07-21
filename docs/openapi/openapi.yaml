@@ -8,10 +8,10 @@ servers:
   - url: /api/v1
 
 paths:
-  /health:
+  /healthz:
     get:
       operationId: getHealth
-      summary: Health check
+      summary: Liveness probe
       responses:
         '200':
           description: OK
@@ -22,6 +22,106 @@ paths:
                 properties:
                   status:
                     type: string
+                  service:
+                    type: string
+  /readyz:
+    get:
+      operationId: getReady
+      summary: Readiness probe
+      responses:
+        '200':
+          description: Ready
+        '503':
+          description: Not ready
+  /whoami:
+    get:
+      operationId: whoAmI
+      summary: Resolve authenticated principal
+      parameters:
+        - name: X-Tenant-Id
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: Authorization
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Principal context
+  /datasets:
+    get:
+      operationId: listDatasets
+      summary: List datasets for tenant
+      parameters:
+        - name: X-Tenant-Id
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Dataset list
+    post:
+      operationId: createDatasetV1
+      summary: Create dataset
+      parameters:
+        - name: X-Tenant-Id
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Created
+  /experiments:
+    get:
+      operationId: listExperiments
+      summary: List experiments
+      responses:
+        '200':
+          description: Experiment list
+    post:
+      operationId: createExperiment
+      summary: Create experiment
+      responses:
+        '201':
+          description: Created
+  /training-jobs:
+    get:
+      operationId: listTrainingJobs
+      summary: List training jobs
+      responses:
+        '200':
+          description: Job list
+    post:
+      operationId: createTrainingJob
+      summary: Create training job
+      responses:
+        '201':
+          description: Created
+  /models:
+    get:
+      operationId: listModels
+      summary: List models
+      responses:
+        '200':
+          description: Model list
+    post:
+      operationId: createModel
+      summary: Create model family
+      responses:
+        '201':
+          description: Created
+  /annotation-projects:
+    post:
+      operationId: createAnnotationProject
+      summary: Create annotation project
+      responses:
+        '201':
+          description: Created
 
   /tenants/{tenantId}/projects:
     get:

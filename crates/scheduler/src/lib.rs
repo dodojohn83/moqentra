@@ -10,6 +10,10 @@ pub mod reconciler;
 pub mod scheduler;
 
 pub use reconciler::{ClusterAgent, DesiredObserved, LeaderElection, Lease, Reconciler};
+pub use scheduler::{
+    AcceleratorCapability, ExecutionPlan, GangGroup, NetworkPolicySpec, QueueEntry,
+    SchedulingQueue, VolumeSpec,
+};
 
 /// Placeholder module until domain types are added in subsequent tasks.
 pub mod placeholder {

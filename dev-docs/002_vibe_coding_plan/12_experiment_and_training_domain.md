@@ -11,7 +11,7 @@ Job 状态：Queued → Admitted → Starting → Running → Finalizing → Suc
 - [x] `TRAIN-001` 实现 `Experiment`、`TrainingJob`、`Attempt`、`Rank`、`Checkpoint` 和 `MetricPoint` 状态机。
 - [x] `TRAIN-002` 定义 `ResourceRequest` 含 replica、cpu、memory、ephemeral storage、accelerator kind/count/topology。
 - [x] `TRAIN-003` 定义 `ParameterSchema`，命令使用 argv 字符串数组，禁止 shell 拼接。
-- [x] `TRAIN-004` 实现创建/排队/取消/重试/恢复状态机；克隆与 application service 后续实现。
+- [x] `TRAIN-004` 实现创建/排队/取消/重试/恢复状态机；`InMemoryTrainingRegistry` + control-plane API（create/list/admit/cancel）与 outbox 分发。
 - [x] `TRAIN-005` 实现 `append_metrics` 批量写入并限制 cardinality；频率和下采样后续补充。
 - [x] `TRAIN-006` `finalize` 要求 model/ metric digest 非空，校验 manifest 完整性。
 - [x] `TRAIN-007` 测试 stale fencing token、不完整 manifest、metric cardinality、取消竞争与部分 rank 失败占位。

@@ -11,7 +11,12 @@ name = "moqentra-node-agent"
 path = "src/main.rs"
 
 [dependencies]
+moqentra-types = { path = "../../crates/types" }
+moqentra-worker-control = { path = "../../crates/worker-control" }
 tokio = { workspace = true }
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = "1.0"
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }

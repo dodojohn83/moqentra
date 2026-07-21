@@ -5,7 +5,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 /// Kind of accelerator.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, serde::Serialize, serde::Deserialize,
+)]
 pub enum AcceleratorKind {
     Nvidia,
     Amd,
@@ -14,7 +16,7 @@ pub enum AcceleratorKind {
 }
 
 /// A compute device attached to a node.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Device {
     pub uuid: String,
     pub kind: AcceleratorKind,
@@ -25,7 +27,7 @@ pub struct Device {
 }
 
 /// Node capabilities discovered at startup.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NodeCapabilities {
     pub node_id: NodeId,
     pub cpu_cores: u32,
@@ -165,25 +167,44 @@ impl LocalExecutor {
 
         let device_count = usize::try_from(request.device_count)
             .map_err(|_| moqentra_types::Error::invalid_argument("device_count too large"))?;
+
+        // Collect devices first without mutating state so a later kind failure
+        // cannot leave phantom occupancy in `device_usage`.
         let mut assigned = BTreeSet::new();
         for needed in &request.devices {
-            let available = capabilities
+            let available: Vec<String> = capabilities
                 .devices
                 .iter()
                 .filter(|d| {
-                    d.kind == *needed && d.healthy && !self.device_usage.contains_key(&d.uuid)
+                    d.kind == *needed
+                        && d.healthy
+                        && !self.device_usage.contains_key(&d.uuid)
+                        && !assigned.contains(&d.uuid)
                 })
                 .map(|d| d.uuid.clone())
                 .take(device_count)
-                .collect::<BTreeSet<_>>();
+                .collect();
             if available.len() < device_count {
                 return Err(moqentra_types::Error::unavailable("insufficient devices"));
             }
-            for uuid in available {
-                self.device_usage.insert(uuid.clone(), request.attempt_id.to_string());
-                assigned.insert(uuid);
-            }
+            assigned.extend(available);
         }
+
+        // Commit resource counters only after device selection succeeds.
+        let next_cpu = self
+            .allocated_cpu_cores
+            .checked_add(u64::from(request.cpu_cores))
+            .ok_or_else(|| moqentra_types::Error::unavailable("cpu allocation overflow"))?;
+        let next_memory = self
+            .allocated_memory_mib
+            .checked_add(request.memory_mib)
+            .ok_or_else(|| moqentra_types::Error::unavailable("memory allocation overflow"))?;
+
+        for uuid in &assigned {
+            self.device_usage.insert(uuid.clone(), request.attempt_id.to_string());
+        }
+        self.allocated_cpu_cores = next_cpu;
+        self.allocated_memory_mib = next_memory;
 
         let allocation = Allocation {
             id: format!("alloc-{}", request.attempt_id),
@@ -196,14 +217,6 @@ impl LocalExecutor {
             created_at: UtcTimestamp::now(),
             released_at: None,
         };
-        self.allocated_cpu_cores = self
-            .allocated_cpu_cores
-            .checked_add(u64::from(request.cpu_cores))
-            .ok_or_else(|| moqentra_types::Error::unavailable("cpu allocation overflow"))?;
-        self.allocated_memory_mib = self
-            .allocated_memory_mib
-            .checked_add(request.memory_mib)
-            .ok_or_else(|| moqentra_types::Error::unavailable("memory allocation overflow"))?;
         self.allocations.insert(allocation.id.clone(), allocation.clone());
         Ok(allocation)
     }
@@ -237,6 +250,17 @@ impl LocalExecutor {
         for id in stale {
             let _ = self.release(&id);
         }
+    }
+
+    /// Snapshot of allocation ids and whether each has been released.
+    pub fn allocations_snapshot(&self) -> Vec<(String, bool)> {
+        let mut out: Vec<_> = self
+            .allocations
+            .iter()
+            .map(|(id, a)| (id.clone(), a.released_at.is_some()))
+            .collect();
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
     }
 
     pub fn launch_container(
@@ -378,5 +402,45 @@ mod tests {
         let alloc = executor.allocate(&request, caps.node_id, &caps, 1).unwrap();
         executor.reconcile_orphans(&[]);
         assert!(executor.allocations[&alloc.id].released_at.is_some());
+    }
+
+    #[test]
+    fn failed_multi_kind_allocate_does_not_leak_devices() {
+        let gen = RandomIdGenerator;
+        let mut caps = make_capabilities();
+        // Only one NVIDIA device; requesting Nvidia + Amd must fail cleanly.
+        caps.devices.push(Device {
+            uuid: "gpu-1".to_string(),
+            kind: AcceleratorKind::Nvidia,
+            memory_mib: 24576,
+            driver_version: "535".to_string(),
+            runtime: "cuda".to_string(),
+            healthy: true,
+        });
+        let mut executor = LocalExecutor::new();
+        let request = AllocationRequest {
+            attempt_id: AttemptId::new_v7(&gen),
+            cpu_cores: 1,
+            memory_mib: 1024,
+            devices: vec![AcceleratorKind::Nvidia, AcceleratorKind::Amd],
+            device_count: 1,
+        };
+        assert!(executor.allocate(&request, caps.node_id, &caps, 1).is_err());
+        assert!(
+            executor.device_usage.is_empty(),
+            "failed allocate must not leave phantom device occupancy"
+        );
+        assert_eq!(executor.allocated_cpu_cores, 0);
+        assert_eq!(executor.allocated_memory_mib, 0);
+
+        // NVIDIA-only allocate still works after the failed multi-kind request.
+        let ok = AllocationRequest {
+            attempt_id: AttemptId::new_v7(&gen),
+            cpu_cores: 1,
+            memory_mib: 1024,
+            devices: vec![AcceleratorKind::Nvidia],
+            device_count: 1,
+        };
+        assert!(executor.allocate(&ok, caps.node_id, &caps, 2).is_ok());
     }
 }

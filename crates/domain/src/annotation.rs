@@ -379,26 +379,45 @@ impl AnnotationLog {
         self.next_revision.saturating_sub(1)
     }
 
-    pub fn autosave(&mut self, mut annotation: Annotation) -> AutosaveResult {
+    /// Autosave with idempotency key `(annotation.id, client_update_id)` and
+    /// optimistic concurrency via `annotation.revision` (must be greater than
+    /// the stored revision when the client update id changes).
+    pub fn autosave(
+        &mut self,
+        mut annotation: Annotation,
+    ) -> Result<AutosaveResult, moqentra_types::Error> {
+        if annotation.client_update_id.trim().is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "client_update_id must be non-empty",
+            ));
+        }
+        if annotation.client_update_id.len() > 128 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "client_update_id must be at most 128 characters",
+            ));
+        }
         let revision = self.next_revision;
         if let Some(existing) = self.annotations.get(&annotation.id) {
             if existing.client_update_id == annotation.client_update_id {
                 // Idempotent duplicate.
-                return AutosaveResult::Accepted(existing.clone());
+                return Ok(AutosaveResult::Accepted(existing.clone()));
             }
             if existing.revision >= annotation.revision {
-                return AutosaveResult::Conflict {
+                return Ok(AutosaveResult::Conflict {
                     server_revision: existing.revision,
-                    diff: serde_json::json!({"server": existing.payload, "client": annotation.payload}),
-                };
+                    diff: serde_json::json!({
+                        "server": existing.payload,
+                        "client": annotation.payload
+                    }),
+                });
             }
         }
         annotation.revision = revision;
-        self.next_revision += 1;
+        self.next_revision = self.next_revision.saturating_add(1);
         self.annotations.insert(annotation.id, annotation.clone());
         self.revisions.entry(revision).or_default().push(annotation.id);
         self.revisions.retain(|r, _| *r >= revision.saturating_sub(10));
-        AutosaveResult::Accepted(annotation)
+        Ok(AutosaveResult::Accepted(annotation))
     }
 
     pub fn get(&self, id: AnnotationId) -> Option<&Annotation> {
@@ -477,12 +496,12 @@ mod tests {
             created_at: UtcTimestamp::now(),
             updated_at: UtcTimestamp::now(),
         };
-        let AutosaveResult::Accepted(first) = log.autosave(annotation.clone()) else {
+        let AutosaveResult::Accepted(first) = log.autosave(annotation.clone()).unwrap() else {
             panic!("expected accepted");
         };
         assert_eq!(first.revision, 0);
 
-        let AutosaveResult::Accepted(second) = log.autosave(annotation.clone()) else {
+        let AutosaveResult::Accepted(second) = log.autosave(annotation.clone()).unwrap() else {
             panic!("expected idempotent accepted");
         };
         assert_eq!(second.revision, 0);
@@ -491,8 +510,26 @@ mod tests {
         outdated.revision = 0;
         outdated.client_update_id = "update-2".to_string();
         assert!(matches!(
-            log.autosave(outdated),
+            log.autosave(outdated).unwrap(),
             AutosaveResult::Conflict { .. }
         ));
+    }
+
+    #[test]
+    fn autosave_rejects_empty_client_update_id() {
+        let gen = RandomIdGenerator;
+        let mut log = AnnotationLog::new();
+        let annotation = Annotation {
+            id: AnnotationId::new_v7(&gen),
+            task_id: AnnotationTaskId::new_v7(&gen),
+            asset_id: AssetId::new_v7(&gen),
+            revision: 0,
+            client_update_id: "   ".to_string(),
+            actor_id: UserId::new_v7(&gen),
+            payload: serde_json::json!({}),
+            created_at: UtcTimestamp::now(),
+            updated_at: UtcTimestamp::now(),
+        };
+        assert!(log.autosave(annotation).is_err());
     }
 }

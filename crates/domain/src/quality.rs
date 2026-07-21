@@ -173,7 +173,16 @@ impl QualityRun {
         Ok(())
     }
 
-    pub fn evaluate(&self, annotations: &BTreeMap<String, Vec<Annotation>>) -> QualityReport {
+    /// Evaluate annotations against configured rules.
+    ///
+    /// `asset_sizes` maps `asset_id -> (width, height)` and is required for
+    /// accurate `OutOfBoundsBox` checks. When a size is missing, dimensions may
+    /// still be read from the annotation payload (`image_width` / `image_height`).
+    pub fn evaluate(
+        &self,
+        annotations: &BTreeMap<String, Vec<Annotation>>,
+        asset_sizes: &BTreeMap<String, (u32, u32)>,
+    ) -> QualityReport {
         let mut total_annotations = 0u64;
         let mut violations = Vec::new();
         let mut all_classes: BTreeMap<String, u64> = BTreeMap::new();
@@ -185,30 +194,49 @@ impl QualityRun {
                     *all_classes.entry(label.to_string()).or_insert(0) += 1;
                 }
                 for rule in &self.rules {
-                    if let Some(v) = self.check(rule, asset_id, ann) {
+                    if let Some(v) = self.check(rule, asset_id, ann, asset_sizes) {
                         violations.push(v);
                     }
+                }
+            }
+
+            for rule in &self.rules {
+                if let QualityRule::DuplicateObjects { threshold } = rule {
+                    violations.extend(detect_duplicate_objects(asset_id, anns, *threshold));
                 }
             }
         }
 
         for rule in &self.rules {
-            if let QualityRule::ClassDistribution {
-                min_count_per_class,
-            } = rule
-            {
-                for (class, count) in &all_classes {
-                    if *count < *min_count_per_class {
-                        violations.push(QualityViolation {
-                            severity: Severity::Warning,
-                            asset_id: String::new(),
-                            annotation_id: None,
-                            rule: "ClassDistribution".to_string(),
-                            message: format!("class '{}' has {} samples", class, count),
-                            evidence: serde_json::json!({"class": class, "count": count, "min": min_count_per_class}),
-                        });
+            match rule {
+                QualityRule::ClassDistribution {
+                    min_count_per_class,
+                } => {
+                    for (class, count) in &all_classes {
+                        if *count < *min_count_per_class {
+                            violations.push(QualityViolation {
+                                severity: Severity::Warning,
+                                asset_id: String::new(),
+                                annotation_id: None,
+                                rule: "ClassDistribution".to_string(),
+                                message: format!("class '{}' has {} samples", class, count),
+                                evidence: serde_json::json!({
+                                    "class": class,
+                                    "count": count,
+                                    "min": min_count_per_class
+                                }),
+                            });
+                        }
                     }
                 }
+                QualityRule::SampleReview { ratio_permille } => {
+                    violations.extend(sample_review_violations(
+                        annotations,
+                        *ratio_permille,
+                        self.seed,
+                    ));
+                }
+                _ => {}
             }
         }
 
@@ -224,6 +252,7 @@ impl QualityRun {
         rule: &QualityRule,
         asset_id: &str,
         ann: &Annotation,
+        asset_sizes: &BTreeMap<String, (u32, u32)>,
     ) -> Option<QualityViolation> {
         match rule {
             QualityRule::MissingLabel => {
@@ -240,20 +269,7 @@ impl QualityRun {
                     None
                 }
             }
-            QualityRule::OutOfBoundsBox => {
-                let bbox = ann.payload.get("bbox").and_then(|v| v.as_array())?;
-                if bbox.len() < 4 {
-                    return Some(QualityViolation {
-                        severity: Severity::Error,
-                        asset_id: asset_id.to_string(),
-                        annotation_id: Some(ann.id.to_string()),
-                        rule: "OutOfBoundsBox".to_string(),
-                        message: "bbox array too short".to_string(),
-                        evidence: ann.payload.clone(),
-                    });
-                }
-                None
-            }
+            QualityRule::OutOfBoundsBox => check_out_of_bounds_box(asset_id, ann, asset_sizes),
             QualityRule::IllegalClass { allowed } => {
                 let label = ann.payload.get("label").and_then(|v| v.as_str())?;
                 if !allowed.contains(label) {
@@ -270,37 +286,33 @@ impl QualityRun {
                 }
             }
             QualityRule::SelfIntersectingPolygon => {
-                // Exact geometry check left to geometry crate; stub heuristic.
-                if ann.payload.get("polygon").is_some()
-                    && ann.payload.get("self_intersect").and_then(|v| v.as_bool()).unwrap_or(false)
-                {
+                let polygon = ann.payload.get("polygon")?;
+                let points = parse_polygon_points(polygon)?;
+                if points.len() < 3 {
+                    return Some(QualityViolation {
+                        severity: Severity::Error,
+                        asset_id: asset_id.to_string(),
+                        annotation_id: Some(ann.id.to_string()),
+                        rule: "SelfIntersectingPolygon".to_string(),
+                        message: "polygon has fewer than 3 vertices".to_string(),
+                        evidence: ann.payload.clone(),
+                    });
+                }
+                if polygon_self_intersects(&points) {
                     Some(QualityViolation {
                         severity: Severity::Error,
                         asset_id: asset_id.to_string(),
                         annotation_id: Some(ann.id.to_string()),
                         rule: "SelfIntersectingPolygon".to_string(),
-                        message: "polygon appears self-intersecting".to_string(),
+                        message: "polygon self-intersects".to_string(),
                         evidence: ann.payload.clone(),
                     })
                 } else {
                     None
                 }
             }
-            QualityRule::DuplicateObjects { threshold } => {
-                // Simplified: flag if payload marks duplicate.
-                if ann.payload.get("duplicate").and_then(|v| v.as_bool()).unwrap_or(false) {
-                    Some(QualityViolation {
-                        severity: Severity::Warning,
-                        asset_id: asset_id.to_string(),
-                        annotation_id: Some(ann.id.to_string()),
-                        rule: "DuplicateObjects".to_string(),
-                        message: format!("duplicate object count exceeds threshold {}", threshold),
-                        evidence: ann.payload.clone(),
-                    })
-                } else {
-                    None
-                }
-            }
+            // Handled per-asset after scanning all annotations.
+            QualityRule::DuplicateObjects { .. } => None,
             QualityRule::FrameRange { min, max } => {
                 let frame_i = ann.payload.get("frame").and_then(|v| v.as_i64());
                 if let Some(frame) = frame_i {
@@ -344,6 +356,341 @@ impl QualityRun {
             QualityRule::SampleReview { .. } | QualityRule::ClassDistribution { .. } => None,
         }
     }
+}
+
+fn parse_bbox(payload: &Value) -> Option<[f64; 4]> {
+    let bbox = payload.get("bbox")?.as_array()?;
+    if bbox.len() < 4 {
+        return None;
+    }
+    let x = bbox[0].as_f64()?;
+    let y = bbox[1].as_f64()?;
+    let w = bbox[2].as_f64()?;
+    let h = bbox[3].as_f64()?;
+    if ![x, y, w, h].into_iter().all(f64::is_finite) {
+        return None;
+    }
+    Some([x, y, w, h])
+}
+
+fn resolve_image_size(
+    asset_id: &str,
+    ann: &Annotation,
+    asset_sizes: &BTreeMap<String, (u32, u32)>,
+) -> Option<(f64, f64)> {
+    if let Some((w, h)) = asset_sizes.get(asset_id) {
+        return Some((f64::from(*w), f64::from(*h)));
+    }
+    let w = ann
+        .payload
+        .get("image_width")
+        .and_then(|v| v.as_f64().or_else(|| v.as_u64().map(|n| n as f64)))?;
+    let h = ann
+        .payload
+        .get("image_height")
+        .and_then(|v| v.as_f64().or_else(|| v.as_u64().map(|n| n as f64)))?;
+    if w > 0.0 && h > 0.0 && w.is_finite() && h.is_finite() {
+        Some((w, h))
+    } else {
+        None
+    }
+}
+
+fn check_out_of_bounds_box(
+    asset_id: &str,
+    ann: &Annotation,
+    asset_sizes: &BTreeMap<String, (u32, u32)>,
+) -> Option<QualityViolation> {
+    let bbox_arr = ann.payload.get("bbox").and_then(|v| v.as_array())?;
+    if bbox_arr.len() < 4 {
+        return Some(QualityViolation {
+            severity: Severity::Error,
+            asset_id: asset_id.to_string(),
+            annotation_id: Some(ann.id.to_string()),
+            rule: "OutOfBoundsBox".to_string(),
+            message: "bbox array too short".to_string(),
+            evidence: ann.payload.clone(),
+        });
+    }
+    let Some([x, y, w, h]) = parse_bbox(&ann.payload) else {
+        return Some(QualityViolation {
+            severity: Severity::Error,
+            asset_id: asset_id.to_string(),
+            annotation_id: Some(ann.id.to_string()),
+            rule: "OutOfBoundsBox".to_string(),
+            message: "bbox coordinates must be finite numbers".to_string(),
+            evidence: ann.payload.clone(),
+        });
+    };
+    if w <= 0.0 || h <= 0.0 {
+        return Some(QualityViolation {
+            severity: Severity::Error,
+            asset_id: asset_id.to_string(),
+            annotation_id: Some(ann.id.to_string()),
+            rule: "OutOfBoundsBox".to_string(),
+            message: "bbox width and height must be positive".to_string(),
+            evidence: ann.payload.clone(),
+        });
+    }
+    let Some((img_w, img_h)) = resolve_image_size(asset_id, ann, asset_sizes) else {
+        return Some(QualityViolation {
+            severity: Severity::Warning,
+            asset_id: asset_id.to_string(),
+            annotation_id: Some(ann.id.to_string()),
+            rule: "OutOfBoundsBox".to_string(),
+            message: "missing image dimensions for out-of-bounds check".to_string(),
+            evidence: ann.payload.clone(),
+        });
+    };
+    let right = x + w;
+    let bottom = y + h;
+    if x < 0.0 || y < 0.0 || right > img_w || bottom > img_h {
+        return Some(QualityViolation {
+            severity: Severity::Error,
+            asset_id: asset_id.to_string(),
+            annotation_id: Some(ann.id.to_string()),
+            rule: "OutOfBoundsBox".to_string(),
+            message: format!(
+                "bbox [{}, {}, {}, {}] exceeds image bounds {}x{}",
+                x, y, w, h, img_w, img_h
+            ),
+            evidence: ann.payload.clone(),
+        });
+    }
+    None
+}
+
+/// Parse polygon as flat `[x,y,...]` or array of `[x,y]` / `{x,y}` points.
+fn parse_polygon_points(value: &Value) -> Option<Vec<(f64, f64)>> {
+    let arr = value.as_array()?;
+    if arr.is_empty() {
+        return Some(Vec::new());
+    }
+    if arr[0].as_array().is_some() || arr[0].as_object().is_some() {
+        let mut points = Vec::with_capacity(arr.len());
+        for p in arr {
+            if let Some(pair) = p.as_array() {
+                if pair.len() < 2 {
+                    return None;
+                }
+                let x = pair[0].as_f64()?;
+                let y = pair[1].as_f64()?;
+                if !x.is_finite() || !y.is_finite() {
+                    return None;
+                }
+                points.push((x, y));
+            } else if let Some(obj) = p.as_object() {
+                let x = obj.get("x")?.as_f64()?;
+                let y = obj.get("y")?.as_f64()?;
+                if !x.is_finite() || !y.is_finite() {
+                    return None;
+                }
+                points.push((x, y));
+            } else {
+                return None;
+            }
+        }
+        return Some(points);
+    }
+    if arr.len() % 2 != 0 {
+        return None;
+    }
+    let mut points = Vec::with_capacity(arr.len() / 2);
+    let mut i = 0;
+    while i + 1 < arr.len() {
+        let x = arr[i].as_f64()?;
+        let y = arr[i + 1].as_f64()?;
+        if !x.is_finite() || !y.is_finite() {
+            return None;
+        }
+        points.push((x, y));
+        i += 2;
+    }
+    Some(points)
+}
+
+fn orient(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> f64 {
+    (b.1 - a.1) * (c.0 - b.0) - (b.0 - a.0) * (c.1 - b.1)
+}
+
+fn on_segment(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> bool {
+    b.0 <= a.0.max(c.0) && b.0 >= a.0.min(c.0) && b.1 <= a.1.max(c.1) && b.1 >= a.1.min(c.1)
+}
+
+fn segments_intersect(p1: (f64, f64), q1: (f64, f64), p2: (f64, f64), q2: (f64, f64)) -> bool {
+    let o1 = orient(p1, q1, p2);
+    let o2 = orient(p1, q1, q2);
+    let o3 = orient(p2, q2, p1);
+    let o4 = orient(p2, q2, q1);
+
+    const EPS: f64 = 1e-9;
+    let s1 = o1.abs() < EPS;
+    let s2 = o2.abs() < EPS;
+    let s3 = o3.abs() < EPS;
+    let s4 = o4.abs() < EPS;
+
+    if !s1 && !s2 && !s3 && !s4 {
+        return (o1 > 0.0) != (o2 > 0.0) && (o3 > 0.0) != (o4 > 0.0);
+    }
+    // Collinear special cases (shared endpoints of adjacent edges are ignored by caller).
+    if s1 && on_segment(p1, p2, q1) {
+        return true;
+    }
+    if s2 && on_segment(p1, q2, q1) {
+        return true;
+    }
+    if s3 && on_segment(p2, p1, q2) {
+        return true;
+    }
+    if s4 && on_segment(p2, q1, q2) {
+        return true;
+    }
+    false
+}
+
+fn polygon_self_intersects(points: &[(f64, f64)]) -> bool {
+    let n = points.len();
+    if n < 4 {
+        // Triangle cannot properly self-intersect without collinear overlap.
+        return false;
+    }
+    for i in 0..n {
+        let a1 = points[i];
+        let a2 = points[(i + 1) % n];
+        for j in (i + 1)..n {
+            // Skip adjacent edges (including first/last which share a vertex).
+            if j == i || (j + 1) % n == i || (i + 1) % n == j {
+                continue;
+            }
+            let b1 = points[j];
+            let b2 = points[(j + 1) % n];
+            if segments_intersect(a1, a2, b1, b2) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn bbox_iou(a: [f64; 4], b: [f64; 4]) -> f64 {
+    let (ax, ay, aw, ah) = (a[0], a[1], a[2], a[3]);
+    let (bx, by, bw, bh) = (b[0], b[1], b[2], b[3]);
+    let ax2 = ax + aw;
+    let ay2 = ay + ah;
+    let bx2 = bx + bw;
+    let by2 = by + bh;
+    let ix1 = ax.max(bx);
+    let iy1 = ay.max(by);
+    let ix2 = ax2.min(bx2);
+    let iy2 = ay2.min(by2);
+    let iw = (ix2 - ix1).max(0.0);
+    let ih = (iy2 - iy1).max(0.0);
+    let inter = iw * ih;
+    let union = aw * ah + bw * bh - inter;
+    if union <= 0.0 || !union.is_finite() || !inter.is_finite() {
+        return 0.0;
+    }
+    inter / union
+}
+
+fn detect_duplicate_objects(
+    asset_id: &str,
+    anns: &[Annotation],
+    threshold: u64,
+) -> Vec<QualityViolation> {
+    // Pairwise IoU: a pair with IoU >= 0.9 counts as a duplicate pair.
+    // Violation fires when the number of such pairs is >= threshold.
+    const IOU_DUP: f64 = 0.9;
+    let mut boxes: Vec<(usize, [f64; 4])> = Vec::new();
+    for (idx, ann) in anns.iter().enumerate() {
+        if let Some(b) = parse_bbox(&ann.payload) {
+            if b[2] > 0.0 && b[3] > 0.0 {
+                boxes.push((idx, b));
+            }
+        }
+    }
+    let mut dup_pairs = 0u64;
+    let mut evidence_pairs = Vec::new();
+    for i in 0..boxes.len() {
+        for j in (i + 1)..boxes.len() {
+            let iou = bbox_iou(boxes[i].1, boxes[j].1);
+            if iou >= IOU_DUP {
+                dup_pairs = dup_pairs.saturating_add(1);
+                evidence_pairs.push(serde_json::json!({
+                    "a": anns[boxes[i].0].id.to_string(),
+                    "b": anns[boxes[j].0].id.to_string(),
+                    "iou": iou,
+                }));
+            }
+        }
+    }
+    if dup_pairs >= threshold && threshold > 0 {
+        vec![QualityViolation {
+            severity: Severity::Warning,
+            asset_id: asset_id.to_string(),
+            annotation_id: None,
+            rule: "DuplicateObjects".to_string(),
+            message: format!(
+                "found {} near-duplicate pairs (threshold {})",
+                dup_pairs, threshold
+            ),
+            evidence: serde_json::json!({
+                "pairs": evidence_pairs,
+                "threshold": threshold
+            }),
+        }]
+    } else {
+        Vec::new()
+    }
+}
+
+fn sample_review_violations(
+    annotations: &BTreeMap<String, Vec<Annotation>>,
+    ratio_permille: u64,
+    seed: u64,
+) -> Vec<QualityViolation> {
+    let mut asset_ids: Vec<&String> = annotations.keys().collect();
+    asset_ids.sort();
+    if asset_ids.is_empty() {
+        return Vec::new();
+    }
+    let total = asset_ids.len() as u64;
+    let mut sample_count = total.saturating_mul(ratio_permille) / 1000;
+    if sample_count == 0 {
+        sample_count = 1;
+    }
+    sample_count = sample_count.min(total);
+
+    // Deterministic selection: hash(seed, asset_id) and take lowest N.
+    let mut scored: Vec<(u64, &String)> = asset_ids
+        .into_iter()
+        .map(|id| {
+            let mut h = seed;
+            for b in id.as_bytes() {
+                h = h.wrapping_mul(0x0000_0100_0000_01b3).wrapping_add(u64::from(*b));
+            }
+            (h, id)
+        })
+        .collect();
+    scored.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(b.1)));
+    scored
+        .into_iter()
+        .take(sample_count as usize)
+        .map(|(_, asset_id)| QualityViolation {
+            severity: Severity::Info,
+            asset_id: asset_id.clone(),
+            annotation_id: None,
+            rule: "SampleReview".to_string(),
+            message: format!(
+                "asset selected for sample review ({}‰, seed {})",
+                ratio_permille, seed
+            ),
+            evidence: serde_json::json!({
+                "ratio_permille": ratio_permille,
+                "seed": seed
+            }),
+        })
+        .collect()
 }
 
 /// State of an auto-label job.
@@ -608,7 +955,8 @@ mod tests {
         let ann = make_annotation(None, json!({"bbox": [0.0, 0.0, 1.0, 1.0]}));
         let mut annotations = BTreeMap::new();
         annotations.insert("asset1".to_string(), vec![ann]);
-        let report = run.evaluate(&annotations);
+        let sizes = BTreeMap::new();
+        let report = run.evaluate(&annotations, &sizes);
         run.complete(report.clone()).unwrap();
         assert_eq!(report.violations.len(), 1);
         assert_eq!(report.violations[0].rule, "MissingLabel");
@@ -631,10 +979,119 @@ mod tests {
         let ann = make_annotation(Some("dog"), json!({}));
         let mut annotations = BTreeMap::new();
         annotations.insert("asset1".to_string(), vec![ann]);
-        let report = run.evaluate(&annotations);
+        let sizes = BTreeMap::new();
+        let report = run.evaluate(&annotations, &sizes);
         run.complete(report.clone()).unwrap();
         assert_eq!(report.violations.len(), 1);
         assert_eq!(report.violations[0].rule, "IllegalClass");
+    }
+
+    #[test]
+    fn quality_run_detects_out_of_bounds_box() {
+        let gen = RandomIdGenerator;
+        let mut run = QualityRun::new(
+            QualityRunId::new_v7(&gen),
+            DatasetVersionId::new_v7(&gen),
+            "1.0",
+            7,
+            vec![QualityRule::OutOfBoundsBox],
+        )
+        .unwrap();
+        run.start().unwrap();
+        let ann = make_annotation(Some("cat"), json!({"bbox": [90.0, 90.0, 20.0, 20.0]}));
+        let mut annotations = BTreeMap::new();
+        annotations.insert("asset1".to_string(), vec![ann]);
+        let mut sizes = BTreeMap::new();
+        sizes.insert("asset1".to_string(), (100u32, 100u32));
+        let report = run.evaluate(&annotations, &sizes);
+        assert_eq!(report.violations.len(), 1);
+        assert_eq!(report.violations[0].rule, "OutOfBoundsBox");
+    }
+
+    #[test]
+    fn quality_run_detects_self_intersecting_polygon() {
+        let gen = RandomIdGenerator;
+        let mut run = QualityRun::new(
+            QualityRunId::new_v7(&gen),
+            DatasetVersionId::new_v7(&gen),
+            "1.0",
+            7,
+            vec![QualityRule::SelfIntersectingPolygon],
+        )
+        .unwrap();
+        run.start().unwrap();
+        // Classic bow-tie: (0,0)-(1,1)-(1,0)-(0,1)
+        let ann = make_annotation(
+            Some("poly"),
+            json!({"polygon": [0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0]}),
+        );
+        let mut annotations = BTreeMap::new();
+        annotations.insert("asset1".to_string(), vec![ann]);
+        let report = run.evaluate(&annotations, &BTreeMap::new());
+        assert_eq!(report.violations.len(), 1);
+        assert_eq!(report.violations[0].rule, "SelfIntersectingPolygon");
+    }
+
+    #[test]
+    fn quality_run_detects_duplicate_objects_by_iou() {
+        let gen = RandomIdGenerator;
+        let mut run = QualityRun::new(
+            QualityRunId::new_v7(&gen),
+            DatasetVersionId::new_v7(&gen),
+            "1.0",
+            7,
+            vec![QualityRule::DuplicateObjects { threshold: 1 }],
+        )
+        .unwrap();
+        run.start().unwrap();
+        let a = make_annotation(Some("cat"), json!({"bbox": [10.0, 10.0, 20.0, 20.0]}));
+        // Nearly identical box — IoU well above the 0.9 duplicate threshold.
+        let b = make_annotation(Some("cat"), json!({"bbox": [10.0, 10.0, 20.0, 19.5]}));
+        let mut annotations = BTreeMap::new();
+        annotations.insert("asset1".to_string(), vec![a, b]);
+        let report = run.evaluate(&annotations, &BTreeMap::new());
+        assert_eq!(report.violations.len(), 1);
+        assert_eq!(report.violations[0].rule, "DuplicateObjects");
+    }
+
+    #[test]
+    fn quality_run_sample_review_is_deterministic() {
+        let gen = RandomIdGenerator;
+        let rules = vec![QualityRule::SampleReview {
+            ratio_permille: 500,
+        }];
+        let mut run_a = QualityRun::new(
+            QualityRunId::new_v7(&gen),
+            DatasetVersionId::new_v7(&gen),
+            "1.0",
+            99,
+            rules.clone(),
+        )
+        .unwrap();
+        let mut run_b = QualityRun::new(
+            QualityRunId::new_v7(&gen),
+            DatasetVersionId::new_v7(&gen),
+            "1.0",
+            99,
+            rules,
+        )
+        .unwrap();
+        run_a.start().unwrap();
+        run_b.start().unwrap();
+        let mut annotations = BTreeMap::new();
+        for name in ["a", "b", "c", "d"] {
+            annotations.insert(
+                name.to_string(),
+                vec![make_annotation(Some("x"), json!({}))],
+            );
+        }
+        let ra = run_a.evaluate(&annotations, &BTreeMap::new());
+        let rb = run_b.evaluate(&annotations, &BTreeMap::new());
+        assert_eq!(ra.violations.len(), 2);
+        assert_eq!(
+            ra.violations.iter().map(|v| v.asset_id.clone()).collect::<Vec<_>>(),
+            rb.violations.iter().map(|v| v.asset_id.clone()).collect::<Vec<_>>()
+        );
     }
 
     #[test]

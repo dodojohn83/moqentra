@@ -11,7 +11,7 @@
 ## 3. 任务
 
 - [x] `LOCAL-001` 实现 `NodeCapabilities` 与 `Device`（CPU/GPU/驱动/runtime/健康）。
-- [x] `LOCAL-002` 实现 `LocalExecutor.allocate`/`release`，禁止同一 device 重复分配。
+- [x] `LOCAL-002` 实现 `LocalExecutor.allocate`/`release`，禁止同一 device 重复分配；多 kind 分配失败不泄漏 device_usage。
 - [x] `LOCAL-003` `ContainerConfig` 含 `ContainerSecurityProfile`（非 root、只读 rootfs、capability drop、seccomp）; `launch_container` 拒绝 root。
 - [x] `LOCAL-004` cache/LRU 配额回收后续由 object-store 层补充。
 - [x] `LOCAL-005` `reconcile_orphans` 按 active attempts 清理孤儿 allocation。

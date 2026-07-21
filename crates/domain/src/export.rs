@@ -213,9 +213,147 @@ pub fn annotation_to_yolo_line(
     ))
 }
 
-/// VOC XML placeholder stub; full XML serialization left to a later task.
-pub fn annotations_to_voc(_annotations: &[Annotation], _labels: &[Label]) -> String {
-    "<annotation><source>Moqentra</source></annotation>".to_string()
+/// Escape text for inclusion in XML element content or attributes.
+fn xml_escape(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for ch in input.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Convert annotations for a single image into Pascal VOC XML.
+///
+/// `filename` is written as the VOC `<filename>` value. Image size is taken from
+/// `image_size` as `(width, height, depth)` with depth defaulting to 3 when
+/// callers pass depth `0`.
+///
+/// Geometry is read from `payload["bbox"]` as `[x, y, w, h]` (converted to
+/// xmin/ymin/xmax/ymax). The object name is taken from `payload["label"]`.
+pub fn annotations_to_voc(
+    annotations: &[Annotation],
+    filename: &str,
+    image_size: (u32, u32, u32),
+) -> Result<String, moqentra_types::Error> {
+    let (width, height, depth_in) = image_size;
+    if width == 0 || height == 0 {
+        return Err(moqentra_types::Error::invalid_argument(
+            "image width and height must be positive",
+        ));
+    }
+    let depth = if depth_in == 0 { 3 } else { depth_in };
+    let mut objects = String::new();
+    for ann in annotations {
+        let label = ann
+            .payload
+            .get("label")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| moqentra_types::Error::invalid_argument("missing label"))?;
+        let bbox_arr = ann
+            .payload
+            .get("bbox")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| moqentra_types::Error::invalid_argument("missing bbox"))?;
+        if bbox_arr.len() < 4 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "bbox must contain at least 4 values",
+            ));
+        }
+        let nums: Option<Vec<f64>> = bbox_arr.iter().take(4).map(|x| x.as_f64()).collect();
+        let bbox = nums.ok_or_else(|| {
+            moqentra_types::Error::invalid_argument("bbox coordinates must be numeric")
+        })?;
+        let (x, y, w, h) = (bbox[0], bbox[1], bbox[2], bbox[3]);
+        if ![x, y, w, h].into_iter().all(f64::is_finite) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "bbox coordinates must be finite",
+            ));
+        }
+        if w <= 0.0 || h <= 0.0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "bbox width and height must be positive",
+            ));
+        }
+        let xmin = x.floor() as i64;
+        let ymin = y.floor() as i64;
+        let xmax = (x + w).ceil() as i64;
+        let ymax = (y + h).ceil() as i64;
+        objects.push_str(&format!(
+            r#"  <object>
+    <name>{name}</name>
+    <pose>Unspecified</pose>
+    <truncated>0</truncated>
+    <difficult>0</difficult>
+    <bndbox>
+      <xmin>{xmin}</xmin>
+      <ymin>{ymin}</ymin>
+      <xmax>{xmax}</xmax>
+      <ymax>{ymax}</ymax>
+    </bndbox>
+  </object>
+"#,
+            name = xml_escape(label),
+            xmin = xmin,
+            ymin = ymin,
+            xmax = xmax,
+            ymax = ymax,
+        ));
+    }
+
+    Ok(format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<annotation>
+  <folder>moqentra</folder>
+  <filename>{filename}</filename>
+  <source>
+    <database>Moqentra</database>
+  </source>
+  <size>
+    <width>{width}</width>
+    <height>{height}</height>
+    <depth>{depth}</depth>
+  </size>
+  <segmented>0</segmented>
+{objects}</annotation>
+"#,
+        filename = xml_escape(filename),
+        width = width,
+        height = height,
+        depth = depth,
+        objects = objects,
+    ))
+}
+
+/// Native Moqentra JSON envelope for a set of annotations.
+pub fn annotations_to_native(
+    annotations: &[Annotation],
+    labels: &[Label],
+) -> Result<Value, moqentra_types::Error> {
+    let label_names: Vec<String> = labels.iter().map(|l| l.name.clone()).collect();
+    Ok(serde_json::json!({
+        "schema": "moqentra.annotation.export/v1",
+        "labels": label_names,
+        "annotations": annotations.iter().map(|a| {
+            serde_json::json!({
+                "id": a.id.to_string(),
+                "task_id": a.task_id.to_string(),
+                "asset_id": a.asset_id.to_string(),
+                "revision": a.revision,
+                "client_update_id": a.client_update_id,
+                "actor_id": a.actor_id.to_string(),
+                "payload": a.payload,
+                "created_at": a.created_at,
+                "updated_at": a.updated_at,
+            })
+        }).collect::<Vec<_>>(),
+    }))
 }
 
 /// Detect export format by file extension.
@@ -335,5 +473,29 @@ mod tests {
             coco.annotations[0].segmentation,
             vec![vec![1.0, 2.0, 3.0, 4.0]]
         );
+    }
+
+    #[test]
+    fn voc_export_contains_bndbox_and_escapes() {
+        let ann = make_annotation("cat & dog", vec![10.0, 20.0, 30.0, 40.0]);
+        let xml = annotations_to_voc(&[ann], "img<>.jpg", (640, 480, 3)).unwrap();
+        assert!(xml.contains("<xmin>10</xmin>"));
+        assert!(xml.contains("<ymin>20</ymin>"));
+        assert!(xml.contains("<xmax>40</xmax>"));
+        assert!(xml.contains("<ymax>60</ymax>"));
+        assert!(xml.contains("<name>cat &amp; dog</name>"));
+        assert!(xml.contains("<filename>img&lt;&gt;.jpg</filename>"));
+        assert!(xml.contains("<width>640</width>"));
+    }
+
+    #[test]
+    fn native_export_preserves_ids() {
+        let labels = vec![make_label("cat")];
+        let ann = make_annotation("cat", vec![1.0, 2.0, 3.0, 4.0]);
+        let id = ann.id.to_string();
+        let value = annotations_to_native(&[ann], &labels).unwrap();
+        assert_eq!(value["schema"], "moqentra.annotation.export/v1");
+        assert_eq!(value["annotations"][0]["id"], id);
+        assert_eq!(value["labels"][0], "cat");
     }
 }

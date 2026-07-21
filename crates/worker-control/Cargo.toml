@@ -8,3 +8,4 @@ repository.workspace = true
 
 [dependencies]
 moqentra-types = { path = "../types" }
+serde = { workspace = true }

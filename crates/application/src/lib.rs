@@ -1,12 +1,536 @@
-//! Moqentra `moqentra-application` crate.
+//! Moqentra application services and ports.
 //!
-//! This crate is part of the Moqentra workspace. Domain logic and public APIs
-//! are documented in the `dev-docs/002_vibe_coding_plan` chapters.
+//! Bridges pure domain aggregates with adapter-facing use cases. Domain types
+//! stay free of transport/storage; this crate owns orchestration workflows such
+//! as compile, version diff, and publish.
 
 #![warn(missing_docs)]
 
-/// Placeholder module until domain types are added in subsequent tasks.
-pub mod placeholder {
-    /// Returns the crate version.
-    pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+mod annotation_svc;
+mod dispatch;
+mod model_svc;
+mod training_svc;
+
+pub use annotation_svc::InMemoryAnnotationRegistry;
+pub use dispatch::{plan_dispatch, DispatchAction};
+pub use model_svc::InMemoryModelRegistry;
+pub use training_svc::InMemoryTrainingRegistry;
+
+use moqentra_domain::application::{
+    Application, ApplicationSpec, ApplicationVersion, ApplicationVersionState, Binding,
+};
+use moqentra_types::{ApplicationId, ApplicationVersionId, Error, ProjectId, TenantId};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
+
+/// Result of compiling (validating + canonicalizing) an application graph.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompileResult {
+    /// Canonical content digest of the validated spec.
+    pub digest: String,
+    /// Normalized edges (sorted) used for the digest.
+    pub edge_count: usize,
+    /// Node count in the graph.
+    pub node_count: usize,
+    /// Capability requirements unioned from all nodes.
+    pub capabilities: Vec<String>,
+}
+
+/// Structured diff between two application specs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct SpecDiff {
+    /// Node ids present only in the left (from) version.
+    pub removed_nodes: Vec<String>,
+    /// Node ids present only in the right (to) version.
+    pub added_nodes: Vec<String>,
+    /// Node ids present in both but with different content.
+    pub changed_nodes: Vec<String>,
+    /// Edges present only in the left version.
+    pub removed_edges: Vec<(String, String, String, String)>,
+    /// Edges present only in the right version.
+    pub added_edges: Vec<(String, String, String, String)>,
+}
+
+impl SpecDiff {
+    /// Returns true when no structural differences exist.
+    pub fn is_empty(&self) -> bool {
+        self.removed_nodes.is_empty()
+            && self.added_nodes.is_empty()
+            && self.changed_nodes.is_empty()
+            && self.removed_edges.is_empty()
+            && self.added_edges.is_empty()
+    }
+}
+
+/// Application graph compiler service (server-side authority).
+#[derive(Debug, Default, Clone)]
+pub struct ApplicationCompiler;
+
+impl ApplicationCompiler {
+    /// Create a new compiler instance.
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// Validate, canonicalize, and produce a digest for `spec`.
+    ///
+    /// This is the only path that should produce deployable digests; browser
+    /// clients must not fabricate digests independently.
+    pub fn compile(&self, mut spec: ApplicationSpec) -> Result<CompileResult, Error> {
+        spec.validate()?;
+        for node in spec.nodes.values() {
+            if node.id.trim().is_empty() {
+                return Err(Error::invalid_argument("node id must be non-empty"));
+            }
+            if node.node_type.trim().is_empty() {
+                return Err(Error::invalid_argument("node_type must be non-empty"));
+            }
+            if node.deprecated {
+                return Err(Error::invalid_argument(format!(
+                    "node '{}' uses a deprecated type/version",
+                    node.id
+                )));
+            }
+            for binding in node.bindings.values() {
+                validate_resource_ref_name(binding)?;
+            }
+        }
+        spec.edges.sort();
+        // Domain constructor is the single authority for digest computation.
+        // Ephemeral ids are fine; digests are pure functions of the spec.
+        let gen = moqentra_types::RandomIdGenerator;
+        let digest = ApplicationVersion::new(
+            ApplicationVersionId::new_v7(&gen),
+            ApplicationId::new_v7(&gen),
+            TenantId::new_v7(&gen),
+            ProjectId::new_v7(&gen),
+            "compile",
+            spec.clone(),
+        )?
+        .digest;
+
+        let mut capabilities: BTreeSet<String> = BTreeSet::new();
+        for node in spec.nodes.values() {
+            for cap in &node.capabilities {
+                capabilities.insert(cap.clone());
+            }
+        }
+
+        Ok(CompileResult {
+            digest,
+            edge_count: spec.edges.len(),
+            node_count: spec.nodes.len(),
+            capabilities: capabilities.into_iter().collect(),
+        })
+    }
+
+    /// Diff two specs for version comparison / UI change lists.
+    pub fn diff(&self, from: &ApplicationSpec, to: &ApplicationSpec) -> SpecDiff {
+        let from_ids: BTreeSet<&String> = from.nodes.keys().collect();
+        let to_ids: BTreeSet<&String> = to.nodes.keys().collect();
+
+        let removed_nodes: Vec<String> =
+            from_ids.difference(&to_ids).map(|s| (*s).clone()).collect();
+        let added_nodes: Vec<String> = to_ids.difference(&from_ids).map(|s| (*s).clone()).collect();
+
+        let mut changed_nodes = Vec::new();
+        for id in from_ids.intersection(&to_ids) {
+            if from.nodes.get(*id) != to.nodes.get(*id) {
+                changed_nodes.push((*id).clone());
+            }
+        }
+        changed_nodes.sort();
+
+        let from_edges: BTreeSet<_> = from.edges.iter().cloned().collect();
+        let to_edges: BTreeSet<_> = to.edges.iter().cloned().collect();
+        let removed_edges: Vec<_> = from_edges.difference(&to_edges).cloned().collect();
+        let added_edges: Vec<_> = to_edges.difference(&from_edges).cloned().collect();
+
+        SpecDiff {
+            removed_nodes,
+            added_nodes,
+            changed_nodes,
+            removed_edges,
+            added_edges,
+        }
+    }
+}
+
+fn validate_resource_ref_name(r: &moqentra_domain::application::ResourceRef) -> Result<(), Error> {
+    use moqentra_domain::application::ResourceRef;
+    match r {
+        ResourceRef::Secret { name } if name.trim().is_empty() => Err(Error::invalid_argument(
+            "secret binding name must be non-empty",
+        )),
+        ResourceRef::Stream { topic } if topic.trim().is_empty() => {
+            Err(Error::invalid_argument("stream topic must be non-empty"))
+        }
+        ResourceRef::Device { kind, count } => {
+            if kind.trim().is_empty() {
+                return Err(Error::invalid_argument("device kind must be non-empty"));
+            }
+            if *count == 0 {
+                return Err(Error::invalid_argument("device count must be > 0"));
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+/// In-memory application registry used by unit tests and single-process mode.
+#[derive(Debug, Default)]
+pub struct InMemoryApplicationRegistry {
+    applications: BTreeMap<ApplicationId, Application>,
+    versions: BTreeMap<ApplicationVersionId, ApplicationVersion>,
+}
+
+impl InMemoryApplicationRegistry {
+    /// Create an empty registry.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register a new application family.
+    pub fn create_application(&mut self, app: Application) -> Result<(), Error> {
+        if self.applications.contains_key(&app.id) {
+            return Err(Error::conflict("application already exists"));
+        }
+        self.applications.insert(app.id, app);
+        Ok(())
+    }
+
+    /// Create a draft version after server-side compile.
+    pub fn create_version(
+        &mut self,
+        mut version: ApplicationVersion,
+        compiler: &ApplicationCompiler,
+    ) -> Result<ApplicationVersion, Error> {
+        let app = self
+            .applications
+            .get_mut(&version.application_id)
+            .ok_or_else(|| Error::not_found("application"))?;
+        if app.tenant_id != version.tenant_id || app.project_id != version.project_id {
+            return Err(Error::permission_denied(
+                "version tenant/project does not match application",
+            ));
+        }
+        let compiled = compiler.compile(version.spec.clone())?;
+        if compiled.digest != version.digest {
+            // Re-bind digest to compiler authority.
+            version = ApplicationVersion::new(
+                version.id,
+                version.application_id,
+                version.tenant_id,
+                version.project_id,
+                version.version.clone(),
+                version.spec,
+            )?;
+        }
+        app.add_version(version.id)?;
+        self.versions.insert(version.id, version.clone());
+        Ok(version)
+    }
+
+    /// Publish a draft version and mark it as the latest published.
+    pub fn publish_version(
+        &mut self,
+        version_id: ApplicationVersionId,
+    ) -> Result<&ApplicationVersion, Error> {
+        let version = self
+            .versions
+            .get_mut(&version_id)
+            .ok_or_else(|| Error::not_found("application version"))?;
+        version.publish()?;
+        let app_id = version.application_id;
+        let app = self
+            .applications
+            .get_mut(&app_id)
+            .ok_or_else(|| Error::not_found("application"))?;
+        app.set_latest_published(version_id)?;
+        self.versions
+            .get(&version_id)
+            .ok_or_else(|| Error::internal("version missing after publish"))
+    }
+
+    /// Resolve deployment bindings against a published version.
+    pub fn resolve_bindings(
+        &self,
+        version_id: ApplicationVersionId,
+        bindings: &[Binding],
+    ) -> Result<BTreeMap<String, Binding>, Error> {
+        let version = self
+            .versions
+            .get(&version_id)
+            .ok_or_else(|| Error::not_found("application version"))?;
+        if !matches!(version.state, ApplicationVersionState::Published) {
+            return Err(Error::conflict("only published versions can be deployed"));
+        }
+        let mut resolved = BTreeMap::new();
+        for binding in bindings {
+            if !version.spec.nodes.contains_key(&binding.node_id) {
+                return Err(Error::invalid_argument(format!(
+                    "binding references unknown node '{}'",
+                    binding.node_id
+                )));
+            }
+            let key = format!("{}:{}", binding.node_id, binding.slot);
+            if resolved.contains_key(&key) {
+                return Err(Error::conflict(format!("duplicate binding for {key}")));
+            }
+            resolved.insert(key, binding.clone());
+        }
+        Ok(resolved)
+    }
+
+    /// Fetch a version by id.
+    pub fn get_version(&self, id: ApplicationVersionId) -> Option<&ApplicationVersion> {
+        self.versions.get(&id)
+    }
+}
+
+/// In-memory dataset registry for single-process / unit-test control plane.
+#[derive(Debug, Default)]
+pub struct InMemoryDatasetRegistry {
+    datasets: BTreeMap<moqentra_types::DatasetId, moqentra_domain::dataset::Dataset>,
+    versions: BTreeMap<moqentra_types::DatasetVersionId, moqentra_domain::dataset::DatasetVersion>,
+}
+
+impl InMemoryDatasetRegistry {
+    /// Create an empty registry.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Create a dataset, enforcing tenant isolation on later reads.
+    pub fn create_dataset(
+        &mut self,
+        dataset: moqentra_domain::dataset::Dataset,
+    ) -> Result<moqentra_domain::dataset::Dataset, Error> {
+        if self.datasets.contains_key(&dataset.id) {
+            return Err(Error::conflict("dataset already exists"));
+        }
+        self.datasets.insert(dataset.id, dataset.clone());
+        Ok(dataset)
+    }
+
+    /// Get a dataset only when it belongs to `tenant_id`.
+    pub fn get_dataset(
+        &self,
+        tenant_id: TenantId,
+        id: moqentra_types::DatasetId,
+    ) -> Result<&moqentra_domain::dataset::Dataset, Error> {
+        let ds = self.datasets.get(&id).ok_or_else(|| Error::not_found("dataset"))?;
+        if ds.tenant_id != tenant_id {
+            return Err(Error::not_found("dataset"));
+        }
+        Ok(ds)
+    }
+
+    /// List datasets for a tenant, optionally filtered by project.
+    pub fn list_datasets(
+        &self,
+        tenant_id: TenantId,
+        project_id: Option<ProjectId>,
+    ) -> Vec<&moqentra_domain::dataset::Dataset> {
+        self.datasets
+            .values()
+            .filter(|d| d.tenant_id == tenant_id)
+            .filter(|d| project_id.is_none_or(|p| d.project_id == p))
+            .collect()
+    }
+
+    /// Attach a draft version to a dataset under the same tenant/project.
+    pub fn create_version(
+        &mut self,
+        version: moqentra_domain::dataset::DatasetVersion,
+    ) -> Result<moqentra_domain::dataset::DatasetVersion, Error> {
+        let ds = self
+            .datasets
+            .get_mut(&version.dataset_id)
+            .ok_or_else(|| Error::not_found("dataset"))?;
+        if ds.tenant_id != version.tenant_id || ds.project_id != version.project_id {
+            return Err(Error::permission_denied(
+                "version tenant/project does not match dataset",
+            ));
+        }
+        if self.versions.contains_key(&version.id) {
+            return Err(Error::conflict("dataset version already exists"));
+        }
+        ds.add_version(version.id)?;
+        self.versions.insert(version.id, version.clone());
+        Ok(version)
+    }
+
+    /// Get a version only when it belongs to `tenant_id`.
+    pub fn get_version(
+        &self,
+        tenant_id: TenantId,
+        id: moqentra_types::DatasetVersionId,
+    ) -> Result<&moqentra_domain::dataset::DatasetVersion, Error> {
+        let v = self.versions.get(&id).ok_or_else(|| Error::not_found("dataset version"))?;
+        if v.tenant_id != tenant_id {
+            return Err(Error::not_found("dataset version"));
+        }
+        Ok(v)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use moqentra_domain::application::{ApplicationNode, Port};
+    use moqentra_types::RandomIdGenerator;
+
+    fn port(name: &str, port_type: &str) -> Port {
+        Port {
+            name: name.to_string(),
+            port_type: port_type.to_string(),
+            schema: "any".to_string(),
+        }
+    }
+
+    fn node(id: &str) -> ApplicationNode {
+        ApplicationNode {
+            id: id.to_string(),
+            node_type: "infer".to_string(),
+            version: "1".to_string(),
+            deprecated: false,
+            inputs: vec![port("in", "image")],
+            outputs: vec![port("out", "image")],
+            parameters: BTreeMap::new(),
+            resource_request: "small".to_string(),
+            capabilities: vec!["gpu".to_string()],
+            bindings: BTreeMap::new(),
+        }
+    }
+
+    fn linear_spec() -> ApplicationSpec {
+        let mut nodes = BTreeMap::new();
+        nodes.insert("a".to_string(), node("a"));
+        nodes.insert("b".to_string(), node("b"));
+        ApplicationSpec {
+            nodes,
+            edges: vec![(
+                "a".to_string(),
+                "out".to_string(),
+                "b".to_string(),
+                "in".to_string(),
+            )],
+        }
+    }
+
+    #[test]
+    fn compile_rejects_cycle() {
+        let mut nodes = BTreeMap::new();
+        nodes.insert("a".to_string(), node("a"));
+        nodes.insert("b".to_string(), node("b"));
+        let spec = ApplicationSpec {
+            nodes,
+            edges: vec![
+                (
+                    "a".to_string(),
+                    "out".to_string(),
+                    "b".to_string(),
+                    "in".to_string(),
+                ),
+                (
+                    "b".to_string(),
+                    "out".to_string(),
+                    "a".to_string(),
+                    "in".to_string(),
+                ),
+            ],
+        };
+        let compiler = ApplicationCompiler::new();
+        assert!(compiler.compile(spec).is_err());
+    }
+
+    #[test]
+    fn compile_and_diff_roundtrip() {
+        let compiler = ApplicationCompiler::new();
+        let from = linear_spec();
+        let compiled = compiler.compile(from.clone()).unwrap();
+        assert_eq!(compiled.node_count, 2);
+        assert_eq!(compiled.edge_count, 1);
+        assert!(compiled.digest.starts_with("sha256:"));
+        assert_eq!(compiled.capabilities, vec!["gpu".to_string()]);
+
+        let mut to = from.clone();
+        to.nodes.insert("c".to_string(), node("c"));
+        to.edges.push((
+            "b".to_string(),
+            "out".to_string(),
+            "c".to_string(),
+            "in".to_string(),
+        ));
+        let diff = compiler.diff(&from, &to);
+        assert_eq!(diff.added_nodes, vec!["c".to_string()]);
+        assert!(diff.removed_nodes.is_empty());
+        assert_eq!(diff.added_edges.len(), 1);
+    }
+
+    #[test]
+    fn publish_flow_and_bindings() {
+        let gen = RandomIdGenerator;
+        let compiler = ApplicationCompiler::new();
+        let mut registry = InMemoryApplicationRegistry::new();
+
+        let app_id = ApplicationId::new_v7(&gen);
+        let tenant = TenantId::new_v7(&gen);
+        let project = ProjectId::new_v7(&gen);
+        let app = Application::new(app_id, tenant, project, "demo").unwrap();
+        registry.create_application(app).unwrap();
+
+        let version_id = ApplicationVersionId::new_v7(&gen);
+        let version =
+            ApplicationVersion::new(version_id, app_id, tenant, project, "v1", linear_spec())
+                .unwrap();
+        let version = registry.create_version(version, &compiler).unwrap();
+        assert!(matches!(version.state, ApplicationVersionState::Draft));
+
+        registry.publish_version(version_id).unwrap();
+        let published = registry.get_version(version_id).unwrap();
+        assert!(matches!(
+            published.state,
+            ApplicationVersionState::Published
+        ));
+
+        let bindings = vec![Binding {
+            node_id: "a".to_string(),
+            slot: "model".to_string(),
+            resource: moqentra_domain::application::ResourceRef::Secret {
+                name: "model-key".to_string(),
+            },
+        }];
+        let resolved = registry.resolve_bindings(version_id, &bindings).unwrap();
+        assert_eq!(resolved.len(), 1);
+
+        // Unknown node rejected.
+        let bad = vec![Binding {
+            node_id: "missing".to_string(),
+            slot: "x".to_string(),
+            resource: moqentra_domain::application::ResourceRef::Stream {
+                topic: "t".to_string(),
+            },
+        }];
+        assert!(registry.resolve_bindings(version_id, &bad).is_err());
+    }
+
+    #[test]
+    fn dataset_registry_tenant_isolation() {
+        let gen = RandomIdGenerator;
+        let mut reg = InMemoryDatasetRegistry::new();
+        let tenant_a = TenantId::new_v7(&gen);
+        let tenant_b = TenantId::new_v7(&gen);
+        let project = ProjectId::new_v7(&gen);
+        let id = moqentra_types::DatasetId::new_v7(&gen);
+        let ds = moqentra_domain::dataset::Dataset::new(id, tenant_a, project, "ds-a").unwrap();
+        reg.create_dataset(ds).unwrap();
+
+        assert!(reg.get_dataset(tenant_a, id).is_ok());
+        assert!(reg.get_dataset(tenant_b, id).is_err());
+        assert_eq!(reg.list_datasets(tenant_a, None).len(), 1);
+        assert!(reg.list_datasets(tenant_b, None).is_empty());
+    }
 }

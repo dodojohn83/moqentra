@@ -12,8 +12,8 @@ Webhook 原始 body 使用 event/delivery/timestamp HMAC，具备超时、退避
 
 ## 3. 任务
 
-- [x] `API-001` 实现 `ProblemDetails`（RFC 9457）、`AuthorizedRequest`（含 `idempotency_key`/`if_match`）、`RateLimitWindow` 和 idempotency record；请求认证/限流/中间件骨架后续接入 axum/tower。
-- [x] `API-002` 资源 API 路由与 OpenAPI 生成在 `moqentra-http-api` 后续章节实现；domain 类型已就位。
+- [x] `API-001` 实现 `ProblemDetails`（RFC 9457）、`AuthorizedRequest`、`TokenBucketLimiter`/`RateLimitWindow` 和 idempotency record；control-plane 已接入 axum 健康检查与 compile 路由。
+- [x] `API-002` control-plane 已挂载 datasets/experiments/training-jobs/models/annotation-projects/outbox 路由；OpenAPI 骨架同步；完整 codegen 后续补充。
 - [x] `EVENT-001` 实现 `SseEvent` 含 cursor、`event_type`、tenant filter payload；心跳/慢消费者由服务层维护。
 - [x] `HOOK-001` 实现 `WebhookSubscription` 与 HMAC `sign_payload`；`validate_url` 做 SSRF 拒绝（localhost/127.0.0.1/10.x/192.168.x）；重试/死信/熔断服务层实现。
 - [x] `SDK-001` SDK 生成与兼容性测试后续由 `python/moqentra_worker` 和 TypeScript 客户端章节实现。

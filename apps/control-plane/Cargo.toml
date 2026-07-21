@@ -11,7 +11,22 @@ name = "moqentra-control-plane"
 path = "src/main.rs"
 
 [dependencies]
+moqentra-types = { path = "../../crates/types" }
+moqentra-domain = { path = "../../crates/domain" }
+moqentra-http-api = { path = "../../crates/http-api" }
+moqentra-application = { path = "../../crates/application" }
+moqentra-auth = { path = "../../crates/auth" }
+moqentra-storage = { path = "../../crates/storage" }
+uuid = { version = "1", features = ["v4"] }
 tokio = { workspace = true }
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = "1.0"
+reqwest = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+jsonwebtoken = "9"

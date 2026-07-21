@@ -20,6 +20,8 @@ pub struct SchedulingQueue {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueueEntry {
     pub job_id: String,
+    /// Tenant that owns the job (opaque string form of TenantId).
+    pub tenant_id: String,
     pub project_id: String,
     pub priority: u32,
     pub submitted_at: moqentra_types::UtcTimestamp,
@@ -334,6 +336,7 @@ mod tests {
         let mut queue = SchedulingQueue::new("default", TenantId::new_v7(&gen), 2, 10);
         let e1 = QueueEntry {
             job_id: "job-low".to_string(),
+            tenant_id: "tenant-1".to_string(),
             project_id: "p1".to_string(),
             priority: 1,
             submitted_at: moqentra_types::UtcTimestamp::now(),
@@ -346,6 +349,7 @@ mod tests {
         assert!(queue
             .enqueue(QueueEntry {
                 job_id: "job-full".to_string(),
+                tenant_id: "tenant-1".to_string(),
                 project_id: "p1".to_string(),
                 priority: 5,
                 submitted_at: moqentra_types::UtcTimestamp::now(),

@@ -169,11 +169,18 @@ fn role_permissions(role: Role) -> HashSet<Permission> {
         Role::MlEngineer => {
             perms.extend(role_permissions(Role::Reviewer));
             perms.insert(Permission::new(Resource::Dataset, Action::Create));
+            perms.insert(Permission::new(Resource::DatasetVersion, Action::Create));
+            perms.insert(Permission::new(Resource::DatasetVersion, Action::Update));
+            perms.insert(Permission::new(Resource::AnnotationTask, Action::Create));
+            perms.insert(Permission::new(Resource::AnnotationTask, Action::List));
             perms.insert(Permission::new(Resource::TrainingJob, Action::Create));
             perms.insert(Permission::new(Resource::TrainingJob, Action::Read));
+            perms.insert(Permission::new(Resource::TrainingJob, Action::List));
             perms.insert(Permission::new(Resource::TrainingJob, Action::Execute));
             perms.insert(Permission::new(Resource::ModelVersion, Action::Create));
+            perms.insert(Permission::new(Resource::ModelVersion, Action::List));
             perms.insert(Permission::new(Resource::ModelVersion, Action::Update));
+            perms.insert(Permission::new(Resource::AuditLog, Action::Read));
         }
         Role::Operator => {
             perms.extend(role_permissions(Role::Viewer));
@@ -237,6 +244,8 @@ fn role_permissions(role: Role) -> HashSet<Permission> {
 #[derive(Debug, Clone)]
 pub struct Authorizer {
     role_assignments: HashSet<(UserId, TenantId, Role)>,
+    /// Service-account name → (tenant, role) grants.
+    service_assignments: HashSet<(String, TenantId, Role)>,
     project_members: HashSet<(UserId, TenantId, ProjectId)>,
 }
 
@@ -250,6 +259,7 @@ impl Authorizer {
     pub fn new() -> Self {
         Self {
             role_assignments: HashSet::new(),
+            service_assignments: HashSet::new(),
             project_members: HashSet::new(),
         }
     }
@@ -258,14 +268,48 @@ impl Authorizer {
         self.role_assignments.insert((user, tenant, role));
     }
 
+    /// Grant a role to a service account within a tenant (workload identity).
+    pub fn assign_service_role(
+        &mut self,
+        service_name: impl Into<String>,
+        tenant: TenantId,
+        role: Role,
+    ) {
+        self.service_assignments.insert((service_name.into(), tenant, role));
+    }
+
     pub fn add_project_member(&mut self, user: UserId, tenant: TenantId, project: ProjectId) {
         self.project_members.insert((user, tenant, project));
     }
 
+    fn roles_for_principal(
+        &self,
+        principal: &moqentra_types::Principal,
+        tenant: TenantId,
+    ) -> Vec<Role> {
+        match principal {
+            moqentra_types::Principal::User { id } => self
+                .role_assignments
+                .iter()
+                .filter(|(u, t, _)| *u == *id && *t == tenant)
+                .map(|(_, _, r)| *r)
+                .collect(),
+            moqentra_types::Principal::Service { name } => self
+                .service_assignments
+                .iter()
+                .filter(|(n, t, _)| n == name && *t == tenant)
+                .map(|(_, _, r)| *r)
+                .collect(),
+            moqentra_types::Principal::Anonymous => Vec::new(),
+        }
+    }
+
     /// Returns `Ok(())` if the caller is allowed to perform `action` on `resource`
-    /// within `scope`. Denies if there is no tenant context, the user has no
+    /// within `scope`. Denies if there is no tenant context, the principal has no
     /// role, or the role does not grant the required permission. Project-scoped
-    /// resources require project membership.
+    /// resources require project membership for user principals (service
+    /// principals with a matching role skip membership checks — they act as
+    /// workload identities).
     pub fn authorize(
         &self,
         ctx: &RequestContext,
@@ -273,60 +317,46 @@ impl Authorizer {
         resource: Resource,
         scope: &Scope,
     ) -> Result<(), AuthorizationError> {
-        let user = match &ctx.principal {
-            moqentra_types::Principal::User { id } => *id,
-            _ => {
-                return Err(AuthorizationError {
-                    action,
-                    resource,
-                    tenant: scope.tenant_id,
-                })
-            }
+        let deny = || AuthorizationError {
+            action,
+            resource,
+            tenant: scope.tenant_id,
         };
+
+        if matches!(ctx.principal, moqentra_types::Principal::Anonymous) {
+            return Err(deny());
+        }
 
         // Tenant isolation: the scope must match the request context.
         if ctx.tenant_id != scope.tenant_id {
-            return Err(AuthorizationError {
-                action,
-                resource,
-                tenant: scope.tenant_id,
-            });
+            return Err(deny());
         }
 
-        let mut allowed = false;
-        for (_, _, role) in self
-            .role_assignments
+        let roles = self.roles_for_principal(&ctx.principal, scope.tenant_id);
+        let allowed = roles
             .iter()
-            .filter(|(u, t, _)| *u == user && *t == scope.tenant_id)
-        {
-            if role_permissions(*role).contains(&Permission::new(resource, action)) {
-                allowed = true;
-                break;
-            }
-        }
-
+            .any(|role| role_permissions(*role).contains(&Permission::new(resource, action)));
         if !allowed {
-            return Err(AuthorizationError {
-                action,
-                resource,
-                tenant: scope.tenant_id,
-            });
+            return Err(deny());
         }
 
         // Project-level resources further require project membership unless the
-        // user is a tenant or system admin.
+        // principal is a tenant/system admin or a service account.
         if let Some(project_id) = scope.project_id {
-            let is_admin = self.role_assignments.iter().any(|(u, t, r)| {
-                *u == user
-                    && *t == scope.tenant_id
-                    && matches!(r, Role::TenantAdmin | Role::SystemAdmin)
-            });
-            if !is_admin && !self.project_members.contains(&(user, scope.tenant_id, project_id)) {
-                return Err(AuthorizationError {
-                    action,
-                    resource,
-                    tenant: scope.tenant_id,
-                });
+            match &ctx.principal {
+                moqentra_types::Principal::Service { .. } => {
+                    // Workload identities are not project members; role is enough.
+                }
+                moqentra_types::Principal::User { id } => {
+                    let is_admin =
+                        roles.iter().any(|r| matches!(r, Role::TenantAdmin | Role::SystemAdmin));
+                    if !is_admin
+                        && !self.project_members.contains(&(*id, scope.tenant_id, project_id))
+                    {
+                        return Err(deny());
+                    }
+                }
+                moqentra_types::Principal::Anonymous => return Err(deny()),
             }
         }
 
@@ -473,5 +503,26 @@ mod tests {
                 other_tenant,
             )
             .unwrap();
+    }
+
+    #[test]
+    fn service_account_authorized_with_role() {
+        let mut authz = Authorizer::new();
+        let gen = RandomIdGenerator;
+        let tenant = TenantId::new_v7(&gen);
+        let project = ProjectId::new_v7(&gen);
+        authz.assign_service_role("node-agent", tenant, Role::Operator);
+        let ctx = RequestContext::new(tenant, Principal::service("node-agent"), "req-svc");
+        let scope = Scope::new(tenant).with_project(project);
+        authz.authorize(&ctx, Action::Read, Resource::Node, &scope).unwrap();
+        // No grant → deny
+        assert!(authz
+            .authorize(
+                &RequestContext::new(tenant, Principal::service("other"), "r2"),
+                Action::Read,
+                Resource::Node,
+                &scope
+            )
+            .is_err());
     }
 }

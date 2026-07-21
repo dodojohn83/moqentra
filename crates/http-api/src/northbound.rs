@@ -294,12 +294,95 @@ pub struct AuthorizedRequest {
     pub if_match: Option<u64>,
 }
 
-/// Minimal rate-limit window (placeholder for a token-bucket implementation).
+/// Snapshot of a tenant's rate-limit budget after an acquire attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RateLimitWindow {
     pub tenant_id: moqentra_types::TenantId,
     pub remaining: u32,
     pub reset_at: UtcTimestamp,
+    pub limited: bool,
+}
+
+/// Per-tenant token-bucket rate limiter.
+///
+/// Tokens refill continuously at `refill_per_sec` up to `capacity`. Each
+/// successful request consumes one token (or `n` tokens for bulk ops).
+#[derive(Debug, Clone)]
+pub struct TokenBucketLimiter {
+    pub tenant_id: moqentra_types::TenantId,
+    capacity: u32,
+    tokens: f64,
+    refill_per_sec: f64,
+    last_refill: UtcTimestamp,
+}
+
+impl TokenBucketLimiter {
+    pub fn new(
+        tenant_id: moqentra_types::TenantId,
+        capacity: u32,
+        refill_per_sec: f64,
+        now: UtcTimestamp,
+    ) -> Result<Self, Error> {
+        if capacity == 0 {
+            return Err(Error::invalid_argument("rate limit capacity must be > 0"));
+        }
+        if !refill_per_sec.is_finite() || refill_per_sec <= 0.0 {
+            return Err(Error::invalid_argument(
+                "refill_per_sec must be a positive finite number",
+            ));
+        }
+        Ok(Self {
+            tenant_id,
+            capacity,
+            tokens: f64::from(capacity),
+            refill_per_sec,
+            last_refill: now,
+        })
+    }
+
+    fn refill(&mut self, now: UtcTimestamp) {
+        let elapsed = (now.as_offset() - self.last_refill.as_offset()).as_seconds_f64();
+        if elapsed <= 0.0 {
+            return;
+        }
+        self.tokens = (self.tokens + elapsed * self.refill_per_sec).min(f64::from(self.capacity));
+        self.last_refill = now;
+    }
+
+    fn reset_at(&self, now: UtcTimestamp) -> UtcTimestamp {
+        if self.tokens >= 1.0 {
+            return now;
+        }
+        let need = 1.0 - self.tokens;
+        let secs = (need / self.refill_per_sec).ceil().max(1.0) as u64;
+        now.add_std_duration(std::time::Duration::from_secs(secs)).unwrap_or(now)
+    }
+
+    /// Try to consume `n` tokens. On success returns a window with `limited=false`.
+    /// On budget exhaustion returns `Ok` with `limited=true` (caller maps to 429)
+    /// so the remaining budget is still visible to clients.
+    pub fn try_acquire(&mut self, now: UtcTimestamp, n: u32) -> Result<RateLimitWindow, Error> {
+        if n == 0 {
+            return Err(Error::invalid_argument("token acquire count must be > 0"));
+        }
+        self.refill(now);
+        let need = f64::from(n);
+        if self.tokens + f64::EPSILON < need {
+            return Ok(RateLimitWindow {
+                tenant_id: self.tenant_id,
+                remaining: self.tokens.floor().max(0.0) as u32,
+                reset_at: self.reset_at(now),
+                limited: true,
+            });
+        }
+        self.tokens -= need;
+        Ok(RateLimitWindow {
+            tenant_id: self.tenant_id,
+            remaining: self.tokens.floor().max(0.0) as u32,
+            reset_at: self.reset_at(now),
+            limited: false,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -429,5 +512,27 @@ mod tests {
             payload: serde_json::json!({}),
         };
         assert_eq!(ev.cursor, "c1");
+    }
+
+    #[test]
+    fn token_bucket_limits_and_refills() {
+        let tenant = TenantId::new_v7(&RandomIdGenerator);
+        let now = UtcTimestamp::now();
+        let mut limiter = TokenBucketLimiter::new(tenant, 2, 1.0, now).unwrap();
+
+        let w1 = limiter.try_acquire(now, 1).unwrap();
+        assert!(!w1.limited);
+        assert_eq!(w1.remaining, 1);
+
+        let w2 = limiter.try_acquire(now, 1).unwrap();
+        assert!(!w2.limited);
+        assert_eq!(w2.remaining, 0);
+
+        let limited = limiter.try_acquire(now, 1).unwrap();
+        assert!(limited.limited);
+
+        let later = now.add_std_duration(std::time::Duration::from_secs(2)).unwrap();
+        let refilled = limiter.try_acquire(later, 1).unwrap();
+        assert!(!refilled.limited);
     }
 }

@@ -169,6 +169,10 @@ impl Error {
         Self::new(ErrorKind::Unauthenticated, message)
     }
 
+    pub fn rate_limited(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::RateLimited, message)
+    }
+
     pub fn unavailable(message: impl Into<String>) -> Self {
         Self::new(ErrorKind::Unavailable, message)
     }

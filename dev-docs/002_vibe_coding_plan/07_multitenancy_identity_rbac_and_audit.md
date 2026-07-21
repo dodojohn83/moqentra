@@ -12,9 +12,9 @@
 
 ## 3. 任务
 
-- [x] `IAM-001` 定义 Principal、service account、role、scope 和项目成员模型。
-- [x] `IAM-002` 实现 HMAC 开发模式验证、issuer/audience/exp 校验；OIDC JWKS 轮询后续补充。
-- [x] `IAM-003` 建立资源×动作授权矩阵及 deny-by-default policy。
+- [x] `IAM-001` 定义 Principal、service account、role、scope 和项目成员模型；`Authorizer.assign_service_role` 支持 workload identity。
+- [x] `IAM-002` 实现 HMAC 开发模式验证、issuer/audience/exp 校验；`CompositeTokenValidator` 串联 HMAC + service token；OIDC JWKS 轮询后续补充。
+- [x] `IAM-003` 建立资源×动作授权矩阵及 deny-by-default policy；control-plane 接入租户头与 Bearer 鉴权。
 - [x] `IAM-004` RLS session context 与连接池清理在 storage adapter 实现（后续任务）。
 - [x] `IAM-005` 定义审计事件模型和 AuditLog 端口；各业务调用点后续接入。
 - [x] `IAM-006` 测试横向/纵向越权、project 成员隔离、system admin 跨租户与 deny-by-default。

@@ -12,7 +12,7 @@ UI 使用 React Flow 编辑纯数据 spec。服务端是唯一权威编译器：
 - [x] `APP-002` 实现 `Application`/`ApplicationVersion`；发布后 `ApplicationVersion` 不可变（spec 在 `new` 时校验并固定 digest）。
 - [x] `APP-003` `ApplicationVersion::canonical_digest` 基于确定性 JSON 序列化生成 digest；相同输入产生相同 digest。
 - [x] `APP-004` `ResourceRef` 支持 Model、Dataset、Stream、Secret、Device 引用；`Binding` 用于部署期绑定。
-- [x] `APP-005` 版本比较/diff/模板/导入导出后续由 application service 层实现；domain 已保存完整 spec 快照。
+- [x] `APP-005` `moqentra-application` 实现 `ApplicationCompiler`（compile/diff）、`InMemoryApplicationRegistry`（create/publish/bindings）；模板/导入导出后续补充。
 - [x] `APP-006` 单元测试覆盖图环、端口类型不匹配、缺失节点和发布冻结。
 
 ## 20. 完成证据

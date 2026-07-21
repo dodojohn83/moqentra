@@ -48,8 +48,9 @@ impl HmacValidator {
     }
 }
 
-impl TokenValidator for HmacValidator {
-    fn validate(&self, token: &str) -> Result<Principal, Error> {
+impl HmacValidator {
+    /// Validate token and return both principal and full claims (for role seeding).
+    pub fn validate_claims(&self, token: &str) -> Result<(Principal, TokenClaims), Error> {
         if self.secret.is_empty() {
             return Err(Error::unauthenticated("HMAC secret must not be empty"));
         }
@@ -80,7 +81,13 @@ impl TokenValidator for HmacValidator {
             .map_err(|e| Error::unauthenticated(format!("token validation failed: {}", e)))?;
 
         let user_id = UserId::try_from(claims.sub.as_str())?;
-        Ok(Principal::user(user_id))
+        Ok((Principal::user(user_id), claims))
+    }
+}
+
+impl TokenValidator for HmacValidator {
+    fn validate(&self, token: &str) -> Result<Principal, Error> {
+        self.validate_claims(token).map(|(p, _)| p)
     }
 }
 
@@ -116,6 +123,73 @@ impl TokenValidator for ServiceAccountValidator {
 /// Maps claim roles to platform `Role`s.
 pub fn map_roles(claim_roles: &[String]) -> Vec<crate::rbac::Role> {
     claim_roles.iter().filter_map(|s| s.parse::<crate::rbac::Role>().ok()).collect()
+}
+
+/// Tries HMAC JWT first, then service-account token lookup.
+#[derive(Clone)]
+pub struct CompositeTokenValidator {
+    hmac: Option<HmacValidator>,
+    service: Option<ServiceAccountValidator>,
+}
+
+impl CompositeTokenValidator {
+    pub fn new(hmac: Option<HmacValidator>, service: Option<ServiceAccountValidator>) -> Self {
+        Self { hmac, service }
+    }
+
+    pub fn is_configured(&self) -> bool {
+        self.hmac.is_some() || self.service.is_some()
+    }
+}
+
+/// Authenticated session with optional role claims from JWT.
+#[derive(Debug, Clone)]
+pub struct AuthSession {
+    pub principal: Principal,
+    pub roles: Vec<crate::rbac::Role>,
+    pub tenant_ids: Vec<String>,
+}
+
+impl CompositeTokenValidator {
+    /// Validate and extract role claims when available (HMAC path).
+    pub fn validate_session(&self, token: &str) -> Result<AuthSession, Error> {
+        if token.trim().is_empty() {
+            return Err(Error::unauthenticated("token must not be empty"));
+        }
+        let mut last_err = Error::unauthenticated("no token validator configured");
+        if let Some(hmac) = &self.hmac {
+            match hmac.validate_claims(token) {
+                Ok((principal, claims)) => {
+                    return Ok(AuthSession {
+                        principal,
+                        roles: map_roles(&claims.roles),
+                        tenant_ids: claims.tenant_ids,
+                    });
+                }
+                Err(e) => last_err = e,
+            }
+        }
+        if let Some(service) = &self.service {
+            match service.validate(token) {
+                Ok(principal) => {
+                    return Ok(AuthSession {
+                        principal,
+                        // Service accounts rely on Authorizer.assign_service_role.
+                        roles: Vec::new(),
+                        tenant_ids: Vec::new(),
+                    });
+                }
+                Err(e) => last_err = e,
+            }
+        }
+        Err(last_err)
+    }
+}
+
+impl TokenValidator for CompositeTokenValidator {
+    fn validate(&self, token: &str) -> Result<Principal, Error> {
+        self.validate_session(token).map(|s| s.principal)
+    }
 }
 
 #[cfg(test)]
