@@ -188,9 +188,10 @@ impl ObjectStorage for S3ObjectStore {
         &self,
         key: &str,
         upload_id: &str,
-        parts: Vec<(i32, String)>,
+        mut parts: Vec<(i32, String)>,
     ) -> Result<ObjectMetadata, Error> {
         use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
+        parts.sort_by_key(|(n, _)| *n);
         let completed_parts: Vec<_> = parts
             .into_iter()
             .map(|(part_number, etag)| {

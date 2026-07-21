@@ -107,9 +107,10 @@ impl PipelineRun {
         tenant_id: TenantId,
         project_id: ProjectId,
         spec: PipelineSpec,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        spec.validate_dag()?;
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             tenant_id,
             project_id,
@@ -118,7 +119,7 @@ impl PipelineRun {
             node_states: BTreeMap::new(),
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn start(&mut self) -> Result<(), moqentra_types::Error> {
@@ -248,9 +249,19 @@ impl HpoRun {
         search_space: BTreeMap<String, SearchParam>,
         trial_budget: u32,
         max_parallel: u32,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        if trial_budget == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "trial_budget must be greater than zero",
+            ));
+        }
+        if max_parallel == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "max_parallel must be greater than zero",
+            ));
+        }
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             tenant_id,
             project_id,
@@ -264,7 +275,7 @@ impl HpoRun {
             state: HpoRunState::Pending,
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn suggest_trial(
@@ -302,6 +313,9 @@ impl HpoRun {
             .trials
             .get_mut(number as usize)
             .ok_or_else(|| moqentra_types::Error::not_found("trial"))?;
+        if !matches!(trial.state, TrialState::Pending | TrialState::Running) {
+            return Err(moqentra_types::Error::conflict("trial is not active"));
+        }
         trial.metric = Some(metric);
         trial.training_job_id = Some(job_id);
         trial.state = TrialState::Completed;
@@ -464,7 +478,8 @@ mod tests {
             TenantId::new_v7(&gen),
             ProjectId::new_v7(&gen),
             spec,
-        );
+        )
+        .unwrap();
         run.start().unwrap();
         assert!(run.update_node("b", NodeRunState::Running).is_err());
         run.update_node("a", NodeRunState::Succeeded).unwrap();
@@ -483,7 +498,8 @@ mod tests {
             BTreeMap::new(),
             5,
             2,
-        );
+        )
+        .unwrap();
         let params = BTreeMap::new();
         let n0 = hpo.suggest_trial(params.clone()).unwrap();
         let n1 = hpo.suggest_trial(params.clone()).unwrap();

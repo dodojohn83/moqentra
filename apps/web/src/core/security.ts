@@ -13,12 +13,15 @@ export function isAllowedDownloadType(contentType: string): boolean {
 }
 
 export function stripSecrets(input: string): string {
+  // Values may be quoted (single or double) or unterminated; unquoted values
+  // stop at whitespace or an ampersand to stay query-string friendly.
+  const value = '(?:"[^"]*"|\'[^\']*\'|[^&\\s]+)';
   const patterns = [
-    /password=[^&\s]+/gi,
-    /token=[^&\s]+/gi,
-    /api[_-]?key=[^&\s]+/gi,
-    /private[_-]?key=[^&\s]+/gi,
-    /secret=[^&\s]+/gi,
+    new RegExp(`password=${value}`, "gi"),
+    new RegExp(`token=${value}`, "gi"),
+    new RegExp(`api[_-]?key=${value}`, "gi"),
+    new RegExp(`private[_-]?key=${value}`, "gi"),
+    new RegExp(`secret=${value}`, "gi"),
   ];
   return patterns.reduce(
     (acc, pattern) =>

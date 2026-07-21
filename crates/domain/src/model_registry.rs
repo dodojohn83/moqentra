@@ -18,7 +18,7 @@ pub struct Artifact {
 }
 
 impl Artifact {
-    fn validate(&self) -> Result<(), moqentra_types::Error> {
+    pub(crate) fn validate(&self) -> Result<(), moqentra_types::Error> {
         if self.size_bytes == 0 {
             return Err(moqentra_types::Error::invalid_argument(
                 "artifact size must be greater than zero",
@@ -32,6 +32,17 @@ impl Artifact {
         if !self.digest.contains(':') || self.digest.split(':').any(|part| part.is_empty()) {
             return Err(moqentra_types::Error::invalid_argument(
                 "artifact digest must be algorithm:hex",
+            ));
+        }
+        if self.scan_status.trim().is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "artifact scan_status is empty",
+            ));
+        }
+        const ALLOWED: &[&str] = &["clean", "infected", "pending", "unknown"];
+        if !ALLOWED.contains(&self.scan_status.as_str()) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "artifact scan_status is not a recognized value",
             ));
         }
         Ok(())
@@ -110,14 +121,20 @@ impl ModelVersion {
         project_id: ProjectId,
         version: impl Into<String>,
         lineage: ModelLineage,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        let version = version.into();
+        if version.trim().is_empty() || version.len() > 64 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "model version string must be non-empty and at most 64 characters",
+            ));
+        }
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             model_id,
             tenant_id,
             project_id,
-            version: version.into(),
+            version,
             state: ModelVersionState::Draft,
             signature: ModelSignature {
                 inputs: Vec::new(),
@@ -130,7 +147,7 @@ impl ModelVersion {
             approved_by: None,
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn validate(&mut self) -> Result<(), moqentra_types::Error> {
@@ -149,7 +166,13 @@ impl ModelVersion {
                 "model version has no artifacts",
             ));
         }
+        let mut seen_asset_ids = std::collections::HashSet::new();
         for artifact in &self.artifacts {
+            if !seen_asset_ids.insert(artifact.asset_id) {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "duplicate artifact asset id",
+                ));
+            }
             artifact.validate()?;
             if artifact.scan_status != "clean" {
                 return Err(moqentra_types::Error::invalid_argument(
@@ -255,14 +278,28 @@ impl Model {
         })
     }
 
-    pub fn register_version(&mut self, version_id: ModelVersionId) {
+    pub fn register_version(
+        &mut self,
+        version_id: ModelVersionId,
+    ) -> Result<(), moqentra_types::Error> {
+        if self.version_ids.contains(&version_id) {
+            return Err(moqentra_types::Error::conflict("version already in model"));
+        }
         self.version_ids.push(version_id);
         self.updated_at = UtcTimestamp::now();
+        Ok(())
     }
 
-    pub fn set_latest_approved(&mut self, version_id: ModelVersionId) {
+    pub fn set_latest_approved(
+        &mut self,
+        version_id: ModelVersionId,
+    ) -> Result<(), moqentra_types::Error> {
+        if !self.version_ids.contains(&version_id) {
+            return Err(moqentra_types::Error::not_found("version not in model"));
+        }
         self.latest_approved = Some(version_id);
         self.updated_at = UtcTimestamp::now();
+        Ok(())
     }
 }
 
@@ -306,7 +343,8 @@ mod tests {
             ProjectId::new_v7(&gen),
             "v1",
             lineage,
-        );
+        )
+        .unwrap();
         mv.artifacts.push(Artifact {
             asset_id: AssetId::new_v7(&gen),
             digest: "sha256:model".to_string(),
@@ -331,7 +369,8 @@ mod tests {
             ProjectId::new_v7(&gen),
             "v1",
             lineage,
-        );
+        )
+        .unwrap();
         mv.artifacts.push(Artifact {
             asset_id: AssetId::new_v7(&gen),
             digest: "sha256:dirty".to_string(),
@@ -353,7 +392,8 @@ mod tests {
             ProjectId::new_v7(&gen),
             "v1",
             lineage,
-        );
+        )
+        .unwrap();
         assert!(mv.approve(UserId::new_v7(&gen)).is_err());
     }
 }

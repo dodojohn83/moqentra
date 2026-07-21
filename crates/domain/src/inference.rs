@@ -128,6 +128,11 @@ impl Deployment {
         bundle: ReleaseBundle,
         generation: u64,
     ) -> Result<(), moqentra_types::Error> {
+        if generation <= self.observed_generation {
+            return Err(moqentra_types::Error::invalid_argument(
+                "deployment generation must increase",
+            ));
+        }
         bundle.policy.validate()?;
         self.release_bundle = bundle;
         self.observed_generation = generation;

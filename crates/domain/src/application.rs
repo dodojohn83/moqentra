@@ -152,7 +152,7 @@ impl ApplicationVersion {
         tenant_id: TenantId,
         project_id: ProjectId,
         version: impl Into<String>,
-        spec: ApplicationSpec,
+        mut spec: ApplicationSpec,
     ) -> Result<Self, moqentra_types::Error> {
         let version = version.into();
         if version.trim().is_empty() || version.len() > 64 {
@@ -161,6 +161,9 @@ impl ApplicationVersion {
             ));
         }
         spec.validate()?;
+        // Canonicalize edge order so semantically identical graphs produce the
+        // same digest regardless of how edges were constructed.
+        spec.edges.sort();
         let digest = Self::canonical_digest(&spec)?;
         let now = UtcTimestamp::now();
         Ok(Self {
@@ -235,14 +238,32 @@ impl Application {
         })
     }
 
-    pub fn add_version(&mut self, version_id: ApplicationVersionId) {
+    pub fn add_version(
+        &mut self,
+        version_id: ApplicationVersionId,
+    ) -> Result<(), moqentra_types::Error> {
+        if self.version_ids.contains(&version_id) {
+            return Err(moqentra_types::Error::conflict(
+                "version already in application",
+            ));
+        }
         self.version_ids.push(version_id);
         self.updated_at = UtcTimestamp::now();
+        Ok(())
     }
 
-    pub fn set_latest_published(&mut self, version_id: ApplicationVersionId) {
+    pub fn set_latest_published(
+        &mut self,
+        version_id: ApplicationVersionId,
+    ) -> Result<(), moqentra_types::Error> {
+        if !self.version_ids.contains(&version_id) {
+            return Err(moqentra_types::Error::not_found(
+                "version not in application",
+            ));
+        }
         self.latest_published = Some(version_id);
         self.updated_at = UtcTimestamp::now();
+        Ok(())
     }
 }
 
@@ -346,6 +367,72 @@ mod tests {
             spec,
         )
         .is_err());
+    }
+
+    #[test]
+    fn digest_ignores_edge_order() {
+        let gen = RandomIdGenerator;
+        let a = make_node("a", vec![], vec![port("out", "image")]);
+        let b = make_node("b", vec![port("in", "image")], vec![]);
+        let c = make_node("c", vec![port("in", "image")], vec![]);
+        let mut nodes = BTreeMap::new();
+        nodes.insert("a".to_string(), a);
+        nodes.insert("b".to_string(), b);
+        nodes.insert("c".to_string(), c);
+        let spec1 = ApplicationSpec {
+            nodes: nodes.clone(),
+            edges: vec![
+                (
+                    "a".to_string(),
+                    "out".to_string(),
+                    "b".to_string(),
+                    "in".to_string(),
+                ),
+                (
+                    "a".to_string(),
+                    "out".to_string(),
+                    "c".to_string(),
+                    "in".to_string(),
+                ),
+            ],
+        };
+        let spec2 = ApplicationSpec {
+            nodes,
+            edges: vec![
+                (
+                    "a".to_string(),
+                    "out".to_string(),
+                    "c".to_string(),
+                    "in".to_string(),
+                ),
+                (
+                    "a".to_string(),
+                    "out".to_string(),
+                    "b".to_string(),
+                    "in".to_string(),
+                ),
+            ],
+        };
+        let app1 = ApplicationVersion::new(
+            ApplicationVersionId::new_v7(&gen),
+            ApplicationId::new_v7(&gen),
+            TenantId::new_v7(&gen),
+            ProjectId::new_v7(&gen),
+            "v1",
+            spec1,
+        )
+        .unwrap();
+        let app2 = ApplicationVersion::new(
+            ApplicationVersionId::new_v7(&gen),
+            ApplicationId::new_v7(&gen),
+            TenantId::new_v7(&gen),
+            ProjectId::new_v7(&gen),
+            "v1",
+            spec2,
+        )
+        .unwrap();
+        assert_eq!(app1.digest, app2.digest);
+        assert_eq!(app1.spec, app2.spec);
     }
 
     #[test]

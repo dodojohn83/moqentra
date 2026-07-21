@@ -160,6 +160,11 @@ impl FileUpload {
                 "chunk size must be greater than zero",
             ));
         }
+        if total_size == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "total size must be greater than zero",
+            ));
+        }
         let chunk_count = total_size.div_ceil(chunk_size);
         if chunk_count > Self::MAX_CHUNKS {
             return Err(moqentra_types::Error::invalid_argument(
@@ -196,13 +201,19 @@ impl FileUpload {
         index: u64,
         etag: impl Into<String>,
     ) -> Result<(), moqentra_types::Error> {
+        let etag = etag.into();
+        if etag.trim().is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "etag must be non-empty",
+            ));
+        }
         let idx = usize::try_from(index)
             .map_err(|_| moqentra_types::Error::invalid_argument("chunk index out of range"))?;
         let chunk = self
             .chunks
             .get_mut(idx)
             .ok_or_else(|| moqentra_types::Error::not_found("chunk"))?;
-        chunk.etag = Some(etag.into());
+        chunk.etag = Some(etag);
         self.completed_chunks.insert(index);
         Ok(())
     }

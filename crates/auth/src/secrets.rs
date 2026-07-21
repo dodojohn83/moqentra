@@ -142,11 +142,33 @@ impl SecretRedactor {
             }
             let value_start = match_end + sep_len;
             let value_str = &rest[value_start..];
-            let consumed = value_str
-                .char_indices()
-                .find(|(_, c)| c.is_whitespace() || matches!(c, '&' | ',' | ';' | '}' | ']'))
-                .map(|(i, _)| i)
-                .unwrap_or(value_str.len());
+            let consumed = if let Some(quote) =
+                value_str.chars().next().filter(|c| matches!(c, '"' | '\''))
+            {
+                let mut escaped = false;
+                value_str
+                    .char_indices()
+                    .skip(1)
+                    .find(|(_, c)| {
+                        if escaped {
+                            escaped = false;
+                            return false;
+                        }
+                        if *c == '\\' {
+                            escaped = true;
+                            return false;
+                        }
+                        *c == quote
+                    })
+                    .map(|(i, c)| i + c.len_utf8())
+                    .unwrap_or(value_str.len())
+            } else {
+                value_str
+                    .char_indices()
+                    .find(|(_, c)| c.is_whitespace() || matches!(c, '&' | ',' | ';' | '}' | ']'))
+                    .map(|(i, _)| i)
+                    .unwrap_or(value_str.len())
+            };
             output.push_str(&rest[..pos]);
             output.push_str("[REDACTED]");
             rest = &rest[value_start + consumed..];
@@ -321,6 +343,15 @@ mod tests {
         let out = redactor.redact("password=foo token=bar");
         assert!(!out.contains("password"));
         assert!(!out.contains("token"));
+    }
+
+    #[test]
+    fn secret_redaction_handles_quotes() {
+        let redactor = SecretRedactor::new();
+        let out = redactor.redact("password=\"my secret\" api_key='another key'");
+        assert!(!out.contains("my secret"));
+        assert!(!out.contains("another key"));
+        assert!(out.contains("[REDACTED]"));
     }
 
     #[test]

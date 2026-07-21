@@ -129,13 +129,30 @@ pub fn annotations_to_coco(
             }
             let segmentation =
                 if let Some(poly) = ann.payload.get("polygon").and_then(|v| v.as_array()) {
-                    vec![poly
-                        .iter()
-                        .filter_map(|x| x.as_f64())
-                        .collect::<Vec<_>>()
-                        .chunks_exact(2)
-                        .flat_map(|c| c.iter().copied())
-                        .collect()]
+                    let mut values = Vec::with_capacity(poly.len());
+                    for v in poly {
+                        let coord = v.as_f64().ok_or_else(|| {
+                            moqentra_types::Error::invalid_argument(
+                                "polygon coordinate must be numeric",
+                            )
+                        })?;
+                        if !coord.is_finite() {
+                            return Err(moqentra_types::Error::invalid_argument(
+                                "polygon coordinate must be finite",
+                            ));
+                        }
+                        values.push(coord);
+                    }
+                    if values.len() % 2 != 0 {
+                        return Err(moqentra_types::Error::invalid_argument(
+                            "polygon must contain an even number of coordinates",
+                        ));
+                    }
+                    if values.is_empty() {
+                        vec![]
+                    } else {
+                        vec![values]
+                    }
                 } else {
                     vec![]
                 };
@@ -202,7 +219,7 @@ pub fn format_by_extension(path: &str) -> Option<ExportFormat> {
     let lower = path.to_lowercase();
     if lower.ends_with(".moqentra.json") {
         Some(ExportFormat::Native)
-    } else if lower.ends_with(".coco.json") || lower.ends_with(".json") {
+    } else if lower.ends_with(".coco.json") {
         Some(ExportFormat::Coco)
     } else if lower.ends_with(".xml") {
         Some(ExportFormat::Voc)
@@ -277,6 +294,42 @@ mod tests {
         assert_eq!(
             format_by_extension("yolo/labels.txt"),
             Some(ExportFormat::Yolo)
+        );
+        assert_eq!(format_by_extension("foo.json"), None);
+        assert_eq!(
+            format_by_extension("foo.moqentra.json"),
+            Some(ExportFormat::Native)
+        );
+    }
+
+    #[test]
+    fn coco_export_rejects_odd_polygon() {
+        let labels = vec![make_label("cat")];
+        let mut ann = make_annotation("cat", vec![10.0, 20.0, 30.0, 40.0]);
+        ann.payload =
+            json!({"label": "cat", "bbox": [10.0, 20.0, 30.0, 40.0], "polygon": [1.0, 2.0, 3.0]});
+        let mut annotations = BTreeMap::new();
+        annotations.insert("cat.jpg".to_string(), vec![ann]);
+        let mut sizes = BTreeMap::new();
+        sizes.insert("cat.jpg".to_string(), (100, 100));
+
+        assert!(annotations_to_coco(&annotations, &sizes, &labels).is_err());
+    }
+
+    #[test]
+    fn coco_export_preserves_polygon() {
+        let labels = vec![make_label("cat")];
+        let mut ann = make_annotation("cat", vec![10.0, 20.0, 30.0, 40.0]);
+        ann.payload = json!({"label": "cat", "bbox": [10.0, 20.0, 30.0, 40.0], "polygon": [1.0, 2.0, 3.0, 4.0]});
+        let mut annotations = BTreeMap::new();
+        annotations.insert("cat.jpg".to_string(), vec![ann]);
+        let mut sizes = BTreeMap::new();
+        sizes.insert("cat.jpg".to_string(), (100, 100));
+
+        let coco = annotations_to_coco(&annotations, &sizes, &labels).unwrap();
+        assert_eq!(
+            coco.annotations[0].segmentation,
+            vec![vec![1.0, 2.0, 3.0, 4.0]]
         );
     }
 }

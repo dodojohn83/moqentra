@@ -51,6 +51,73 @@ pub struct TrainingJobSpec {
     pub deadline_seconds: u64,
 }
 
+impl TrainingJobSpec {
+    /// Validates that the spec defines a runnable, non-degenerate job.
+    pub fn validate(&self) -> Result<(), moqentra_types::Error> {
+        fn valid_digest(d: &str) -> bool {
+            !d.is_empty() && d.contains(':') && d.split(':').all(|part| !part.is_empty())
+        }
+        if !valid_digest(&self.code_digest) || !valid_digest(&self.image_digest) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "code and image digests must be in algorithm:hex form",
+            ));
+        }
+        if self.max_attempts == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "max_attempts must be greater than zero",
+            ));
+        }
+        if self.deadline_seconds == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "deadline_seconds must be greater than zero",
+            ));
+        }
+        if self.resources.ephemeral_storage_mib == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "ephemeral_storage_mib must be greater than zero",
+            ));
+        }
+        if self.resources.replicas == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "replicas must be greater than zero",
+            ));
+        }
+        if self.resources.cpu_milli == 0 || self.resources.memory_mib == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "cpu_milli and memory_mib must be greater than zero",
+            ));
+        }
+        if self.resources.accelerator_count > 0
+            && self.resources.accelerator_kind.as_deref().is_none_or(|k| k.trim().is_empty())
+        {
+            return Err(moqentra_types::Error::invalid_argument(
+                "accelerator_kind must be set when accelerator_count is > 0",
+            ));
+        }
+        if self.hyperparameters.argv.is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "hyperparameters.argv must not be empty",
+            ));
+        }
+        match self.distributed {
+            DistributedConfig::Single => {}
+            DistributedConfig::Ddp { world_size } => {
+                if world_size == 0 {
+                    return Err(moqentra_types::Error::invalid_argument(
+                        "ddp world_size must be greater than zero",
+                    ));
+                }
+                if world_size != self.resources.replicas {
+                    return Err(moqentra_types::Error::invalid_argument(
+                        "ddp world_size must equal resources.replicas",
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DistributedConfig {
     Single,
@@ -105,9 +172,19 @@ pub struct Attempt {
 }
 
 impl Attempt {
-    pub fn new(id: AttemptId, job_id: TrainingJobId, fencing_token: u64, ranks: Vec<Rank>) -> Self {
+    pub fn new(
+        id: AttemptId,
+        job_id: TrainingJobId,
+        fencing_token: u64,
+        ranks: Vec<Rank>,
+    ) -> Result<Self, moqentra_types::Error> {
+        if ranks.is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "attempt must contain at least one rank",
+            ));
+        }
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             job_id,
             fencing_token,
@@ -116,7 +193,7 @@ impl Attempt {
             checkpoint_ids: Vec::new(),
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn rank_states_ok(&self) -> bool {
@@ -189,9 +266,10 @@ impl TrainingJob {
         tenant_id: TenantId,
         project_id: ProjectId,
         spec: TrainingJobSpec,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        spec.validate()?;
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             experiment_id,
             tenant_id,
@@ -204,7 +282,7 @@ impl TrainingJob {
             output_manifest: None,
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn admit(&mut self) -> Result<(), moqentra_types::Error> {
@@ -225,6 +303,15 @@ impl TrainingJob {
         }
         if self.attempts.len() >= self.spec.max_attempts as usize {
             return Err(moqentra_types::Error::unavailable("max attempts reached"));
+        }
+        let expected_ranks = match self.spec.distributed {
+            DistributedConfig::Single => 1,
+            DistributedConfig::Ddp { world_size } => world_size,
+        } as usize;
+        if attempt.ranks.len() != expected_ranks {
+            return Err(moqentra_types::Error::invalid_argument(
+                "attempt rank count does not match distributed configuration",
+            ));
         }
         self.attempts.push(attempt.id);
         self.current_attempt = Some(attempt);
@@ -407,9 +494,13 @@ impl Experiment {
         })
     }
 
-    pub fn add_job(&mut self, job_id: TrainingJobId) {
+    pub fn add_job(&mut self, job_id: TrainingJobId) -> Result<(), moqentra_types::Error> {
+        if self.job_ids.contains(&job_id) {
+            return Err(moqentra_types::Error::conflict("job already in experiment"));
+        }
         self.job_ids.push(job_id);
         self.updated_at = UtcTimestamp::now();
+        Ok(())
     }
 
     pub fn set_best(&mut self, model_version_id: ModelVersionId) {
@@ -459,6 +550,7 @@ mod tests {
             ProjectId::new_v7(&gen),
             spec,
         )
+        .unwrap()
     }
 
     #[test]
@@ -474,7 +566,7 @@ mod tests {
             last_heartbeat: None,
             exit_code: None,
         };
-        let attempt = Attempt::new(AttemptId::new_v7(&gen), job.id, 7, vec![rank]);
+        let attempt = Attempt::new(AttemptId::new_v7(&gen), job.id, 7, vec![rank]).unwrap();
         job.start_attempt(attempt).unwrap();
         job.mark_running(7).unwrap();
         job.mark_finalizing(7).unwrap();
@@ -502,7 +594,7 @@ mod tests {
             last_heartbeat: None,
             exit_code: None,
         };
-        let attempt = Attempt::new(AttemptId::new_v7(&gen), job.id, 5, vec![rank]);
+        let attempt = Attempt::new(AttemptId::new_v7(&gen), job.id, 5, vec![rank]).unwrap();
         job.start_attempt(attempt).unwrap();
         assert!(job.mark_running(99).is_err());
     }
@@ -520,7 +612,7 @@ mod tests {
             last_heartbeat: None,
             exit_code: None,
         };
-        let attempt = Attempt::new(AttemptId::new_v7(&gen), job.id, 1, vec![rank]);
+        let attempt = Attempt::new(AttemptId::new_v7(&gen), job.id, 1, vec![rank]).unwrap();
         job.start_attempt(attempt).unwrap();
         job.mark_running(1).unwrap();
         job.mark_finalizing(1).unwrap();

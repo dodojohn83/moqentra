@@ -108,6 +108,16 @@ impl DatasetVersion {
                 "cannot modify a published or deprecated dataset version",
             ));
         }
+        if self.assets.iter().any(|a| a.name == asset.name) {
+            return Err(moqentra_types::Error::conflict(
+                "asset name already exists in version",
+            ));
+        }
+        if self.assets.iter().any(|a| a.object_key == asset.object_key) {
+            return Err(moqentra_types::Error::conflict(
+                "object key already exists in version",
+            ));
+        }
         asset.validate()?;
         self.assets.push(asset);
         Ok(())
@@ -201,14 +211,30 @@ impl Dataset {
         })
     }
 
-    pub fn add_version(&mut self, version_id: DatasetVersionId) {
+    pub fn add_version(
+        &mut self,
+        version_id: DatasetVersionId,
+    ) -> Result<(), moqentra_types::Error> {
+        if self.version_ids.contains(&version_id) {
+            return Err(moqentra_types::Error::conflict(
+                "version already in dataset",
+            ));
+        }
         self.version_ids.push(version_id);
         self.updated_at = UtcTimestamp::now();
+        Ok(())
     }
 
-    pub fn set_latest_published(&mut self, version_id: DatasetVersionId) {
+    pub fn set_latest_published(
+        &mut self,
+        version_id: DatasetVersionId,
+    ) -> Result<(), moqentra_types::Error> {
+        if !self.version_ids.contains(&version_id) {
+            return Err(moqentra_types::Error::not_found("version not in dataset"));
+        }
         self.latest_published_version = Some(version_id);
         self.updated_at = UtcTimestamp::now();
+        Ok(())
     }
 
     pub fn archive(&mut self) {
@@ -218,12 +244,35 @@ impl Dataset {
 }
 
 /// Compute a canonical digest for a version manifest.
+///
+/// The digest is taken over the immutable contents (ids, assets and splits) so
+/// that it remains stable when the version state or publish timestamp changes.
 pub fn compute_manifest_digest(version: &DatasetVersion) -> Result<String, moqentra_types::Error> {
+    use serde::Serialize;
     use sha2::{Digest, Sha256};
-    let canonical = serde_json::to_string(version).map_err(|e| {
+
+    #[derive(Serialize)]
+    struct CanonicalManifest<'a> {
+        id: &'a moqentra_types::DatasetVersionId,
+        dataset_id: &'a moqentra_types::DatasetId,
+        tenant_id: &'a moqentra_types::TenantId,
+        project_id: &'a moqentra_types::ProjectId,
+        assets: &'a Vec<AssetRef>,
+        splits: &'a serde_json::Value,
+    }
+
+    let canonical = CanonicalManifest {
+        id: &version.id,
+        dataset_id: &version.dataset_id,
+        tenant_id: &version.tenant_id,
+        project_id: &version.project_id,
+        assets: &version.assets,
+        splits: &version.splits,
+    };
+    let canonical_json = serde_json::to_string(&canonical).map_err(|e| {
         moqentra_types::Error::internal(format!("manifest digest serialization failed: {e}"))
     })?;
-    let hash = Sha256::digest(canonical.as_bytes());
+    let hash = Sha256::digest(canonical_json.as_bytes());
     Ok(format!("sha256:{:x}", hash))
 }
 

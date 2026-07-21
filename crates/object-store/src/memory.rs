@@ -113,7 +113,7 @@ impl ObjectStorage for InMemoryObjectStore {
 
     async fn upload_part(
         &self,
-        _key: &str,
+        key: &str,
         upload_id: &str,
         part_number: i32,
         data: Bytes,
@@ -125,6 +125,9 @@ impl ObjectStorage for InMemoryObjectStore {
         let upload = multipart
             .get_mut(upload_id)
             .ok_or_else(|| Error::not_found("multipart upload"))?;
+        if upload.object_key != key {
+            return Err(Error::invalid_argument("multipart upload key mismatch"));
+        }
         let etag = format!("\"{}\"", digest(&data));
         upload.parts.insert(part_number, data);
         Ok(etag)
@@ -271,5 +274,18 @@ mod tests {
         let meta2 = store.put_object("a.bin", Bytes::from_static(b"data"), None).await.unwrap();
         // Same data results in the same digest.
         assert_eq!(meta1.digest, meta2.digest);
+    }
+
+    #[tokio::test]
+    async fn multipart_upload_key_mismatch_rejected() {
+        let store = InMemoryObjectStore::new();
+        let upload_id = store
+            .start_multipart("big.bin", Some("application/octet-stream"))
+            .await
+            .unwrap();
+        assert!(store
+            .upload_part("other.bin", &upload_id, 1, Bytes::from_static(b"hello"))
+            .await
+            .is_err());
     }
 }

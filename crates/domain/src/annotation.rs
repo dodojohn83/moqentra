@@ -104,14 +104,29 @@ impl AnnotationProject {
         })
     }
 
-    pub fn activate(&mut self) {
+    pub fn activate(&mut self) -> Result<(), moqentra_types::Error> {
+        if !matches!(
+            self.state,
+            AnnotationProjectState::Draft | AnnotationProjectState::Archived
+        ) {
+            return Err(moqentra_types::Error::conflict(
+                "project cannot be activated",
+            ));
+        }
         self.state = AnnotationProjectState::Active;
         self.updated_at = UtcTimestamp::now();
+        Ok(())
     }
 
-    pub fn archive(&mut self) {
+    pub fn archive(&mut self) -> Result<(), moqentra_types::Error> {
+        if !matches!(self.state, AnnotationProjectState::Active) {
+            return Err(moqentra_types::Error::conflict(
+                "project cannot be archived",
+            ));
+        }
         self.state = AnnotationProjectState::Archived;
         self.updated_at = UtcTimestamp::now();
+        Ok(())
     }
 }
 
@@ -186,9 +201,14 @@ impl AnnotationTask {
         project_id: AnnotationProjectId,
         tenant_id: TenantId,
         asset_ids: Vec<AssetId>,
-    ) -> Self {
+    ) -> Result<Self, moqentra_types::Error> {
+        if asset_ids.is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "annotation task must have at least one asset",
+            ));
+        }
         let now = UtcTimestamp::now();
-        Self {
+        Ok(Self {
             id,
             project_id,
             tenant_id,
@@ -198,7 +218,7 @@ impl AnnotationTask {
             lease: None,
             created_at: now,
             updated_at: now,
-        }
+        })
     }
 
     pub fn assign(
@@ -214,6 +234,18 @@ impl AnnotationTask {
                 | AnnotationTaskState::Returned
         ) {
             return Err(moqentra_types::Error::conflict("task cannot be assigned"));
+        }
+        if expires_at <= UtcTimestamp::now() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "lease expiration must be in the future",
+            ));
+        }
+        if let Some(lease) = &self.lease {
+            if lease.is_valid(UtcTimestamp::now()) && lease.assignee_id != assignee {
+                return Err(moqentra_types::Error::conflict(
+                    "task is already assigned to another user",
+                ));
+            }
         }
         self.assignee = Some(assignee);
         self.lease = Some(TaskLease {
@@ -399,7 +431,8 @@ mod tests {
             AnnotationProjectId::new_v7(&gen),
             tenant,
             vec![AssetId::new_v7(&gen)],
-        );
+        )
+        .unwrap();
         let user = UserId::new_v7(&gen);
         let now = UtcTimestamp::now();
         let ttl = std::time::Duration::from_secs(60);
@@ -418,7 +451,8 @@ mod tests {
             AnnotationProjectId::new_v7(&gen),
             tenant,
             vec![AssetId::new_v7(&gen)],
-        );
+        )
+        .unwrap();
         let user = UserId::new_v7(&gen);
         let now = UtcTimestamp::now();
         let expires = now.add_std_duration(std::time::Duration::from_secs(60)).unwrap();
