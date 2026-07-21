@@ -169,7 +169,9 @@ impl TaskLease {
                 "ttl must be positive",
             ));
         }
-        let duration = std::time::Duration::from_secs(ttl_seconds as u64);
+        let secs = u64::try_from(ttl_seconds)
+            .map_err(|_| moqentra_types::Error::invalid_argument("ttl too large"))?;
+        let duration = std::time::Duration::from_secs(secs);
         self.expires_at = clock
             .add_std_duration(duration)
             .ok_or_else(|| moqentra_types::Error::internal("overflow"))?;

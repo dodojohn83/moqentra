@@ -94,7 +94,8 @@ impl ObjectStorage for S3ObjectStore {
 
         Ok(ObjectMetadata {
             key: key.to_string(),
-            size: data.len() as u64,
+            size: u64::try_from(data.len())
+                .map_err(|_| Error::invalid_argument("object size overflow"))?,
             media_type: media_type.map(|s| s.to_string()),
             etag: output.e_tag,
             digest: None,

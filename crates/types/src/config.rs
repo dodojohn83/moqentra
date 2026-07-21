@@ -158,7 +158,7 @@ fn percent_encode_userinfo(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
         if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
-            out.push(b as char);
+            out.push(char::from(b));
         } else {
             out.push('%');
             out.push_str(&format!("{:02X}", b));

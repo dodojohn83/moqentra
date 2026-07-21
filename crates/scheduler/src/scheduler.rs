@@ -208,30 +208,32 @@ impl ClusterTopology {
         &self,
         request: &ResourceRequest,
     ) -> Result<String, moqentra_types::Error> {
-        let total_cpu_milli = (request.replicas as u64)
+        let total_cpu_milli = u64::from(request.replicas)
             .checked_mul(request.cpu_milli)
             .ok_or_else(|| moqentra_types::Error::invalid_argument("cpu request overflow"))?;
-        let total_memory_mib = (request.replicas as u64)
+        let total_memory_mib = u64::from(request.replicas)
             .checked_mul(request.memory_mib)
             .ok_or_else(|| moqentra_types::Error::invalid_argument("memory request overflow"))?;
         for (name, node) in &self.nodes {
-            if (node.cpu_cores as u64).checked_mul(1000).is_none_or(|c| c < total_cpu_milli) {
+            if u64::from(node.cpu_cores).checked_mul(1000).is_none_or(|c| c < total_cpu_milli) {
                 continue;
             }
             if node.memory_mib < total_memory_mib {
                 continue;
             }
             if request.accelerator_count > 0 {
-                let available = node
-                    .accelerators
-                    .iter()
-                    .filter(|a| {
-                        a.kind == request.accelerator_kind.as_deref().unwrap_or("")
-                            && !node.taints.contains(&format!("no-{}", a.kind))
-                    })
-                    .count() as u64;
-                let needed = (request.accelerator_count as u64)
-                    .checked_mul(request.replicas as u64)
+                let available = u64::try_from(
+                    node.accelerators
+                        .iter()
+                        .filter(|a| {
+                            a.kind == request.accelerator_kind.as_deref().unwrap_or("")
+                                && !node.taints.contains(&format!("no-{}", a.kind))
+                        })
+                        .count(),
+                )
+                .map_err(|_| moqentra_types::Error::internal("accelerator count overflow"))?;
+                let needed = u64::from(request.accelerator_count)
+                    .checked_mul(u64::from(request.replicas))
                     .ok_or_else(|| {
                         moqentra_types::Error::invalid_argument("accelerator request overflow")
                     })?;

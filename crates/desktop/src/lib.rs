@@ -171,12 +171,17 @@ impl FileUpload {
                 "file too large for configured chunk size",
             ));
         }
-        let mut chunks = Vec::with_capacity(chunk_count as usize);
+        let chunk_count = usize::try_from(chunk_count).map_err(|_| {
+            moqentra_types::Error::invalid_argument("file too large for this platform")
+        })?;
+        let mut chunks = Vec::with_capacity(chunk_count);
         for i in 0..chunk_count {
+            let i_u64 = u64::try_from(i)
+                .map_err(|_| moqentra_types::Error::internal("chunk index overflow"))?;
             chunks.push(FileChunk {
-                chunk_index: i,
-                offset: i * chunk_size,
-                size: chunk_size.min(total_size - i * chunk_size),
+                chunk_index: i_u64,
+                offset: i_u64 * chunk_size,
+                size: chunk_size.min(total_size - i_u64 * chunk_size),
                 sha256: String::new(),
                 etag: None,
             });
