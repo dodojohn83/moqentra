@@ -246,12 +246,9 @@ impl LocalExecutor {
                 "root execution not allowed",
             ));
         }
-        fn valid_digest(d: &str) -> bool {
-            !d.is_empty() && d.contains(':') && d.split(':').all(|part| !part.is_empty())
-        }
-        if !valid_digest(&_config.image_digest) {
+        if !moqentra_types::valid_content_digest(&_config.image_digest) {
             return Err(moqentra_types::Error::invalid_argument(
-                "image digest must be in algorithm:hex form",
+                "image digest must be a valid content digest",
             ));
         }
         for (src, target) in &_config.bind_mounts {
@@ -347,7 +344,8 @@ mod tests {
     #[test]
     fn root_container_rejected() {
         let config = ContainerConfig {
-            image_digest: "sha256:abc".to_string(),
+            image_digest: "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                .to_string(),
             entrypoint: vec!["train".to_string()],
             env: BTreeMap::new(),
             bind_mounts: BTreeMap::new(),

@@ -77,11 +77,9 @@ impl ConversionJob {
                 "conversion profile fields must be non-empty",
             ));
         }
-        if !profile.toolchain_image_digest.contains(':')
-            || profile.toolchain_image_digest.split(':').any(|part| part.is_empty())
-        {
+        if !moqentra_types::valid_content_digest(&profile.toolchain_image_digest) {
             return Err(moqentra_types::Error::invalid_argument(
-                "toolchain_image_digest must be algorithm:hex",
+                "toolchain_image_digest must be a valid content digest",
             ));
         }
         let now = UtcTimestamp::now();
@@ -147,6 +145,11 @@ impl ConversionJob {
         if artifacts.is_empty() {
             return Err(moqentra_types::Error::invalid_argument(
                 "conversion must produce at least one artifact",
+            ));
+        }
+        if !moqentra_types::valid_content_digest(&log_digest) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "log_digest must be a valid content digest",
             ));
         }
         for artifact in &artifacts {
@@ -362,7 +365,9 @@ mod tests {
         ConversionProfile {
             target: ConversionTarget::Onnx,
             sdk_version: "1.16".to_string(),
-            toolchain_image_digest: "sha256:tool".to_string(),
+            toolchain_image_digest:
+                "sha256:7c9bbe5ec9b3fb774e8fa0f54247e93c34ddf8e5d16fe3073420de0ae81a262d"
+                    .to_string(),
             target_chip: "x86".to_string(),
             precision: "fp32".to_string(),
             dynamic_shapes: false,
@@ -392,12 +397,13 @@ mod tests {
         job.complete(
             vec![Artifact {
                 asset_id: AssetId::new_v7(&gen),
-                digest: "sha256:out".to_string(),
+                digest: "sha256:762069bc07a6e1b5df123a5ae7bd91c10daa04694fbaa17fba0cd6a8dcce8f22"
+                    .to_string(),
                 size_bytes: 100,
                 media_type: "application/octet-stream".to_string(),
                 scan_status: "clean".to_string(),
             }],
-            "sha256:log".to_string(),
+            "sha256:836ff184e7b41b1e13cb5fd89fa1de98dbbab99e9d2918913ff43b86a5c7c213".to_string(),
         )
         .unwrap();
         assert!(matches!(job.state, ConversionJobState::Succeeded));
@@ -412,12 +418,15 @@ mod tests {
             .complete(
                 vec![Artifact {
                     asset_id: AssetId::new_v7(&gen),
-                    digest: "sha256:out".to_string(),
+                    digest:
+                        "sha256:762069bc07a6e1b5df123a5ae7bd91c10daa04694fbaa17fba0cd6a8dcce8f22"
+                            .to_string(),
                     size_bytes: 1,
                     media_type: "application/octet-stream".to_string(),
                     scan_status: "infected".to_string(),
                 }],
-                "sha256:log".to_string(),
+                "sha256:836ff184e7b41b1e13cb5fd89fa1de98dbbab99e9d2918913ff43b86a5c7c213"
+                    .to_string(),
             )
             .is_err());
     }

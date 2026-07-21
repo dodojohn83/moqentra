@@ -47,6 +47,10 @@ impl SchedulingQueue {
         if self.entries.len() >= self.max_jobs {
             return Err(moqentra_types::Error::unavailable("queue full"));
         }
+        let tenant_count = self.entries.len() as u64;
+        if tenant_count >= self.tenant_quota {
+            return Err(moqentra_types::Error::unavailable("tenant quota exceeded"));
+        }
         let project_count =
             self.entries.iter().filter(|e| e.project_id == entry.project_id).count() as u64;
         let quota = self.project_quota.get(&entry.project_id).copied().unwrap_or(u64::MAX);
@@ -126,14 +130,6 @@ impl PlanCompiler {
     ) -> Result<ExecutionPlan, moqentra_types::Error> {
         job.spec.validate()?;
         let spec = &job.spec;
-        fn valid_digest(d: &str) -> bool {
-            !d.is_empty() && d.contains(':') && d.split(':').all(|part| !part.is_empty())
-        }
-        if !valid_digest(&spec.image_digest) || !valid_digest(&spec.code_digest) {
-            return Err(moqentra_types::Error::invalid_argument(
-                "image and code digests must be in algorithm:hex form",
-            ));
-        }
         if spec.resources.replicas == 0 {
             return Err(moqentra_types::Error::invalid_argument(
                 "replicas must be > 0",
@@ -270,8 +266,10 @@ mod tests {
     fn make_job(replicas: u32, kind: Option<&str>) -> TrainingJob {
         let gen = RandomIdGenerator;
         let spec = TrainingJobSpec {
-            code_digest: "sha256:code".to_string(),
-            image_digest: "sha256:image".to_string(),
+            code_digest: "sha256:5694d08a2e53ffcae0c3103e5ad6f6076abd960eb1f8a56577040bc1028f702b"
+                .to_string(),
+            image_digest: "sha256:6105d6cc76af400325e94d588ce511be5bfdbb73b437dc51eca43917d7a43e3d"
+                .to_string(),
             dataset_version_id: DatasetVersionId::new_v7(&gen),
             hyperparameters: moqentra_domain::training::ParameterSchema {
                 argv: vec!["train.py".to_string()],

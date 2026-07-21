@@ -29,9 +29,9 @@ impl Artifact {
                 "artifact media_type is empty",
             ));
         }
-        if !self.digest.contains(':') || self.digest.split(':').any(|part| part.is_empty()) {
+        if !moqentra_types::valid_content_digest(&self.digest) {
             return Err(moqentra_types::Error::invalid_argument(
-                "artifact digest must be algorithm:hex",
+                "artifact digest must be a valid content digest",
             ));
         }
         if self.scan_status.trim().is_empty() {
@@ -180,11 +180,13 @@ impl ModelVersion {
                 ));
             }
         }
-        if self.lineage.code_digest.is_empty()
-            || self.lineage.image_digest.is_empty()
-            || self.lineage.hyperparameter_digest.is_empty()
+        if !moqentra_types::valid_content_digest(&self.lineage.code_digest)
+            || !moqentra_types::valid_content_digest(&self.lineage.image_digest)
+            || !moqentra_types::valid_content_digest(&self.lineage.hyperparameter_digest)
         {
-            return Err(moqentra_types::Error::invalid_argument("missing lineage"));
+            return Err(moqentra_types::Error::invalid_argument(
+                "lineage digests must be valid content digests",
+            ));
         }
         self.state = ModelVersionState::Validating;
         self.updated_at = UtcTimestamp::now();
@@ -326,9 +328,13 @@ mod tests {
             dataset_version_id: DatasetVersionId::new_v7(&gen),
             annotation_project_id: None,
             base_model_version_id: None,
-            code_digest: "sha256:code".to_string(),
-            image_digest: "sha256:image".to_string(),
-            hyperparameter_digest: "sha256:hparams".to_string(),
+            code_digest: "sha256:5694d08a2e53ffcae0c3103e5ad6f6076abd960eb1f8a56577040bc1028f702b"
+                .to_string(),
+            image_digest: "sha256:6105d6cc76af400325e94d588ce511be5bfdbb73b437dc51eca43917d7a43e3d"
+                .to_string(),
+            hyperparameter_digest:
+                "sha256:a8aa236e33e65ccc368827e0af1497b5f655cd460b9db8ebd82ad415d59ad0f2"
+                    .to_string(),
         }
     }
 
@@ -347,7 +353,8 @@ mod tests {
         .unwrap();
         mv.artifacts.push(Artifact {
             asset_id: AssetId::new_v7(&gen),
-            digest: "sha256:model".to_string(),
+            digest: "sha256:9372c470eeadd5ecd9c3c74c2b3cb633f8e2f2fad799250a0f70d652b6b825e4"
+                .to_string(),
             size_bytes: 1024,
             media_type: "application/octet-stream".to_string(),
             scan_status: "clean".to_string(),
@@ -373,7 +380,8 @@ mod tests {
         .unwrap();
         mv.artifacts.push(Artifact {
             asset_id: AssetId::new_v7(&gen),
-            digest: "sha256:dirty".to_string(),
+            digest: "sha256:d0c92c764c5647d43d7166efc3e7d350751de063c1388bd2e113fab4865529d3"
+                .to_string(),
             size_bytes: 1,
             media_type: "application/octet-stream".to_string(),
             scan_status: "infected".to_string(),

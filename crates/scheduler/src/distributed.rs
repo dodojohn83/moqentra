@@ -201,8 +201,11 @@ mod tests {
             attempt_id: AttemptId::new_v7(&gen),
             step,
             state,
-            digest: "sha256:ckpt".to_string(),
-            manifest_digest: "sha256:manifest".to_string(),
+            digest: "sha256:be4e4dc1f1e4907ebc4040e2a6c2ebcba6bf79cc8211367a3aceedb760503840"
+                .to_string(),
+            manifest_digest:
+                "sha256:05b3abf2579a5eb66403cd78be557fd860633a1fe2103c7642030defe32c657f"
+                    .to_string(),
             framework_version: "pytorch-2.4".to_string(),
             world_size,
             optimizer_signature: "adam".to_string(),

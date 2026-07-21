@@ -177,12 +177,10 @@ impl PipelineRun {
             .all(|s| matches!(s, NodeRunState::Succeeded | NodeRunState::Cached))
         {
             self.state = PipelineRunState::Succeeded;
-        } else if self
-            .node_states
-            .values()
-            .any(|s| matches!(s, NodeRunState::Failed | NodeRunState::Cancelled))
-        {
+        } else if self.node_states.values().any(|s| matches!(s, NodeRunState::Failed)) {
             self.state = PipelineRunState::Failed;
+        } else if self.node_states.values().any(|s| matches!(s, NodeRunState::Cancelled)) {
+            self.state = PipelineRunState::Cancelled;
         }
     }
 }
@@ -386,9 +384,9 @@ impl Notebook {
                 "hostPath not allowed",
             ));
         }
-        if self.image_digest.is_empty() {
+        if !moqentra_types::valid_content_digest(&self.image_digest) {
             return Err(moqentra_types::Error::invalid_argument(
-                "missing image digest",
+                "image digest must be a valid content digest",
             ));
         }
         Ok(())
@@ -517,7 +515,8 @@ mod tests {
             id: NotebookId::new_v7(&gen),
             tenant_id: TenantId::new_v7(&gen),
             project_id: ProjectId::new_v7(&gen),
-            image_digest: "sha256:nb".to_string(),
+            image_digest: "sha256:665077f5ca5d20c727acdc837412a42d19fe9ec8004165726592a54ba56e628b"
+                .to_string(),
             resource_profile: "small".to_string(),
             allowed_egress: vec![],
             allow_privileged: true,

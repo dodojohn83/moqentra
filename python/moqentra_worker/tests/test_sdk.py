@@ -57,7 +57,7 @@ def test_save_checkpoint_relative_path_resolves_to_output_dir():
 
     def train_fn(sess):
         digest = sess.save_checkpoint(adapter, Path("rel-ckpt.bin"))
-        assert digest == "sha256:checkpoint"
+        assert digest == "sha256:47320987f9a49d5b00119b960f247a956773f57543982b8bfcb6da5bb3afd9ef"
         assert (root / "output" / "rel-ckpt.bin").exists()
         return {}
 
