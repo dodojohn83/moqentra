@@ -8,8 +8,11 @@ use std::collections::HashSet;
 pub enum Role {
     Viewer,
     Labeler,
+    Annotator,
     Reviewer,
     MlEngineer,
+    DataEngineer,
+    AlgorithmEngineer,
     Operator,
     ProjectAdmin,
     TenantAdmin,
@@ -23,8 +26,11 @@ impl std::str::FromStr for Role {
         match s {
             "viewer" => Ok(Self::Viewer),
             "labeler" => Ok(Self::Labeler),
+            "annotator" => Ok(Self::Annotator),
             "reviewer" => Ok(Self::Reviewer),
             "ml_engineer" => Ok(Self::MlEngineer),
+            "data_engineer" => Ok(Self::DataEngineer),
+            "algorithm_engineer" => Ok(Self::AlgorithmEngineer),
             "operator" => Ok(Self::Operator),
             "project_admin" => Ok(Self::ProjectAdmin),
             "tenant_admin" => Ok(Self::TenantAdmin),
@@ -39,8 +45,11 @@ impl Role {
         match self {
             Role::Viewer => "viewer",
             Role::Labeler => "labeler",
+            Role::Annotator => "annotator",
             Role::Reviewer => "reviewer",
             Role::MlEngineer => "ml_engineer",
+            Role::DataEngineer => "data_engineer",
+            Role::AlgorithmEngineer => "algorithm_engineer",
             Role::Operator => "operator",
             Role::ProjectAdmin => "project_admin",
             Role::TenantAdmin => "tenant_admin",
@@ -157,16 +166,16 @@ fn role_permissions(role: Role) -> HashSet<Permission> {
             perms.insert(Permission::new(Resource::ApplicationVersion, Action::Read));
             perms.insert(Permission::new(Resource::Deployment, Action::Read));
         }
-        Role::Labeler => {
+        Role::Labeler | Role::Annotator => {
             perms.extend(role_permissions(Role::Viewer));
             perms.insert(Permission::new(Resource::AnnotationTask, Action::Read));
             perms.insert(Permission::new(Resource::AnnotationTask, Action::Update));
         }
         Role::Reviewer => {
-            perms.extend(role_permissions(Role::Labeler));
+            perms.extend(role_permissions(Role::Annotator));
             perms.insert(Permission::new(Resource::AnnotationTask, Action::Execute));
         }
-        Role::MlEngineer => {
+        Role::MlEngineer | Role::DataEngineer | Role::AlgorithmEngineer => {
             perms.extend(role_permissions(Role::Reviewer));
             perms.insert(Permission::new(Resource::Dataset, Action::Create));
             perms.insert(Permission::new(Resource::DatasetVersion, Action::Create));
