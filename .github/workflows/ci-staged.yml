@@ -1,10 +1,47 @@
 name: CI (Staged)
 
-# These jobs are configured but run manually until the corresponding code,
-# lockfiles, and test fixtures are added in later tasks. They are not part of
-# the required check set for the empty skeleton.
+# Required checks for R1 (must be listed in GitHub branch protection):
+#   - "CI (Staged) / contracts"
+#   - "CI (Staged) / web"
+#   - "CI (Staged) / python"
+#   - "CI (Staged) / supply-chain"
+#
+# These jobs run automatically when relevant paths change. They can also be
+# triggered manually for full validation.
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "apps/**"
+      - "proto/**"
+      - "python/**"
+      - "deploy/**"
+      - "docs/openapi/**"
+      - "Cargo.*"
+      - "rust-toolchain.toml"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "pyproject.toml"
+      - ".github/workflows/**"
+      - "baseline/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "apps/**"
+      - "proto/**"
+      - "python/**"
+      - "deploy/**"
+      - "docs/openapi/**"
+      - "Cargo.*"
+      - "rust-toolchain.toml"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "pyproject.toml"
+      - ".github/workflows/**"
+      - "baseline/**"
   workflow_dispatch:
 
 jobs:
