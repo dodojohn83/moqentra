@@ -15,7 +15,10 @@ include!(concat!(env!("OUT_DIR"), "/prost_generated.rs"));
 #[cfg(test)]
 #[allow(clippy::as_conversions)]
 mod tests {
-    use crate::moqentra::common::v1::{Error as ProtoError, ErrorKind, Pagination, RequestContext};
+    use crate::moqentra::common::v1::{
+        Error as ProtoError, ErrorKind, EventEnvelope, EventStatus, Operation, OperationStatus,
+        Pagination, RequestContext, ResourceRef,
+    };
     use prost::Message;
 
     #[test]
@@ -68,6 +71,59 @@ mod tests {
         let mut buf = Vec::new();
         original.encode(&mut buf).unwrap();
         let decoded = ProtoError::decode(buf.as_slice()).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn operation_roundtrip() {
+        let original = Operation {
+            id: "op-1".to_string(),
+            tenant_id: "tenant-1".to_string(),
+            project_id: "project-1".to_string(),
+            operation_type: "CreateDataset".to_string(),
+            status: OperationStatus::Pending as i32,
+            progress: 0.0,
+            resource_refs: vec![ResourceRef {
+                resource_type: "dataset".to_string(),
+                id: "dataset-1".to_string(),
+            }],
+            error: None,
+            deadline: None,
+            cancelled: false,
+            retry_count: 0,
+            event_sequence: 0,
+            sse_cursor: "".to_string(),
+            created_at: None,
+            updated_at: None,
+        };
+        let mut buf = Vec::new();
+        original.encode(&mut buf).unwrap();
+        let decoded = Operation::decode(buf.as_slice()).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn event_envelope_roundtrip() {
+        let original = EventEnvelope {
+            event_id: "evt-1".to_string(),
+            tenant_id: "tenant-1".to_string(),
+            project_id: "project-1".to_string(),
+            operation_id: "op-1".to_string(),
+            aggregate_type: "dataset".to_string(),
+            aggregate_id: "dataset-1".to_string(),
+            sequence: 1,
+            event_type: "DatasetCreated".to_string(),
+            payload: br#"{"id":"dataset-1"}"#.to_vec(),
+            occurred_at: None,
+            correlation_id: "corr-1".to_string(),
+            causation_id: "cause-1".to_string(),
+            sse_cursor: "c1".to_string(),
+            status: EventStatus::Pending as i32,
+            attempt: 1,
+        };
+        let mut buf = Vec::new();
+        original.encode(&mut buf).unwrap();
+        let decoded = EventEnvelope::decode(buf.as_slice()).unwrap();
         assert_eq!(original, decoded);
     }
 }

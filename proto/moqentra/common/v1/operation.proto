@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package moqentra.common.v1;
+
+import "google/protobuf/timestamp.proto";
+import "moqentra/common/v1/common.proto";
+
+option java_package = "ai.devin.moqentra.common.v1";
+option java_multiple_files = true;
+
+// Status of a long-running operation.
+enum OperationStatus {
+  OPERATION_STATUS_UNSPECIFIED = 0;
+  OPERATION_STATUS_PENDING = 1;
+  OPERATION_STATUS_RUNNING = 2;
+  OPERATION_STATUS_COMPLETED = 3;
+  OPERATION_STATUS_FAILED = 4;
+  OPERATION_STATUS_CANCELLED = 5;
+}
+
+// A long-running platform operation returned from asynchronous commands.
+message Operation {
+  string id = 1;
+  string tenant_id = 2;
+  string project_id = 3;
+  string operation_type = 4;
+  OperationStatus status = 5;
+  // Progress in the range [0.0, 1.0].
+  double progress = 6;
+  // Resources involved in or produced by the operation.
+  repeated ResourceRef resource_refs = 7;
+  // Populated when status is FAILED.
+  Error error = 8;
+  // Absolute deadline after which the operation should be considered failed.
+  google.protobuf.Timestamp deadline = 9;
+  // Set to true when a cancellation request has been accepted.
+  bool cancelled = 10;
+  // Number of retry attempts so far.
+  uint32 retry_count = 11;
+  // Monotonic sequence number for the latest event emitted by this operation.
+  uint64 event_sequence = 12;
+  // Opaque cursor clients can supply to resume an SSE stream.
+  string sse_cursor = 13;
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+}
+
+// Input used to request cancellation of an operation.
+message CancelOperationRequest {
+  string operation_id = 1;
+  string reason = 2;
+}
+
+// Response body returned for an operation cancellation request.
+message CancelOperationResponse {
+  Operation operation = 1;
+}

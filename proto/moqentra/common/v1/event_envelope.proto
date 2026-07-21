@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package moqentra.common.v1;
+
+import "google/protobuf/timestamp.proto";
+import "moqentra/common/v1/common.proto";
+
+option java_package = "ai.devin.moqentra.common.v1";
+option java_multiple_files = true;
+
+// Status of an outbox event.
+enum EventStatus {
+  EVENT_STATUS_UNSPECIFIED = 0;
+  EVENT_STATUS_PENDING = 1;
+  EVENT_STATUS_DELIVERED = 2;
+  EVENT_STATUS_FAILED = 3;
+  EVENT_STATUS_DEAD_LETTERED = 4;
+}
+
+// A domain event wrapped for transport, storage and delivery.
+message EventEnvelope {
+  string event_id = 1;
+  string tenant_id = 2;
+  string project_id = 3;
+  // The operation that produced this event, if any.
+  string operation_id = 4;
+  string aggregate_type = 5;
+  string aggregate_id = 6;
+  // Sequence number within the aggregate stream.
+  uint64 sequence = 7;
+  string event_type = 8;
+  // Normalized JSON or protobuf payload bytes.
+  bytes payload = 9;
+  google.protobuf.Timestamp occurred_at = 10;
+  string correlation_id = 11;
+  string causation_id = 12;
+  // Opaque cursor for event streaming (offset / sequence encoded).
+  string sse_cursor = 13;
+  EventStatus status = 14;
+  // Number of delivery attempts; monotonic per handler.
+  uint32 attempt = 15;
+}
+
+// Request to list events from a cursor.
+message ListEventsRequest {
+  string tenant_id = 1;
+  string project_id = 2;
+  string cursor = 3;
+  uint32 limit = 4;
+}
