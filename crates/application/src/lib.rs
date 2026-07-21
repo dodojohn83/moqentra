@@ -11,9 +11,16 @@ mod dispatch;
 mod model_svc;
 mod training_svc;
 
+/// Repository ports used by application services.
+pub mod ports;
+
 pub use annotation_svc::InMemoryAnnotationRegistry;
 pub use dispatch::{plan_dispatch, DispatchAction};
 pub use model_svc::InMemoryModelRegistry;
+pub use ports::{
+    AnnotationRepository, ApplicationRepository, DatasetRepository, DeploymentRepository,
+    ModelRepository, ResourceListFilter, TrainingJobRepository, Versioned,
+};
 pub use training_svc::InMemoryTrainingRegistry;
 
 use moqentra_domain::application::{
