@@ -34,6 +34,10 @@ pub struct CocoAnnotationEntry {
     pub iscrowd: u8,
 }
 
+fn idx_to_id(idx: usize) -> u64 {
+    u64::try_from(idx).unwrap_or(u64::MAX).saturating_add(1)
+}
+
 /// COCO dataset envelope.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CocoDataset {
@@ -49,7 +53,7 @@ pub fn labels_to_coco_categories(labels: &[Label]) -> Vec<CocoCategory> {
         .iter()
         .enumerate()
         .map(|(idx, label)| CocoCategory {
-            id: idx as u64 + 1,
+            id: idx_to_id(idx),
             name: label.name.clone(),
             supercategory: label.parent_id.clone().unwrap_or_default(),
         })
@@ -68,7 +72,7 @@ pub fn annotations_to_coco(
 ) -> Result<CocoDataset, moqentra_types::Error> {
     let mut category_by_name: BTreeMap<String, u64> = BTreeMap::new();
     for (idx, label) in labels.iter().enumerate() {
-        category_by_name.insert(label.name.clone(), idx as u64 + 1);
+        category_by_name.insert(label.name.clone(), idx_to_id(idx));
     }
 
     let mut images = Vec::new();

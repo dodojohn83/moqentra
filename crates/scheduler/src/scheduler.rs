@@ -47,12 +47,13 @@ impl SchedulingQueue {
         if self.entries.len() >= self.max_jobs {
             return Err(moqentra_types::Error::unavailable("queue full"));
         }
-        let tenant_count = self.entries.len() as u64;
+        let tenant_count = u64::try_from(self.entries.len()).unwrap_or(u64::MAX);
         if tenant_count >= self.tenant_quota {
             return Err(moqentra_types::Error::unavailable("tenant quota exceeded"));
         }
         let project_count =
-            self.entries.iter().filter(|e| e.project_id == entry.project_id).count() as u64;
+            u64::try_from(self.entries.iter().filter(|e| e.project_id == entry.project_id).count())
+                .unwrap_or(u64::MAX);
         let quota = self.project_quota.get(&entry.project_id).copied().unwrap_or(u64::MAX);
         if project_count >= quota {
             return Err(moqentra_types::Error::unavailable("project quota exceeded"));
@@ -65,7 +66,7 @@ impl SchedulingQueue {
         let mut best_idx = 0usize;
         let mut best_score = None;
         for (idx, e) in self.entries.iter().enumerate() {
-            let score = (e.priority as u64, std::cmp::Reverse(e.submitted_at));
+            let score = (u64::from(e.priority), std::cmp::Reverse(e.submitted_at));
             if best_score.as_ref().is_none_or(|s: &(u64, _)| score > *s) {
                 best_score = Some(score);
                 best_idx = idx;

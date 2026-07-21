@@ -307,9 +307,11 @@ impl HpoRun {
                 "metric must be finite",
             ));
         }
+        let number_usize = usize::try_from(number)
+            .map_err(|_| moqentra_types::Error::invalid_argument("trial number too large"))?;
         let trial = self
             .trials
-            .get_mut(number as usize)
+            .get_mut(number_usize)
             .ok_or_else(|| moqentra_types::Error::not_found("trial"))?;
         if !matches!(trial.state, TrialState::Pending | TrialState::Running) {
             return Err(moqentra_types::Error::conflict("trial is not active"));
@@ -317,9 +319,17 @@ impl HpoRun {
         trial.metric = Some(metric);
         trial.training_job_id = Some(job_id);
         trial.state = TrialState::Completed;
-        if self.best_trial.is_none_or(|best| {
-            self.trials[best as usize].metric.unwrap_or(f64::NEG_INFINITY) < metric
-        }) {
+        let is_better = match self.best_trial {
+            None => true,
+            Some(best) => {
+                let best_idx = usize::try_from(best)
+                    .map_err(|_| moqentra_types::Error::internal("best trial index overflow"))?;
+                self.trials
+                    .get(best_idx)
+                    .is_none_or(|t| t.metric.unwrap_or(f64::NEG_INFINITY) < metric)
+            }
+        };
+        if is_better {
             self.best_trial = Some(number);
         }
         self.updated_at = UtcTimestamp::now();

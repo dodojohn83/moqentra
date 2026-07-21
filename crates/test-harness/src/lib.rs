@@ -84,7 +84,9 @@ impl FakeS3Proxy {
         if self.fault_rate >= 1.0 {
             return true;
         }
-        self.requests.is_multiple_of(((1.0 / self.fault_rate) as u64).max(1))
+        #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
+        let period = ((1.0 / self.fault_rate) as u64).max(1);
+        self.requests.is_multiple_of(period)
     }
 }
 

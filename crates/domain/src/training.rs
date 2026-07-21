@@ -335,13 +335,17 @@ impl TrainingJob {
         ) {
             return Err(moqentra_types::Error::conflict("job cannot start attempt"));
         }
-        if self.attempts.len() >= self.spec.max_attempts as usize {
+        let max_attempts = usize::try_from(self.spec.max_attempts)
+            .map_err(|_| moqentra_types::Error::internal("max_attempts too large"))?;
+        if self.attempts.len() >= max_attempts {
             return Err(moqentra_types::Error::unavailable("max attempts reached"));
         }
-        let expected_ranks = match self.spec.distributed {
-            DistributedConfig::Single => 1,
+        let world_size = match self.spec.distributed {
+            DistributedConfig::Single => 1u32,
             DistributedConfig::Ddp { world_size } => world_size,
-        } as usize;
+        };
+        let expected_ranks = usize::try_from(world_size)
+            .map_err(|_| moqentra_types::Error::internal("world_size too large"))?;
         if attempt.ranks.len() != expected_ranks {
             return Err(moqentra_types::Error::invalid_argument(
                 "attempt rank count does not match distributed configuration",

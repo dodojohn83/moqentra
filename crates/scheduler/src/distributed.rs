@@ -68,7 +68,9 @@ impl Rendezvous {
                 "rendezvous world_size must be > 0",
             ));
         }
-        if self.members.len() != self.world_size as usize {
+        let expected = usize::try_from(self.world_size)
+            .map_err(|_| moqentra_types::Error::internal("world_size too large"))?;
+        if self.members.len() != expected {
             return Err(moqentra_types::Error::unavailable("rendezvous incomplete"));
         }
         self.finalized = true;
@@ -172,8 +174,10 @@ impl DistributedJobState {
 
     pub fn all_finished(&self) -> bool {
         self.world_size > 0
-            && self.rank_exit_codes.len() == self.world_size as usize
-            && self.rank_exit_codes.values().all(|c| c.is_some())
+            && usize::try_from(self.world_size).is_ok_and(|ws| {
+                self.rank_exit_codes.len() == ws
+                    && self.rank_exit_codes.values().all(|c| c.is_some())
+            })
     }
 
     pub fn all_succeeded(&self) -> bool {
