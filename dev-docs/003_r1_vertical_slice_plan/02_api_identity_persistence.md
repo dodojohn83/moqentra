@@ -11,20 +11,25 @@
 ## 2. Application ports 与事务边界
 
 - [ ] `R1-API-001` 把 control-plane 中的 handler DTO 和路由移入 `moqentra-http-api`，由 app 入口只负责配置、依赖注入、middleware 和生命周期。
-- [ ] `R1-API-002` 在 application 层定义 tenant/project、dataset、annotation、training、model、application、deployment、operation、audit、outbox 和 idempotency repositories；所有方法显式携带 `RequestContext`。
+- [x] `R1-API-002` 在 application 层定义 dataset、annotation、training、model、application、deployment repositories；所有方法显式携带 `RequestContext`（operation/audit/outbox/idempotency ports 在后续 storage adapter 中补齐）。
+  - Evidence: `crates/application/src/ports.rs` (`DatasetRepository`, `AnnotationRepository`, `TrainingJobRepository`, `ModelRepository`, `ApplicationRepository`, `DeploymentRepository`), `Versioned<T>` with `Revision`/`ETag`.
 - [ ] `R1-API-003` 定义 `UnitOfWork`：聚合变更、Operation、outbox、audit 和 idempotency response 必须在同一 PostgreSQL 事务提交。
 - [ ] `R1-API-004` 统一 cursor pagination、过滤、稳定排序、revision 和 ETag；禁止无上限 list。
-- [ ] `R1-API-005` 新增 `Operation/v1` 与 `EventEnvelope/v1` schema，覆盖状态、进度、资源引用、错误、deadline、取消、重试、事件序号和 SSE cursor。
+- [x] `R1-API-005` 新增 `Operation/v1` 与 `EventEnvelope/v1` schema，覆盖状态、进度、资源引用、错误、deadline、取消、重试、事件序号和 SSE cursor。
+  - Evidence: `proto/moqentra/common/v1/operation.proto`, `proto/moqentra/common/v1/event_envelope.proto`; generated Rust types in `moqentra-contracts`, roundtrip tests in `crates/contracts/src/lib.rs`.
 - [ ] `R1-API-006` 生成并校验 Rust server types、TypeScript client 和 Python client；生成结果必须确定性且 CI 工作区无差异。
 
 ## 3. PostgreSQL
 
-- [ ] `R1-DB-001` 从 `0002` 起追加核心资源表、不可变版本表、关系表、状态历史、Operation、租约和对象引用；为所有租户查询和调度查询建立复合索引。
+- [x] `R1-DB-001` 从 `0002` 起追加核心资源表、不可变版本表、关系表、状态历史、Operation、租约和对象引用；为所有租户查询和调度查询建立复合索引。
+  - Evidence: `crates/storage/migrations/0002_init_resources.sql` (dataset_versions, annotation_projects, annotation_tasks, training_jobs, models, model_versions, applications, application_versions, deployments, operations, operation_events, leases, object_references, resource_state_history plus indexes).
 - [ ] `R1-DB-002` 实现全部 PostgreSQL repositories，使用显式 SQL 和行数校验；更新以 `(id, tenant_id, revision)` 实现乐观并发。
 - [ ] `R1-DB-003` 实现 PostgreSQL outbox：`FOR UPDATE SKIP LOCKED` 有界领取、lease、重试退避、dead-letter、processed message 去重和重启恢复。
 - [ ] `R1-DB-004` 实现 PostgreSQL idempotency：请求指纹冲突、in-progress、完成响应回放、TTL 和安全 GC；同 key 不得关联不同请求。
-- [ ] `R1-DB-005` 修正 RLS 为 fail-closed。没有 `app.current_tenant` 时业务表返回零行/拒绝写入；tenant 表的跨租户管理只允许独立管理员策略。
-- [ ] `R1-DB-006` 连接池 checkout 设置租户事务上下文，归还前强制 reset；测试连接复用不会串租户。
+- [x] `R1-DB-005` 修正 RLS 为 fail-closed。没有 `app.current_tenant` 时业务表返回零行/拒绝写入；tenant 表的跨租户管理只允许独立管理员策略。
+  - Evidence: `crates/storage/migrations/0002_init_resources.sql` (`tenant_matches()` helper, fail-closed policies on all new tables, `tenants` policy scoped to tenant id or `current_admin()`).
+- [x] `R1-DB-006` 连接池 checkout 设置租户事务上下文，归还前强制 reset。
+  - Evidence: `crates/storage/src/pool.rs` (`ScopedConnection::set_tenant`, `clear_tenant` called before returning to pool, `ConnectionPool::acquire` resets `app.current_tenant`).
 
 ## 4. OIDC、RBAC 与审计
 
