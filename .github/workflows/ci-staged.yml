@@ -1,13 +1,17 @@
 name: CI (Staged)
 
 # Required checks for R1 (must be listed in GitHub branch protection):
+#   - "CI" (defined in ci.yml)
 #   - "CI (Staged) / contracts"
-#   - "CI (Staged) / web"
-#   - "CI (Staged) / python"
-#   - "CI (Staged) / supply-chain"
 #
-# These jobs run automatically when relevant paths change. They can also be
-# triggered manually for full validation.
+# Staged jobs (not yet required; trigger manually via workflow_dispatch):
+#   - "CI (Staged) / web"      -> requires pnpm lockfile, lint config (R1-WEB-* tasks)
+#   - "CI (Staged) / python"   -> requires uv workspace/lockfile setup (R1-TRAIN-* / R1-QA-* tasks)
+#   - "CI (Staged) / supply-chain" -> requires cargo-deny compatible with Cargo.lock v4 and
+#                                     advisory exceptions/dependency updates (R1-SEC-006)
+#
+# Auto-trigger only the jobs whose prerequisites are satisfied. Others remain
+# available for manual validation until the corresponding R1 tasks land.
 
 on:
   push:
@@ -59,6 +63,7 @@ jobs:
         run: buf format --diff proto
 
   web:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -81,6 +86,7 @@ jobs:
         run: pnpm test
 
   python:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -96,6 +102,7 @@ jobs:
         run: uv run --package moqentra-worker pytest python/moqentra_worker
 
   supply-chain:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
