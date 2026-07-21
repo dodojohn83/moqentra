@@ -7,15 +7,16 @@ web:
   http: 0.0.0.0:5556
 oauth2:
   skipApprovalScreen: true
+# Run ./init.sh to populate the environment variables referenced below.
 staticClients:
   - id: moqentra-console
     redirectURIs:
       - http://localhost:3000/callback
     name: Moqentra Console
-    secret: ZXhhbXBsZS1hcHAtc2VjcmV0
+    secretEnv: OIDC_CLIENT_SECRET
 enablePasswordDB: true
 staticPasswords:
   - email: admin@example.com
-    hash: JDJhJDEwJEVDTjhiam5kVVByQVN1V0VrWmUvdGVXSmFLdHdxRy5qS1NTbkxhQktxQ0JNd2d2d09QMWJX
+    hashFromEnv: MOQENTRA_ADMIN_PASSWORD_HASH
     username: admin
     userID: 08a8684b-db88-4b73-90a9-3cd1661f5446
