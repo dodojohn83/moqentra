@@ -9,13 +9,15 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import hashlib
+import json
 import math
 import os
 import signal
-import sys
-import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Protocol, Union
+from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union
 
 
 def _is_finite(value: Union[int, float]) -> bool:
@@ -62,6 +64,14 @@ class MetricPoint:
     tags: Dict[str, str] = dataclasses.field(default_factory=dict)
 
 
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return f"sha256:{h.hexdigest()}"
+
+
 class WorkerSession:
     """A single worker execution session bound to an attempt lease."""
 
@@ -72,14 +82,22 @@ class WorkerSession:
         work_dir: Path,
         input_dir: Path,
         output_dir: Path,
+        training_job_id: str = "",
+        tenant_id: str = "",
+        project_id: str = "",
     ) -> None:
         self.attempt_id = attempt_id
         self.fencing_token = fencing_token
         self.work_dir = work_dir
         self.input_dir = input_dir
         self.output_dir = output_dir
+        self.training_job_id = training_job_id
+        self.tenant_id = tenant_id
+        self.project_id = project_id
         self._metrics: List[MetricPoint] = []
         self._cancelled = False
+        self._last_checkpoint_digest: Optional[str] = None
+        self._artifact_id = str(uuid.uuid4())
 
     def report_metric(self, point: MetricPoint) -> None:
         if self._cancelled:
@@ -104,8 +122,72 @@ class WorkerSession:
         ):
             raise ValueError(f"checkpoint path outside of work/output directories: {target}")
         target.parent.mkdir(parents=True, exist_ok=True)
-        digest = adapter.save_checkpoint(target)
+        adapter.save_checkpoint(target)
+        digest = _sha256_file(target)
+        self._last_checkpoint_digest = digest
         return digest
+
+    def list_inputs(self) -> List[Tuple[str, str]]:
+        """Return (relative_path, sha256:digest) for every file under input_dir."""
+        inputs: List[Tuple[str, str]] = []
+        for f in sorted(self.input_dir.rglob("*")):
+            if f.is_file():
+                rel = f.relative_to(self.input_dir).as_posix()
+                inputs.append((rel, _sha256_file(f)))
+        return inputs
+
+    def build_manifest(
+        self,
+        framework: str = "pytorch",
+        format: str = "onnx",
+        result: Optional[Dict[str, Any]] = None,
+        dependencies: Optional[List[str]] = None,
+        user_manifest: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Materialize a ModelArtifactManifest/v1 under output_dir and return it."""
+        now = datetime.now(timezone.utc).isoformat()
+        metrics: Dict[str, Any] = {}
+        for point in self._metrics:
+            metrics.setdefault(point.name, []).append(
+                {"step": point.step, "value": point.value, "tags": point.tags}
+            )
+        if result:
+            metrics.update({k: v for k, v in result.items() if k != "metrics"})
+
+        signature: Dict[str, Any] = {}
+        if self._last_checkpoint_digest:
+            signature["checkpointDigest"] = self._last_checkpoint_digest
+        if user_manifest:
+            signature["userManifest"] = user_manifest
+
+        manifest: Dict[str, Any] = {
+            "apiVersion": "moqentra.io/v1",
+            "kind": "ModelArtifactManifest",
+            "metadata": {
+                "id": self._artifact_id,
+                "name": f"artifact-{self.attempt_id}",
+                "tenantId": self.tenant_id,
+                "projectId": self.project_id,
+                "labels": {"attemptId": self.attempt_id},
+                "createdAt": now,
+                "updatedAt": now,
+            },
+            "spec": {
+                "trainingJobId": self.training_job_id,
+                "attemptId": self.attempt_id,
+                "artifactUri": f"file://{self.output_dir.resolve()}",
+                "framework": framework,
+                "format": format,
+                "metrics": metrics,
+                "dependencies": dependencies or [],
+                "signature": signature,
+            },
+        }
+        manifest_path = self.output_dir / "manifest.json"
+        tmp = self.output_dir / ".manifest.json.tmp"
+        tmp.write_text(json.dumps(manifest, indent=2, sort_keys=True))
+        tmp.replace(manifest_path)
+        return manifest
 
     def cancel(self) -> None:
         self._cancelled = True
@@ -174,6 +256,9 @@ class WorkerRuntime:
             work_dir=work_dir,
             input_dir=input_dir,
             output_dir=output_dir,
+            training_job_id=config.get("training_job_id", ""),
+            tenant_id=config.get("tenant_id", ""),
+            project_id=config.get("project_id", ""),
         )
 
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -182,12 +267,20 @@ class WorkerRuntime:
         try:
             self.adapter.prepare(config)
             result = self.adapter.run(self._session)
-            manifest = self.adapter.finalize()
+            user_manifest = self.adapter.finalize()
+            artifact_manifest = self._session.build_manifest(
+                framework=config.get("model_framework", "pytorch"),
+                format=config.get("model_format", "onnx"),
+                result=result,
+                dependencies=config.get("dependencies", []),
+                user_manifest=user_manifest,
+            )
             return {
                 "attempt_id": attempt_id,
                 "fencing_token": fencing_token,
                 "result": result,
-                "manifest": manifest,
+                "manifest": user_manifest,
+                "artifact_manifest": artifact_manifest,
                 "metrics": [dataclasses.asdict(m) for m in self._session._metrics],
             }
         except Exception as exc:
