@@ -11,15 +11,16 @@ use async_trait::async_trait;
 use moqentra_domain::{
     annotation::{AnnotationProject, AnnotationTask},
     application::{Application, ApplicationVersion},
+    conversion::{ConversionJob, EvaluationRun},
     dataset::{Dataset, DatasetVersion},
     inference::Deployment,
     model_registry::{Model, ModelVersion},
     training::TrainingJob,
 };
 use moqentra_types::{
-    AnnotationProjectId, AnnotationTaskId, ApplicationId, ApplicationVersionId, DatasetId,
-    DatasetVersionId, DeploymentId, Error, ModelId, ModelVersionId, Page, PageRequest, ProjectId,
-    RequestContext, Revision, TrainingJobId,
+    AnnotationProjectId, AnnotationTaskId, ApplicationId, ApplicationVersionId, ConversionJobId,
+    DatasetId, DatasetVersionId, DeploymentId, Error, EvaluationRunId, ModelId, ModelVersionId,
+    Page, PageRequest, ProjectId, RequestContext, Revision, TrainingJobId,
 };
 
 /// A value paired with its optimistic-concurrency metadata.
@@ -345,6 +346,84 @@ pub trait DeploymentRepository: Send + Sync {
         &self,
         ctx: &RequestContext,
         id: DeploymentId,
+        expected: Revision,
+    ) -> Result<(), Error>;
+}
+
+/// Repository for model conversion jobs.
+#[async_trait]
+pub trait ConversionRepository: Send + Sync {
+    async fn create(
+        &self,
+        ctx: &RequestContext,
+        job: ConversionJob,
+    ) -> Result<Versioned<ConversionJob>, Error>;
+
+    async fn get(
+        &self,
+        ctx: &RequestContext,
+        id: ConversionJobId,
+    ) -> Result<Versioned<ConversionJob>, Error>;
+
+    async fn list(
+        &self,
+        ctx: &RequestContext,
+        project_id: ProjectId,
+        filter: ResourceListFilter,
+        page: PageRequest,
+    ) -> Result<Page<Versioned<ConversionJob>>, Error>;
+
+    async fn update(
+        &self,
+        ctx: &RequestContext,
+        id: ConversionJobId,
+        expected: Revision,
+        job: ConversionJob,
+    ) -> Result<Versioned<ConversionJob>, Error>;
+
+    async fn delete(
+        &self,
+        ctx: &RequestContext,
+        id: ConversionJobId,
+        expected: Revision,
+    ) -> Result<(), Error>;
+}
+
+/// Repository for model evaluation runs.
+#[async_trait]
+pub trait EvaluationRepository: Send + Sync {
+    async fn create(
+        &self,
+        ctx: &RequestContext,
+        run: EvaluationRun,
+    ) -> Result<Versioned<EvaluationRun>, Error>;
+
+    async fn get(
+        &self,
+        ctx: &RequestContext,
+        id: EvaluationRunId,
+    ) -> Result<Versioned<EvaluationRun>, Error>;
+
+    async fn list(
+        &self,
+        ctx: &RequestContext,
+        project_id: ProjectId,
+        filter: ResourceListFilter,
+        page: PageRequest,
+    ) -> Result<Page<Versioned<EvaluationRun>>, Error>;
+
+    async fn update(
+        &self,
+        ctx: &RequestContext,
+        id: EvaluationRunId,
+        expected: Revision,
+        run: EvaluationRun,
+    ) -> Result<Versioned<EvaluationRun>, Error>;
+
+    async fn delete(
+        &self,
+        ctx: &RequestContext,
+        id: EvaluationRunId,
         expected: Revision,
     ) -> Result<(), Error>;
 }
