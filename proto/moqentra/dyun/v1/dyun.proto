@@ -2,49 +2,144 @@ syntax = "proto3";
 
 package moqentra.dyun.v1;
 
+import "google/protobuf/timestamp.proto";
 import "moqentra/common/v1/common.proto";
 
-// Node in a dyun-gu computational graph.
-message DyunNode {
-  string node_id = 1;
-  string operator = 2;
-  map<string, string> attrs = 3;
-  repeated string inputs = 4;
-  repeated string outputs = 5;
+// Header present on every dyun-agent command to ensure idempotency,
+// fencing and bounded execution.
+message CommandHeader {
+  uint64 generation = 1;
+  string fencing_token = 2;
+  google.protobuf.Timestamp deadline = 3;
+  string idempotency_key = 4;
 }
 
-// Edge connecting two dyun-gu nodes.
-message DyunEdge {
-  string from_node = 1;
-  string from_output = 2;
-  string to_node = 3;
-  string to_input = 4;
+// Agent capability exchange.
+message DyunCapabilityRequest {
+  CommandHeader header = 1;
 }
 
-// A complete dyun-gu graph bundle.
-message DyunGraphBundle {
-  string api_version = 1;
-  string kind = 2;
-  string bundle_id = 3;
-  string name = 4;
-  repeated DyunNode nodes = 5;
-  repeated DyunEdge edges = 6;
-  repeated moqentra.common.v1.ResourceRef resources = 7;
+message DyunCapabilityResponse {
+  string agent_version = 1;
+  repeated string element_schemas = 2;
+  repeated string codecs = 3;
+  repeated string backends = 4;
+  repeated string build_features = 5;
+  repeated string supported_graph_versions = 6;
+  moqentra.common.v1.Error error = 7;
 }
 
-// Deployment status for a dyun-gu bundle.
-message DyunDeploymentStatus {
-  string bundle_id = 1;
+// Prepare a signed graph bundle for execution.
+message DyunPrepareRequest {
+  CommandHeader header = 1;
+  string bundle_digest = 2;
+  string graph_digest = 3;
+  repeated string artifact_object_keys = 4;
+}
+
+message DyunPrepareResponse {
+  string bundle_digest = 1;
+  string prepared_path_digest = 2;
+  moqentra.common.v1.Error error = 3;
+}
+
+// Start a deployment replica.
+message DyunStartRequest {
+  CommandHeader header = 1;
   string deployment_id = 2;
-  enum State {
-    STATE_UNSPECIFIED = 0;
-    STATE_PENDING = 1;
-    STATE_SCHEDULING = 2;
-    STATE_RUNNING = 3;
-    STATE_SUCCEEDED = 4;
-    STATE_FAILED = 5;
-    STATE_TERMINATING = 6;
-  }
-  State state = 3;
-  string message = 4;
+  string bundle_digest = 3;
+  uint32 replica_index = 4;
+}
+
+message DyunStartResponse {
+  string deployment_id = 1;
+  string runner_id = 2;
+  moqentra.common.v1.Error error = 3;
+}
+
+// Poll or report current status.
+message DyunStatusRequest {
+  CommandHeader header = 1;
+  string deployment_id = 2;
+  uint64 generation = 3;
+}
+
+message DyunStatusResponse {
+  string deployment_id = 1;
+  uint64 observed_generation = 2;
+  string state = 3;
+  moqentra.common.v1.Error error = 4;
+}
+
+// Metrics sample produced by a runner.
+message DyunMetricSample {
+  string name = 1;
+  double value = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  map<string, string> labels = 4;
+}
+
+message DyunMetricsRequest {
+  CommandHeader header = 1;
+  string deployment_id = 2;
+}
+
+message DyunMetricsResponse {
+  string deployment_id = 1;
+  repeated DyunMetricSample samples = 2;
+  moqentra.common.v1.Error error = 3;
+}
+
+// Graceful drain with bounded timeout.
+message DyunDrainRequest {
+  CommandHeader header = 1;
+  string deployment_id = 2;
+  uint32 timeout_seconds = 3;
+}
+
+message DyunDrainResponse {
+  string deployment_id = 1;
+  bool accepted = 2;
+  moqentra.common.v1.Error error = 3;
+}
+
+// Hard stop a deployment.
+message DyunStopRequest {
+  CommandHeader header = 1;
+  string deployment_id = 2;
+  string reason = 3;
+}
+
+message DyunStopResponse {
+  string deployment_id = 1;
+  bool accepted = 2;
+  moqentra.common.v1.Error error = 3;
+}
+
+// Final result reported by an agent.
+message DyunResultRequest {
+  CommandHeader header = 1;
+  string deployment_id = 2;
+  bool success = 3;
+  bytes payload = 4;
+  moqentra.common.v1.Error error = 5;
+}
+
+message DyunResultResponse {
+  string deployment_id = 1;
+  bool accepted = 2;
+  moqentra.common.v1.Error error = 3;
+}
+
+// Dyun agent control service. Control plane is the client; agent is the
+// server for unary commands, except for agent-initiated results.
+service DyunAgentService {
+  rpc Capability(DyunCapabilityRequest) returns (DyunCapabilityResponse);
+  rpc Prepare(DyunPrepareRequest) returns (DyunPrepareResponse);
+  rpc Start(DyunStartRequest) returns (DyunStartResponse);
+  rpc Status(DyunStatusRequest) returns (DyunStatusResponse);
+  rpc Metrics(DyunMetricsRequest) returns (DyunMetricsResponse);
+  rpc Drain(DyunDrainRequest) returns (DyunDrainResponse);
+  rpc Stop(DyunStopRequest) returns (DyunStopResponse);
+  rpc Result(DyunResultRequest) returns (DyunResultResponse);
 }
