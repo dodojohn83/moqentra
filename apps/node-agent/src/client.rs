@@ -11,7 +11,7 @@ use moqentra_types::AttemptId;
 use moqentra_worker_control::local_executor::{
     AcceleratorKind, AllocationRequest, BindMount, ContainerConfig, LocalExecutor, NodeCapabilities,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -159,12 +159,16 @@ struct RunContainerCommand {
     container: ContainerConfig,
 }
 
+type ChildrenMap = HashMap<String, tokio::process::Child>;
+
 /// Connect to the control plane and maintain the worker stream.
 pub async fn run_worker_stream(
     dst: &str,
     capabilities: NodeCapabilities,
     executor: Arc<Mutex<LocalExecutor>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let children: Arc<tokio::sync::Mutex<ChildrenMap>> =
+        Arc::new(tokio::sync::Mutex::new(HashMap::new()));
     let mut client: WorkerAgentServiceClient<Channel> =
         WorkerAgentServiceClient::connect(dst.to_string()).await?;
     let (tx, rx): (
@@ -190,7 +194,7 @@ pub async fn run_worker_stream(
             msg = inbound.message() => {
                 match msg {
                     Ok(Some(WorkerAgentServiceOpenStreamResponse { payload: Some(payload) })) => {
-                        if let Err(e) = handle_payload(&tx, payload, &capabilities, &executor).await {
+                        if let Err(e) = handle_payload(&tx, payload, &capabilities, &executor, &children).await {
                             tracing::error!(error = %e, "failed to handle worker payload");
                         }
                     }
@@ -215,6 +219,7 @@ async fn handle_payload(
     payload: OutPayload,
     caps: &NodeCapabilities,
     executor: &Arc<Mutex<LocalExecutor>>,
+    children: &Arc<Mutex<ChildrenMap>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match payload {
         OutPayload::Command(Command {
@@ -227,7 +232,7 @@ async fn handle_payload(
             tx.send(ack_request(&command_id, AckStatus::Received)).await?;
 
             if command_type == "RUN_CONTAINER" || command_type == "run_container" {
-                run_container_command(tx, &command_id, &payload, caps, executor).await?;
+                run_container_command(tx, &command_id, &payload, caps, executor, children).await?;
             } else {
                 tx.send(progress_request(&command_id, 50, "processing")).await?;
                 tx.send(result_request(command_id, true)).await?;
@@ -242,8 +247,11 @@ async fn handle_payload(
             tracing::info!(%lease_id, %attempt_id, %task_id, "received lease");
         }
         OutPayload::Drain(d) => {
-            tracing::info!(graceful = d.graceful, "received drain request");
-            return Err("drain requested".into());
+            if d.command_id.is_empty() {
+                tracing::info!(graceful = d.graceful, "node drain requested");
+                return Err("drain requested".into());
+            }
+            cancel_container(&d.command_id, d.graceful, children).await?;
         }
         OutPayload::Error(e) => {
             tracing::error!(error = ?e, "control plane error");
@@ -259,6 +267,7 @@ async fn run_container_command(
     payload: &[u8],
     caps: &NodeCapabilities,
     executor: &Arc<Mutex<LocalExecutor>>,
+    children: &Arc<Mutex<ChildrenMap>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cmd: RunContainerCommand = serde_json::from_slice(payload)?;
     let attempt_id = AttemptId::try_from(cmd.attempt_id.as_str())?;
@@ -299,10 +308,14 @@ async fn run_container_command(
         .await?;
     drop(guard);
 
-    tx.send(progress_request(command_id, 25, "container started")).await?;
-
     let stdout = child.stdout.take().ok_or("missing stdout")?;
     let stderr = child.stderr.take().ok_or("missing stderr")?;
+
+    let mut guard: tokio::sync::MutexGuard<'_, ChildrenMap> = children.lock().await;
+    guard.insert(command_id.to_string(), child);
+    drop(guard);
+
+    tx.send(progress_request(command_id, 25, "container started")).await?;
 
     let tx_out = tx.clone();
     let tx_err = tx.clone();
@@ -312,7 +325,13 @@ async fn run_container_command(
     let log_out = tokio::spawn(stream_lines(BufReader::new(stdout), cid_out, tx_out));
     let log_err = tokio::spawn(stream_lines(BufReader::new(stderr), cid_err, tx_err));
 
-    let status = child.wait().await?;
+    let status: std::process::ExitStatus = {
+        let mut guard: tokio::sync::MutexGuard<'_, ChildrenMap> = children.lock().await;
+        let child = guard.get_mut(command_id).ok_or("container disappeared from tracking")?;
+        child.wait().await?
+    };
+
+    children.lock().await.remove(command_id);
 
     let _ = tokio::try_join!(log_out, log_err);
 
@@ -322,6 +341,37 @@ async fn run_container_command(
 
     let success = status.success();
     tx.send(result_request(command_id.to_string(), success)).await?;
+    Ok(())
+}
+
+async fn cancel_container(
+    command_id: &str,
+    graceful: bool,
+    children: &Arc<tokio::sync::Mutex<ChildrenMap>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut guard: tokio::sync::MutexGuard<'_, ChildrenMap> = children.lock().await;
+    let Some(child) = guard.get_mut(command_id) else {
+        return Ok(());
+    };
+
+    if graceful {
+        // Send SIGTERM first, then SIGKILL after a grace period if the
+        // process is still tracked.
+        if let Some(pid) = child.id() {
+            let _ = std::process::Command::new("kill").arg("-TERM").arg(pid.to_string()).status();
+        }
+        let children: Arc<tokio::sync::Mutex<ChildrenMap>> = Arc::clone(children);
+        let cid = command_id.to_string();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            let mut guard: tokio::sync::MutexGuard<'_, ChildrenMap> = children.lock().await;
+            if let Some(c) = guard.get_mut(&cid) {
+                let _ = c.kill().await;
+            }
+        });
+    } else {
+        child.kill().await?;
+    }
     Ok(())
 }
 

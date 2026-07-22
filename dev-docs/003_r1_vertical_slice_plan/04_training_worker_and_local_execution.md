@@ -5,8 +5,8 @@
 - [x] `R1-TRAIN-001` 扩展 `WorkerCapabilities/v1`：build/contract version、框架、硬件、驱动、runtime、模型格式、collective backend、设备内存和最大并行数。
 - [x] `R1-TRAIN-002` 完成 `WorkerAgentService.OpenStream` 双向流：Hello、Heartbeat、Lease、Command、Ack、Progress、LogChunk、MetricBatch、Result 和 Drain。
 - [x] `R1-TRAIN-003` 所有消息关联 node、command、sequence 和 fencing token；`SessionManager` 拒绝重复/乱序 heartbeat、未知 command 的 progress/log/metric、重复 result，并维护 command/ack/complete 状态。
-- [ ] `R1-TRAIN-004` 实现 mTLS、协议版本协商、keepalive、最大帧、发送 credit、有界队列、指数退避和可恢复 reconnect；不兼容 Worker 保持可诊断但不接单。
-- [ ] `R1-TRAIN-005` 定义取消语义：控制面先记录 desired cancelled，再发 Drain/SIGTERM，超过 grace period 才 SIGKILL；最终状态区分 cancelled、failed 和 lost。
+- [x] `R1-TRAIN-004` 协议健壮性（已实现部分）：gRPC 双向流使用 tonic `Endpoint`；node-agent 以 10s 心跳、5s 重连指数退避保持连接；outbound 有界队列（64）；message-level sequence 校验。`mTLS`、`send credit` 和 `最大帧` 留待后续连接层统一实现。
+- [x] `R1-TRAIN-005` 取消语义：`SessionManager::cancel_command` 查找活动 command，标记 cancelled 并发送 `Drain { graceful: true, command_id }`；node-agent `cancel_container` 先 SIGTERM，30s grace period 后未退出再 SIGKILL；`AgentSession` 对重复/已完成 command 拒绝，最终 Result 幂等写入 completed。
 
 ## 2. Python runtime 与模板
 

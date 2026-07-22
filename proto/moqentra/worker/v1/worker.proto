@@ -110,9 +110,11 @@ message Result {
   moqentra.common.v1.Error error = 4;
 }
 
-// Drain request for graceful shutdown.
+// Drain request for graceful shutdown or per-command cancellation.
 message Drain {
   bool graceful = 1;
+  // When set, the drain applies to a specific command rather than the whole node.
+  string command_id = 2;
 }
 
 // One frame sent by the agent to the control plane.

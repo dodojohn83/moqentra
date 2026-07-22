@@ -48,6 +48,7 @@ pub struct AgentSession {
     pending: HashMap<String, CommandRecord>,
     acked: HashSet<String>,
     completed: HashSet<String>,
+    cancelled: HashSet<String>,
     draining: bool,
     #[allow(dead_code)]
     outbound: mpsc::Sender<Result<WorkerAgentServiceOpenStreamResponse, Status>>,
@@ -70,6 +71,7 @@ impl AgentSession {
             pending: HashMap::new(),
             acked: HashSet::new(),
             completed: HashSet::new(),
+            cancelled: HashSet::new(),
             draining: false,
             outbound,
         }
@@ -149,10 +151,16 @@ impl AgentSession {
         self.last_heartbeat_seq = hb.sequence;
         self.touch();
 
-        // If a command is queued, send it now.
-        if let Some((id, record)) = self.pending.iter().next() {
-            let id = id.clone();
-            self.send_command(record.command.clone()).await;
+        // Re-send any pending command that has not been cancelled.
+        let pending: Vec<Command> = self
+            .pending
+            .iter()
+            .filter(|(id, _)| !self.cancelled.contains(id.as_str()))
+            .map(|(_, r)| r.command.clone())
+            .collect();
+        for command in pending {
+            let id = command.command_id.clone();
+            self.send_command(command).await;
             tracing::debug!(command_id = %id, "command re-sent after heartbeat");
         }
         Ok(())
@@ -273,12 +281,16 @@ impl AgentSession {
                 result.command_id
             )));
         }
+        if self.cancelled.contains(&result.command_id) {
+            tracing::info!(command_id = %result.command_id, "result received for cancelled command");
+        }
         self.completed.insert(result.command_id.clone());
         self.pending.remove(&result.command_id);
+        self.cancelled.remove(&result.command_id);
         self.touch();
 
         if self.draining {
-            self.send_drain(true).await;
+            self.send_drain(true, "").await;
         }
         Ok(())
     }
@@ -291,6 +303,10 @@ impl AgentSession {
     pub async fn assign_command(&mut self, command: Command) {
         if self.completed.contains(&command.command_id) {
             tracing::warn!(command_id = %command.command_id, "refusing to assign already-completed command");
+            return;
+        }
+        if self.cancelled.contains(&command.command_id) {
+            tracing::warn!(command_id = %command.command_id, "refusing to assign cancelled command");
             return;
         }
         self.pending.insert(
@@ -310,18 +326,47 @@ impl AgentSession {
         self.send(OutPayload::Lease(lease)).await;
     }
 
-    /// Request a graceful (or forceful) drain.
+    /// Request a graceful (or forceful) node-level drain.
     pub async fn request_drain(&mut self, graceful: bool) {
         self.draining = true;
-        self.send_drain(graceful).await;
+        self.send_drain(graceful, "").await;
+    }
+
+    /// Request cancellation of an active command.
+    pub async fn request_cancel(&mut self, command_id: &str) -> Result<(), Status> {
+        if command_id.is_empty() {
+            return Err(Status::invalid_argument("command_id is required"));
+        }
+        if self.completed.contains(command_id) {
+            return Err(Status::failed_precondition(format!(
+                "command {} already completed",
+                command_id
+            )));
+        }
+        if !self.pending.contains_key(command_id) && !self.acked.contains(command_id) {
+            return Err(Status::not_found(format!(
+                "command {} not active",
+                command_id
+            )));
+        }
+        if !self.cancelled.insert(command_id.to_string()) {
+            // Already cancelled.
+            return Ok(());
+        }
+        self.send_drain(true, command_id).await;
+        Ok(())
     }
 
     async fn send_command(&mut self, command: Command) {
         self.send(OutPayload::Command(command)).await;
     }
 
-    async fn send_drain(&mut self, graceful: bool) {
-        self.send(OutPayload::Drain(Drain { graceful })).await;
+    async fn send_drain(&mut self, graceful: bool, command_id: &str) {
+        self.send(OutPayload::Drain(Drain {
+            graceful,
+            command_id: command_id.to_string(),
+        }))
+        .await;
     }
 
     async fn send_error(&mut self, error: moqentra_contracts::moqentra::common::v1::Error) {
@@ -431,6 +476,21 @@ impl SessionManager {
         drop(sessions);
         session.lock().await.assign_command(command).await;
         Ok(())
+    }
+
+    /// Request cancellation of an active command, searching all connected nodes.
+    pub async fn cancel_command(&self, command_id: &str) -> Result<(), Status> {
+        let sessions = self.sessions.lock().await;
+        for session in sessions.values() {
+            let mut s = session.lock().await;
+            if s.known_command(command_id) || s.pending.contains_key(command_id) {
+                return s.request_cancel(command_id).await;
+            }
+        }
+        Err(Status::not_found(format!(
+            "command {} not found on any connected node",
+            command_id
+        )))
     }
 
     /// Route a control-plane lease to the node.
