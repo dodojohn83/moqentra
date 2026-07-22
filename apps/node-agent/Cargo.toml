@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 moqentra-types = { path = "../../crates/types" }
+moqentra-contracts = { path = "../../crates/contracts" }
 moqentra-worker-control = { path = "../../crates/worker-control" }
 tokio = { workspace = true }
 axum = { workspace = true }
@@ -20,3 +21,7 @@ serde_json = "1.0"
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
+tonic = { workspace = true }
+tokio-stream = { workspace = true }
+time = "0.3"
+prost-types = "0.13"

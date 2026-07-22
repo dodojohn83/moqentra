@@ -36,6 +36,41 @@ impl PgTrainingJobRepository {
         Ok(())
     }
 
+    async fn set_admin(&self) -> Result<(), Error> {
+        sqlx::query("SELECT set_config('app.is_admin', 'true', true)")
+            .execute(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("failed to set admin context: {e}")))?;
+        Ok(())
+    }
+
+    /// List all queued training jobs across tenants for the scheduler.
+    pub async fn list_queued_for_scheduler(
+        &self,
+        limit: u32,
+    ) -> Result<Vec<Versioned<TrainingJob>>, Error> {
+        self.set_admin().await?;
+        let rows: Vec<TrainingJobRow> = sqlx::query_as(
+            "SELECT id, tenant_id, project_id, experiment_id, dataset_version_id, model_id, name,
+                    spec, state, revision, metadata, created_at, updated_at
+             FROM training_jobs
+             WHERE state = 'Queued'
+             ORDER BY updated_at ASC, id
+             LIMIT $1",
+        )
+        .bind(i64::from(limit))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to list queued training jobs: {e}")))?;
+
+        let mut items = Vec::with_capacity(rows.len());
+        for row in rows {
+            let job = row_to_domain(&row)?;
+            items.push(Versioned::new(job, Self::revision_from_i64(row.revision)));
+        }
+        Ok(items)
+    }
+
     fn revision_from_i64(value: i64) -> Revision {
         let mut r = Revision::initial();
         for _ in 0..value {
@@ -487,5 +522,63 @@ mod tests {
 
         repo.delete(&c, job.id, created.revision).await.unwrap();
         assert!(repo.get(&c, job.id).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn pg_scheduler_lists_queued_jobs() {
+        let Some(pool) = pool().await else { return };
+        let (tenant_id, project_id, user_id) = setup_tenant_project(&pool).await;
+        let c = ctx(tenant_id, project_id, user_id);
+        let dataset_repo = PgDatasetRepository::new(pool.clone());
+
+        sqlx::query("DELETE FROM training_jobs WHERE tenant_id = $1")
+            .bind(tenant_id.as_uuid())
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM dataset_versions WHERE tenant_id = $1")
+            .bind(tenant_id.as_uuid())
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM datasets WHERE tenant_id = $1")
+            .bind(tenant_id.as_uuid())
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let dataset = Dataset::new(
+            moqentra_types::DatasetId::new_v7(&RandomIdGenerator),
+            tenant_id,
+            project_id,
+            "training-dataset",
+        )
+        .unwrap();
+        let ds = dataset_repo.create(&c, dataset).await.unwrap();
+        let version = DatasetVersion::new(
+            moqentra_types::DatasetVersionId::new_v7(&RandomIdGenerator),
+            ds.entity.id,
+            tenant_id,
+            project_id,
+        );
+        let v = dataset_repo.create_version(&c, ds.entity.id, version).await.unwrap();
+
+        let repo = PgTrainingJobRepository::new(pool.clone());
+        let exp_id = moqentra_types::ExperimentId::new_v7(&RandomIdGenerator);
+        let job = TrainingJob::new(
+            TrainingJobId::new_v7(&RandomIdGenerator),
+            exp_id,
+            tenant_id,
+            project_id,
+            sample_spec(v.entity.id),
+        )
+        .unwrap();
+
+        repo.create(&c, job.clone()).await.unwrap();
+
+        let queued = repo.list_queued_for_scheduler(10).await.unwrap();
+        assert!(queued.iter().any(|j| j.entity.id == job.id));
+
+        repo.delete(&c, job.id, Revision::initial()).await.unwrap();
     }
 }

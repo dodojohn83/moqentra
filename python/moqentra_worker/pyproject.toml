@@ -6,6 +6,15 @@ requires-python = ">=3.10"
 dependencies = [
   "grpcio>=1.71.0",
   "protobuf>=6.30.0",
+  "numpy>=1.26.0",
+  "Pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+torch = [
+  "onnx>=1.15.0",
+  "torch>=2.0.0",
+  "torchvision>=0.15.0",
 ]
 
 [build-system]
@@ -15,7 +24,13 @@ build-backend = "hatchling.build"
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+exclude = ["src/moqentra"]
 
 [tool.mypy]
 python_version = "3.10"
 strict = true
+exclude = ["^src/moqentra"]
+
+[[tool.mypy.overrides]]
+module = ["grpc", "moqentra.*"]
+ignore_missing_imports = true

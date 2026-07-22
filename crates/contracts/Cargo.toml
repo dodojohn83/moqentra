@@ -11,7 +11,8 @@ build = "build.rs"
 moqentra-types = { path = "../types" }
 prost = "0.13"
 prost-types = "0.13"
+tonic = { workspace = true }
 
 [build-dependencies]
-prost-build = "0.13"
+tonic-build = { workspace = true }
 protoc-bin-vendored = "3.2"

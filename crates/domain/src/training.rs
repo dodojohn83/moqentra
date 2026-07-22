@@ -162,6 +162,7 @@ pub enum DistributedConfig {
 /// State of a training job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TrainingJobState {
+    Draft,
     Queued,
     Admitted,
     Starting,
@@ -179,6 +180,7 @@ impl FromStr for TrainingJobState {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
+            "Draft" => Ok(Self::Draft),
             "Queued" => Ok(Self::Queued),
             "Admitted" => Ok(Self::Admitted),
             "Starting" => Ok(Self::Starting),
@@ -332,7 +334,7 @@ impl TrainingJob {
             tenant_id,
             project_id,
             spec,
-            state: TrainingJobState::Queued,
+            state: TrainingJobState::Draft,
             current_attempt: None,
             attempts: Vec::new(),
             metrics: Vec::new(),
@@ -340,6 +342,15 @@ impl TrainingJob {
             created_at: now,
             updated_at: now,
         })
+    }
+
+    pub fn submit(&mut self) -> Result<(), moqentra_types::Error> {
+        if !matches!(self.state, TrainingJobState::Draft) {
+            return Err(moqentra_types::Error::conflict("job is not draft"));
+        }
+        self.state = TrainingJobState::Queued;
+        self.updated_at = UtcTimestamp::now();
+        Ok(())
     }
 
     pub fn admit(&mut self) -> Result<(), moqentra_types::Error> {
@@ -607,14 +618,16 @@ mod tests {
             max_attempts: 3,
             deadline_seconds: 3600,
         };
-        TrainingJob::new(
+        let mut job = TrainingJob::new(
             TrainingJobId::new_v7(&gen),
             ExperimentId::new_v7(&gen),
             TenantId::new_v7(&gen),
             ProjectId::new_v7(&gen),
             spec,
         )
-        .unwrap()
+        .unwrap();
+        job.submit().unwrap();
+        job
     }
 
     #[test]

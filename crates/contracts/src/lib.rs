@@ -19,6 +19,7 @@ mod tests {
         Error as ProtoError, ErrorKind, EventEnvelope, EventStatus, Operation, OperationStatus,
         Pagination, RequestContext, ResourceRef,
     };
+    use crate::moqentra::worker::v1::{Framework, ModelFormat, WorkerCapabilities};
     use prost::Message;
 
     #[test]
@@ -124,6 +125,36 @@ mod tests {
         let mut buf = Vec::new();
         original.encode(&mut buf).unwrap();
         let decoded = EventEnvelope::decode(buf.as_slice()).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn worker_capabilities_roundtrip() {
+        let original = WorkerCapabilities {
+            agent_build_version: "0.1.0".to_string(),
+            contract_version: "1".to_string(),
+            frameworks: vec![Framework {
+                name: "PyTorch".to_string(),
+                version: "2.6.0".to_string(),
+            }],
+            hardware_label: "NVIDIA-RTX3090".to_string(),
+            device_labels: vec!["GPU-0".to_string()],
+            driver_version: "560.35.03".to_string(),
+            runtime_version: "cuda12.6".to_string(),
+            runtimes: vec!["cuda".to_string(), "cudnn".to_string()],
+            model_formats: vec![ModelFormat {
+                name: "onnx".to_string(),
+                version: vec!["1.17".to_string()],
+            }],
+            collective_backend: "nccl".to_string(),
+            device_memory_bytes: 24 * 1024 * 1024 * 1024,
+            max_parallelism: 4,
+            supports_gpu: true,
+            supports_npu: false,
+        };
+        let mut buf = Vec::new();
+        original.encode(&mut buf).unwrap();
+        let decoded = WorkerCapabilities::decode(buf.as_slice()).unwrap();
         assert_eq!(original, decoded);
     }
 }

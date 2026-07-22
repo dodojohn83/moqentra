@@ -1,4 +1,6 @@
-//! Moqentra node-agent: local resource admission and health endpoints.
+//! Moqentra node-agent: local resource admission, health endpoints, and worker stream.
+
+mod client;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -11,7 +13,8 @@ use moqentra_worker_control::local_executor::{
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Clone)]
@@ -39,23 +42,81 @@ struct AllocateRequest {
     fencing_token: u64,
 }
 
+fn runtime_available(name: &str) -> bool {
+    std::process::Command::new(name)
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn detect_container_runtime() -> String {
+    if let Ok(preferred) = std::env::var("MOQENTRA_CONTAINER_RUNTIME") {
+        if !preferred.is_empty() && runtime_available(&preferred) {
+            return preferred;
+        }
+    }
+    for runtime in ["podman", "docker"] {
+        if runtime_available(runtime) {
+            return runtime.to_string();
+        }
+    }
+    "none".to_string()
+}
+
+fn parse_mib(value: &str) -> u64 {
+    value.split_whitespace().next().and_then(|s| s.parse().ok()).unwrap_or(0)
+}
+
+fn detect_nvidia_devices() -> Vec<Device> {
+    let output = match std::process::Command::new("nvidia-smi")
+        .args([
+            "--query-gpu=uuid,name,memory.total,driver_version",
+            "--format=csv,noheader",
+        ])
+        .output()
+    {
+        Ok(out) if out.status.success() => out.stdout,
+        _ => return vec![],
+    };
+
+    let mut devices = Vec::new();
+    for line in String::from_utf8_lossy(&output).lines() {
+        let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+        if parts.len() < 4 {
+            continue;
+        }
+        devices.push(Device {
+            uuid: parts[0].to_string(),
+            kind: AcceleratorKind::Nvidia,
+            memory_mib: parse_mib(parts[2]),
+            driver_version: parts[3].to_string(),
+            runtime: "cuda".to_string(),
+            healthy: true,
+        });
+    }
+    devices
+}
+
 fn discover_capabilities() -> NodeCapabilities {
     let gen = RandomIdGenerator;
+    let mut devices = detect_nvidia_devices();
+    devices.push(Device {
+        uuid: "cpu-0".to_string(),
+        kind: AcceleratorKind::Cpu,
+        memory_mib: 0,
+        driver_version: "n/a".to_string(),
+        runtime: "host".to_string(),
+        healthy: true,
+    });
+
     NodeCapabilities {
         node_id: NodeId::new_v7(&gen),
         cpu_cores: std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(1),
         memory_mib: 8192,
         disk_mib: 102_400,
-        container_runtime: std::env::var("MOQENTRA_CONTAINER_RUNTIME")
-            .unwrap_or_else(|_| "podman".to_string()),
-        devices: vec![Device {
-            uuid: "cpu-0".to_string(),
-            kind: AcceleratorKind::Cpu,
-            memory_mib: 0,
-            driver_version: "n/a".to_string(),
-            runtime: "host".to_string(),
-            healthy: true,
-        }],
+        container_runtime: detect_container_runtime(),
+        devices,
         healthy: true,
         reported_at: UtcTimestamp::now(),
     }
@@ -75,7 +136,7 @@ async fn capabilities(State(state): State<AgentState>) -> impl IntoResponse {
 }
 
 async fn allocations(State(state): State<AgentState>) -> impl IntoResponse {
-    let executor = state.executor.lock().unwrap_or_else(|e| e.into_inner());
+    let executor = state.executor.lock().await;
     let summary: Vec<_> = executor
         .allocations_snapshot()
         .into_iter()
@@ -105,7 +166,7 @@ async fn allocate(
         },
         device_count: req.device_count,
     };
-    let mut executor = state.executor.lock().unwrap_or_else(|e| e.into_inner());
+    let mut executor = state.executor.lock().await;
     let alloc = executor
         .allocate(
             &request,
@@ -134,7 +195,7 @@ async fn release(
     State(state): State<AgentState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
-    let mut executor = state.executor.lock().unwrap_or_else(|e| e.into_inner());
+    let mut executor = state.executor.lock().await;
     executor.release(&id).map_err(|e| {
         (
             StatusCode::NOT_FOUND,
@@ -148,14 +209,38 @@ async fn release(
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
 
-    let caps = discover_capabilities();
+    let caps = Arc::new(discover_capabilities());
     let workspace =
         std::env::var("MOQENTRA_WORKSPACE_ROOT").unwrap_or_else(|_| "/tmp/moqentra".to_string());
-    let executor = LocalExecutor::new().with_workspace_root(workspace);
+    let executor = Arc::new(Mutex::new(
+        LocalExecutor::new()
+            .with_workspace_root(workspace)
+            .with_container_runtime(caps.container_runtime.clone()),
+    ));
     let state = AgentState {
-        capabilities: Arc::new(caps),
-        executor: Arc::new(Mutex::new(executor)),
+        capabilities: Arc::clone(&caps),
+        executor: Arc::clone(&executor),
     };
+
+    if let Ok(grpc_addr) = std::env::var("MOQENTRA_CONTROL_PLANE_GRPC_ADDR") {
+        if !grpc_addr.is_empty() {
+            let caps = Arc::clone(&caps);
+            tokio::spawn(async move {
+                loop {
+                    if let Err(e) = client::run_worker_stream(
+                        &grpc_addr,
+                        (*caps).clone(),
+                        Arc::clone(&executor),
+                    )
+                    .await
+                    {
+                        tracing::error!(error = %e, "worker stream failed; reconnecting in 5s");
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                }
+            });
+        }
+    }
 
     let listen =
         std::env::var("MOQENTRA_NODE_AGENT_ADDR").unwrap_or_else(|_| "0.0.0.0:8081".to_string());

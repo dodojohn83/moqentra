@@ -33,9 +33,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").ok_or("OUT_DIR not set")?);
 
-    prost_build::Config::new()
+    tonic_build::configure()
         .out_dir(out_dir)
         .include_file("prost_generated.rs")
         .compile_protos(&protos, &[proto_root])
-        .map_err(|e| e.into())
+        .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
 }

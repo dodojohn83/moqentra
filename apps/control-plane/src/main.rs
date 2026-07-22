@@ -5,6 +5,8 @@
 //! `moqentra-http-api`.
 
 use axum::serve;
+mod artifact_validator;
+use artifact_validator::AppArtifactValidator;
 use moqentra_application::{
     InMemoryAnnotationRegistry, InMemoryDatasetRegistry, InMemoryModelRegistry,
     InMemoryTrainingRegistry,
@@ -172,6 +174,27 @@ async fn main() -> anyhow::Result<()> {
     moqentra_http_api::import::spawn_import_worker(state.clone());
     moqentra_http_api::validation_worker::spawn_media_validation_worker(state.clone());
     moqentra_http_api::gc_worker::spawn_gc_worker(state.clone());
+
+    let validator = Arc::new(AppArtifactValidator {
+        training: state.training.clone(),
+        models: state.models.clone(),
+    });
+    let worker_manager = moqentra_worker_control::SessionManager::new_with_validator(validator);
+    let worker_service = moqentra_worker_control::WorkerControlService::new(worker_manager);
+    let worker_listen =
+        std::env::var("MOQENTRA_WORKER_GRPC_ADDR").unwrap_or_else(|_| "0.0.0.0:9090".to_string());
+    let worker_addr: SocketAddr = worker_listen.parse()?;
+
+    tokio::spawn(async move {
+        let server = tonic::transport::Server::builder().add_service(
+            moqentra_worker_control::worker_service_server(worker_service),
+        );
+        tracing::info!(%worker_addr, "moqentra worker gRPC listening");
+        if let Err(e) = server.serve(worker_addr).await {
+            tracing::error!(error = %e, "worker gRPC server failed");
+        }
+    });
+
     let app = app_router(state);
     tracing::info!(%addr, "moqentra-control-plane listening");
     let listener = tokio::net::TcpListener::bind(addr).await?;

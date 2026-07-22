@@ -5,13 +5,34 @@ package moqentra.worker.v1;
 import "google/protobuf/timestamp.proto";
 import "moqentra/common/v1/common.proto";
 
+// A supported ML framework.
+message Framework {
+  string name = 1;
+  string version = 2;
+}
+
+// A supported model serialization format.
+message ModelFormat {
+  string name = 1;
+  repeated string version = 2;
+}
+
 // Worker capabilities reported during agent handshake.
 message WorkerCapabilities {
-  string framework_name = 1;
-  string framework_version = 2;
-  string hardware_label = 3;
-  bool supports_gpu = 4;
-  bool supports_npu = 5;
+  string agent_build_version = 1;
+  string contract_version = 2;
+  repeated Framework frameworks = 3;
+  string hardware_label = 4;
+  repeated string device_labels = 5;
+  string driver_version = 6;
+  string runtime_version = 7;
+  repeated string runtimes = 8;
+  repeated ModelFormat model_formats = 9;
+  string collective_backend = 10;
+  uint64 device_memory_bytes = 11;
+  uint32 max_parallelism = 12;
+  bool supports_gpu = 13;
+  bool supports_npu = 14;
 }
 
 // Agent hello sent when a worker connects.
@@ -89,13 +110,15 @@ message Result {
   moqentra.common.v1.Error error = 4;
 }
 
-// Drain request for graceful shutdown.
+// Drain request for graceful shutdown or per-command cancellation.
 message Drain {
   bool graceful = 1;
+  // When set, the drain applies to a specific command rather than the whole node.
+  string command_id = 2;
 }
 
 // One frame sent by the agent to the control plane.
-message WorkerAgentServiceConnectRequest {
+message WorkerAgentServiceOpenStreamRequest {
   oneof payload {
     Hello hello = 1;
     Heartbeat heartbeat = 2;
@@ -108,7 +131,7 @@ message WorkerAgentServiceConnectRequest {
 }
 
 // One frame sent by the control plane to the agent.
-message WorkerAgentServiceConnectResponse {
+message WorkerAgentServiceOpenStreamResponse {
   oneof payload {
     Command command = 1;
     Lease lease = 2;
@@ -119,5 +142,5 @@ message WorkerAgentServiceConnectResponse {
 
 // Bidirectional worker/agent stream.
 service WorkerAgentService {
-  rpc Connect(stream WorkerAgentServiceConnectRequest) returns (stream WorkerAgentServiceConnectResponse);
+  rpc OpenStream(stream WorkerAgentServiceOpenStreamRequest) returns (stream WorkerAgentServiceOpenStreamResponse);
 }

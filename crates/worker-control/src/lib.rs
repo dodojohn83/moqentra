@@ -1,14 +1,31 @@
 //! Moqentra `moqentra-worker-control` crate.
 //!
-//! This crate is part of the Moqentra workspace. Domain logic and public APIs
-//! are documented in the `dev-docs/002_vibe_coding_plan` chapters.
-
-#![allow(missing_docs)]
+//! Implements the gRPC control surface and local OCI executor for worker agents.
 
 pub mod local_executor;
+pub mod session;
 
-/// Placeholder module until domain types are added in subsequent tasks.
-pub mod placeholder {
-    /// Returns the crate version.
-    pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub use moqentra_contracts::moqentra::worker::v1::{
+    worker_agent_service_client::WorkerAgentServiceClient,
+    worker_agent_service_server::WorkerAgentServiceServer, WorkerAgentServiceOpenStreamRequest,
+    WorkerAgentServiceOpenStreamResponse,
+};
+pub use session::{AgentSession, ArtifactValidator, SessionManager, WorkerControlService};
+
+/// Build a [`WorkerAgentServiceServer`] for the control plane.
+pub fn worker_service_server(
+    service: WorkerControlService,
+) -> WorkerAgentServiceServer<WorkerControlService> {
+    WorkerAgentServiceServer::new(service)
+}
+
+/// Connect a worker agent client to `dst`.
+pub async fn connect_client<D>(
+    dst: D,
+) -> Result<WorkerAgentServiceClient<tonic::transport::Channel>, tonic::transport::Error>
+where
+    D: TryInto<tonic::transport::Endpoint>,
+    D::Error: Into<Box<dyn std::error::Error + Send + Sync + 'static>>,
+{
+    WorkerAgentServiceClient::connect(dst).await
 }

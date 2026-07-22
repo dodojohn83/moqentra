@@ -1,13 +1,15 @@
 //! Local executor and node-agent resource management.
 
 use moqentra_types::{AttemptId, NodeId, UtcTimestamp};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
 /// Kind of accelerator.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, serde::Serialize, serde::Deserialize,
 )]
+#[serde(rename_all = "snake_case")]
 pub enum AcceleratorKind {
     Nvidia,
     Amd,
@@ -54,7 +56,7 @@ pub struct Allocation {
 }
 
 /// Container security profile.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ContainerSecurityProfile {
     pub run_as_root: bool,
     pub read_only_rootfs: bool,
@@ -73,13 +75,26 @@ impl Default for ContainerSecurityProfile {
     }
 }
 
+/// A single bind mount inside the container.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BindMount {
+    pub source: String,
+    pub target: String,
+    pub read_only: bool,
+}
+
 /// Container launch config.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ContainerConfig {
+    pub image: String,
     pub image_digest: String,
     pub entrypoint: Vec<String>,
+    #[serde(default)]
     pub env: BTreeMap<String, String>,
-    pub bind_mounts: BTreeMap<String, String>,
+    #[serde(default)]
+    pub bind_mounts: Vec<BindMount>,
+    #[serde(default)]
+    pub labels: BTreeMap<String, String>,
     pub security: ContainerSecurityProfile,
 }
 
@@ -103,6 +118,7 @@ pub struct LocalExecutor {
     allocated_cpu_cores: u64,
     allocated_memory_mib: u64,
     workspace_root: PathBuf,
+    container_runtime: String,
 }
 
 impl Default for LocalExecutor {
@@ -113,6 +129,7 @@ impl Default for LocalExecutor {
             allocated_cpu_cores: 0,
             allocated_memory_mib: 0,
             workspace_root: PathBuf::from("/tmp/moqentra"),
+            container_runtime: "none".to_string(),
         }
     }
 }
@@ -125,6 +142,19 @@ impl LocalExecutor {
     pub fn with_workspace_root(mut self, root: impl Into<PathBuf>) -> Self {
         self.workspace_root = root.into();
         self
+    }
+
+    pub fn with_container_runtime(mut self, runtime: impl Into<String>) -> Self {
+        self.container_runtime = runtime.into();
+        self
+    }
+
+    pub fn workspace_root(&self) -> &Path {
+        &self.workspace_root
+    }
+
+    pub fn container_runtime(&self) -> &str {
+        &self.container_runtime
     }
 
     pub fn allocate(
@@ -263,22 +293,27 @@ impl LocalExecutor {
         out
     }
 
-    pub fn launch_container(
+    fn validate_container_config(
         &self,
-        _config: &ContainerConfig,
-    ) -> Result<String, moqentra_types::Error> {
-        if _config.security.run_as_root {
+        config: &ContainerConfig,
+    ) -> Result<(), moqentra_types::Error> {
+        if config.image.is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "container image is required",
+            ));
+        }
+        if config.security.run_as_root {
             return Err(moqentra_types::Error::permission_denied(
                 "root execution not allowed",
             ));
         }
-        if !moqentra_types::valid_content_digest(&_config.image_digest) {
+        if !moqentra_types::valid_content_digest(&config.image_digest) {
             return Err(moqentra_types::Error::invalid_argument(
                 "image digest must be a valid content digest",
             ));
         }
-        for (src, target) in &_config.bind_mounts {
-            for path in [src.as_str(), target.as_str()] {
+        for mount in &config.bind_mounts {
+            for path in [mount.source.as_str(), mount.target.as_str()] {
                 if path.is_empty()
                     || path.contains('\0')
                     || !path.starts_with('/')
@@ -289,21 +324,177 @@ impl LocalExecutor {
                     ));
                 }
             }
-            if !is_allowed_bind_mount_path(src, &self.workspace_root) {
+            if !is_allowed_bind_mount_path(&mount.source, &self.workspace_root) {
                 return Err(moqentra_types::Error::permission_denied(
                     "bind mount source outside workspace",
                 ));
             }
         }
+        Ok(())
+    }
+
+    /// Validate a container launch configuration and return a synthetic container id.
+    pub fn launch_container(
+        &self,
+        config: &ContainerConfig,
+    ) -> Result<String, moqentra_types::Error> {
+        self.validate_container_config(config)?;
         Ok(format!(
-            "container-{}",
-            _config.image_digest.replace(':', "-")
+            "container-{}-{}-{}-0000000000000000",
+            self.container_runtime,
+            config.image.replace('/', "-"),
+            config.image_digest.replace(':', "-")
         ))
+    }
+
+    /// Spawn an OCI container with the configured security profile.
+    ///
+    /// `env_overrides` are applied on top of `config.env`. When provided,
+    /// `nvidia_visible_devices` is a comma-separated list of device UUIDs passed
+    /// to the runtime via `NVIDIA_VISIBLE_DEVICES`.
+    pub async fn run_container(
+        &self,
+        config: &ContainerConfig,
+        env_overrides: &BTreeMap<String, String>,
+        nvidia_visible_devices: Option<&str>,
+    ) -> Result<tokio::process::Child, moqentra_types::Error> {
+        self.validate_container_config(config)?;
+
+        if self.container_runtime == "none" || self.container_runtime.is_empty() {
+            return Err(moqentra_types::Error::unavailable(
+                "container runtime not available",
+            ));
+        }
+
+        let mut cmd = tokio::process::Command::new(&self.container_runtime);
+        cmd.arg("run").arg("--rm").arg("--sig-proxy=false");
+
+        if config.security.read_only_rootfs {
+            cmd.arg("--read-only");
+        }
+        for cap in &config.security.dropped_capabilities {
+            cmd.arg(format!("--cap-drop={cap}"));
+        }
+        cmd.arg("--security-opt=no-new-privileges:true");
+        if !config.security.run_as_root {
+            // Run as an unprivileged uid/gid. The host maps this outside the
+            // container; the image does not need a pre-existing user.
+            cmd.arg("--user=1000:1000");
+        }
+        if let Some(seccomp) = &config.security.seccomp_profile {
+            cmd.arg(format!("--security-opt=seccomp={seccomp}"));
+        }
+
+        cmd.arg("--network=none").arg("--pids-limit=4096");
+
+        for (k, v) in &config.labels {
+            cmd.arg(format!("--label={}={}", k, v));
+        }
+
+        for mount in &config.bind_mounts {
+            let mode = if mount.read_only { "ro" } else { "rw" };
+            cmd.arg(format!(
+                "--volume={}:{}:{}",
+                mount.source, mount.target, mode
+            ));
+        }
+
+        for (k, v) in &config.env {
+            cmd.env(k, v);
+        }
+        for (k, v) in env_overrides {
+            cmd.env(k, v);
+        }
+        if let Some(devs) = nvidia_visible_devices {
+            cmd.env("NVIDIA_VISIBLE_DEVICES", devs);
+        }
+
+        // Refuse shell interpretation: argv is passed directly.
+        cmd.arg(format!("{}@{}", config.image, config.image_digest));
+        cmd.args(&config.entrypoint);
+
+        cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+
+        let child = cmd
+            .spawn()
+            .map_err(|e| moqentra_types::Error::external_failed(format!("{e}")))?;
+        Ok(child)
+    }
+
+    /// Reconcile running containers with the set of active attempts.
+    ///
+    /// Queries the container runtime for containers carrying the
+    /// `moqentra.io/node-id` label equal to this node. Any container whose
+    /// `moqentra.io/attempt-id` label is missing, not in `active_attempts`, or
+    /// whose `moqentra.io/lease-deadline` has passed, is killed. Returns the
+    /// number of orphaned containers removed.
+    pub async fn reconcile_containers(
+        &self,
+        node_id: &str,
+        active_attempts: &[String],
+        now: UtcTimestamp,
+    ) -> Result<u32, moqentra_types::Error> {
+        if self.container_runtime.is_empty() || self.container_runtime == "none" {
+            return Ok(0);
+        }
+
+        let active: HashSet<_> = active_attempts.iter().cloned().collect();
+        let format =
+            "{{.ID}}|{{.Label \"moqentra.io/attempt-id\"}}|{{.Label \"moqentra.io/lease-deadline\"}}";
+        let output = tokio::process::Command::new(&self.container_runtime)
+            .arg("ps")
+            .arg("--filter")
+            .arg(format!("label=moqentra.io/node-id={}", node_id))
+            .arg("--format")
+            .arg(format)
+            .output()
+            .await
+            .map_err(|e| moqentra_types::Error::external_failed(format!("{e}")))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(moqentra_types::Error::external_failed(format!(
+                "runtime ps failed: {stderr}"
+            )));
+        }
+
+        let mut removed = 0u32;
+        let text = String::from_utf8_lossy(&output.stdout);
+        for line in text.lines() {
+            let parts: Vec<&str> = line.split('|').collect();
+            if parts.len() != 3 {
+                continue;
+            }
+            let container_id = parts[0].trim();
+            let attempt_id = parts[1].trim();
+            let deadline_str = parts[2].trim();
+            if container_id.is_empty() {
+                continue;
+            }
+
+            let expired = if deadline_str.is_empty() {
+                false
+            } else {
+                deadline_str.parse::<UtcTimestamp>().map(|d| !d.is_after(now)).unwrap_or(false)
+            };
+
+            if attempt_id.is_empty() || !active.contains(attempt_id) || expired {
+                let kill = tokio::process::Command::new(&self.container_runtime)
+                    .arg("kill")
+                    .arg(container_id)
+                    .output()
+                    .await;
+                if kill.is_ok() {
+                    removed = removed.saturating_add(1);
+                }
+            }
+        }
+        Ok(removed)
     }
 }
 
 /// Allocation request.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AllocationRequest {
     pub attempt_id: AttemptId,
     pub cpu_cores: u32,
@@ -338,6 +529,24 @@ mod tests {
         }
     }
 
+    fn make_config() -> ContainerConfig {
+        ContainerConfig {
+            image: "localhost/moqentra/train".to_string(),
+            image_digest: "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                .to_string(),
+            entrypoint: vec!["train".to_string()],
+            env: BTreeMap::new(),
+            bind_mounts: vec![],
+            labels: BTreeMap::new(),
+            security: ContainerSecurityProfile {
+                run_as_root: false,
+                read_only_rootfs: true,
+                dropped_capabilities: vec!["ALL".to_string()],
+                seccomp_profile: None,
+            },
+        }
+    }
+
     #[test]
     fn allocate_and_release_device() {
         let gen = RandomIdGenerator;
@@ -369,21 +578,35 @@ mod tests {
 
     #[test]
     fn root_container_rejected() {
-        let config = ContainerConfig {
-            image_digest: "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-                .to_string(),
-            entrypoint: vec!["train".to_string()],
-            env: BTreeMap::new(),
-            bind_mounts: BTreeMap::new(),
-            security: ContainerSecurityProfile {
-                run_as_root: true,
-                read_only_rootfs: true,
-                dropped_capabilities: vec![],
-                seccomp_profile: None,
-            },
-        };
+        let mut config = make_config();
+        config.security.run_as_root = true;
         let executor = LocalExecutor::new();
         assert!(executor.launch_container(&config).is_err());
+    }
+
+    #[test]
+    fn bind_mount_path_traversal_rejected() {
+        let executor = LocalExecutor::new().with_workspace_root("/tmp/moqentra");
+        let mut config = make_config();
+        config.bind_mounts.push(BindMount {
+            source: "/tmp/moqentra/.. /etc".to_string(),
+            target: "/etc".to_string(),
+            read_only: true,
+        });
+        assert!(executor.launch_container(&config).is_err());
+    }
+
+    #[tokio::test]
+    async fn run_container_without_runtime_is_unavailable() {
+        let executor = LocalExecutor::new().with_workspace_root("/tmp/moqentra");
+        let mut config = make_config();
+        config.bind_mounts.push(BindMount {
+            source: std::env::temp_dir().join("moqentra-input").to_string_lossy().to_string(),
+            target: "/input".to_string(),
+            read_only: true,
+        });
+        let result = executor.run_container(&config, &BTreeMap::new(), None).await;
+        assert!(result.is_err());
     }
 
     #[test]
