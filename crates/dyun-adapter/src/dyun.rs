@@ -62,8 +62,13 @@ pub struct Replica {
     pub bundle: DyunGraphBundle,
     pub node_id: NodeId,
     pub runner_pid: Option<u32>,
+    pub runner_id: Option<String>,
     pub last_heartbeat: Option<UtcTimestamp>,
     pub desired_state: ReplicaState,
+    /// Last generation reported by the runner (may lag behind desired).
+    pub observed_generation: u64,
+    /// Recent error messages (bounded in practice by agent truncation).
+    pub errors: Vec<String>,
     pub created_at: UtcTimestamp,
     pub updated_at: UtcTimestamp,
 }
@@ -87,8 +92,11 @@ impl Replica {
             bundle,
             node_id,
             runner_pid: None,
+            runner_id: None,
             last_heartbeat: None,
             desired_state: ReplicaState::Running,
+            observed_generation: generation,
+            errors: Vec::new(),
             created_at: now,
             updated_at: now,
         }
@@ -151,15 +159,38 @@ impl Replica {
         Ok(())
     }
 
+    pub fn set_runner(&mut self, runner_id: impl Into<String>, pid: u32) {
+        self.runner_id = Some(runner_id.into());
+        self.runner_pid = Some(pid);
+        self.updated_at = UtcTimestamp::now();
+    }
+
+    pub fn record_error(&mut self, message: impl Into<String>) {
+        self.errors.push(message.into());
+        if self.errors.len() > 64 {
+            self.errors.remove(0);
+        }
+        self.updated_at = UtcTimestamp::now();
+    }
+
+    pub fn observe_generation(&mut self, observed: u64) {
+        if observed > self.observed_generation {
+            self.observed_generation = observed;
+            self.updated_at = UtcTimestamp::now();
+        }
+    }
+
     pub fn heartbeat(
         &mut self,
         generation: u64,
         fencing_token: u64,
+        observed_generation: u64,
     ) -> Result<(), moqentra_types::Error> {
         if generation != self.generation || fencing_token != self.fencing_token {
             return Err(moqentra_types::Error::conflict("stale heartbeat"));
         }
         self.last_heartbeat = Some(UtcTimestamp::now());
+        self.observe_generation(observed_generation);
         self.updated_at = UtcTimestamp::now();
         Ok(())
     }
@@ -306,6 +337,14 @@ mod tests {
         replica.transition(1, 7, ReplicaState::Running).unwrap();
         assert!(replica.transition(0, 7, ReplicaState::Running).is_err());
         assert!(replica.transition(1, 99, ReplicaState::Running).is_err());
+
+        // Heartbeat advances observed generation but never moves backwards.
+        assert!(replica.heartbeat(1, 7, 1).is_ok());
+        assert_eq!(replica.observed_generation, 1);
+        replica.observe_generation(3);
+        assert_eq!(replica.observed_generation, 3);
+        replica.observe_generation(2);
+        assert_eq!(replica.observed_generation, 3);
     }
 
     #[test]

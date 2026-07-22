@@ -48,6 +48,8 @@ struct TransitionRequest {
     generation: u64,
     fencing_token: u64,
     state: String,
+    #[serde(default)]
+    observed_generation: u64,
 }
 
 async fn healthz(State(state): State<AgentState>) -> Json<HealthResponse> {
@@ -210,12 +212,14 @@ async fn heartbeat_replica(
             Json(serde_json::json!({"error": "replica not found"})),
         )
     })?;
-    replica.heartbeat(req.generation, req.fencing_token).map_err(|e| {
-        (
-            StatusCode::CONFLICT,
-            Json(serde_json::json!({"error": e.to_string()})),
-        )
-    })?;
+    replica
+        .heartbeat(req.generation, req.fencing_token, req.observed_generation)
+        .map_err(|e| {
+            (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        })?;
     Ok(Json(serde_json::json!({
         "id": replica.id.to_string(),
         "last_heartbeat": replica.last_heartbeat.map(|t| t.to_string()),
