@@ -11,6 +11,8 @@ pub struct IdempotencyScope {
     pub tenant_id: TenantId,
     pub key: String,
     pub operation_type: String,
+    /// Request fingerprint used to detect key reuse with a different payload.
+    pub fingerprint: String,
 }
 
 /// Stored idempotency entry.
@@ -51,8 +53,8 @@ pub trait IdempotencyStore: Send + Sync {
         scope: IdempotencyScope,
         ttl: std::time::Duration,
     ) -> Result<IdempotencyResult, Error>;
-    /// Marks an in-progress idempotency entry as completed.
-    async fn complete(&self, id: Uuid, response: Value) -> Result<(), Error>;
+    /// Marks an in-progress idempotency entry as completed for the given tenant.
+    async fn complete(&self, tenant_id: TenantId, id: Uuid, response: Value) -> Result<(), Error>;
     /// Cleans up expired entries.
     async fn cleanup(&self, before: UtcTimestamp) -> Result<u64, Error>;
 }
@@ -80,6 +82,11 @@ impl IdempotencyStore for InMemoryIdempotencyStore {
         let now = UtcTimestamp::now();
         if let Some(entry) = entries.get(&scope) {
             if entry.expires_at >= now {
+                if entry.scope.fingerprint != scope.fingerprint {
+                    return Err(Error::conflict(
+                        "idempotency key reused with different request fingerprint",
+                    ));
+                }
                 if entry.status == IdempotencyStatus::Completed {
                     return Ok(IdempotencyResult::Completed(entry.clone()));
                 }
@@ -101,7 +108,7 @@ impl IdempotencyStore for InMemoryIdempotencyStore {
         Ok(IdempotencyResult::New(entry))
     }
 
-    async fn complete(&self, id: Uuid, response: Value) -> Result<(), Error> {
+    async fn complete(&self, _tenant_id: TenantId, id: Uuid, response: Value) -> Result<(), Error> {
         let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
         for entry in entries.values_mut() {
             if entry.id == id {
@@ -135,13 +142,21 @@ mod tests {
             tenant_id: TenantId::new_v7(&gen),
             key: "key-1".to_string(),
             operation_type: "CreateDataset".to_string(),
+            fingerprint: "fp-1".to_string(),
         };
         let new = store.begin(scope.clone(), std::time::Duration::from_secs(60)).await.unwrap();
         let IdempotencyResult::New(entry) = new else {
             panic!("expected a new in-progress entry");
         };
 
-        store.complete(entry.id, serde_json::json!({"id": "dataset-1"})).await.unwrap();
+        store
+            .complete(
+                entry.scope.tenant_id,
+                entry.id,
+                serde_json::json!({"id": "dataset-1"}),
+            )
+            .await
+            .unwrap();
 
         let completed =
             store.begin(scope.clone(), std::time::Duration::from_secs(60)).await.unwrap();
@@ -150,6 +165,7 @@ mod tests {
         // Different key is independent.
         let mut other = scope.clone();
         other.key = "key-2".to_string();
+        other.fingerprint = "fp-2".to_string();
         let other_result = store.begin(other, std::time::Duration::from_secs(60)).await.unwrap();
         assert!(matches!(other_result, IdempotencyResult::New(_)));
     }
@@ -162,6 +178,7 @@ mod tests {
             tenant_id: TenantId::new_v7(&gen),
             key: "key-3".to_string(),
             operation_type: "CreateDataset".to_string(),
+            fingerprint: "fp-3".to_string(),
         };
         store.begin(scope.clone(), std::time::Duration::from_secs(60)).await.unwrap();
         assert!(store.begin(scope, std::time::Duration::from_secs(60)).await.is_err());

@@ -608,6 +608,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "31b698c5f9a010f6573133b09e0de5408834d0c82f8d7475a89fc1867a71cd90"
 dependencies = [
  "axum-core",
+ "axum-macros",
  "bytes",
  "form_urlencoded",
  "futures-util",
@@ -651,6 +652,17 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
+]
+
+[[package]]
+name = "axum-macros"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7aa268c23bfbbd2c4363b9cd302a4f504fb2a9dfe7e3451d66f35dd392e20aca"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -2049,6 +2061,7 @@ dependencies = [
 name = "moqentra-application"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "moqentra-domain",
  "moqentra-types",
  "serde",
@@ -2060,11 +2073,14 @@ dependencies = [
 name = "moqentra-auth"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "jsonwebtoken",
  "moqentra-types",
+ "reqwest",
  "serde",
  "serde_json",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 
@@ -2095,6 +2111,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sqlx",
  "tokio",
  "tower",
  "tracing",
@@ -2151,15 +2168,28 @@ dependencies = [
 name = "moqentra-http-api"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
  "hex",
  "hmac 0.12.1",
+ "jsonwebtoken",
  "moqentra-application",
+ "moqentra-auth",
  "moqentra-domain",
+ "moqentra-storage",
  "moqentra-types",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tower",
+ "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]
@@ -2208,6 +2238,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "moqentra-openapi-types"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "moqentra-release-manager"
 version = "0.1.0"
 dependencies = [
@@ -2249,11 +2287,15 @@ dependencies = [
  "anyhow",
  "async-trait",
  "clap",
+ "moqentra-application",
+ "moqentra-auth",
+ "moqentra-domain",
  "moqentra-types",
  "serde",
  "serde_json",
  "sqlx",
  "thiserror",
+ "time",
  "tokio",
  "tracing",
  "uuid",

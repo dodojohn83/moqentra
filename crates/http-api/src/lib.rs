@@ -5,10 +5,7 @@
 
 #![allow(missing_docs)]
 
+pub mod control_plane;
 pub mod northbound;
 
-/// Placeholder module until domain types are added in subsequent tasks.
-pub mod placeholder {
-    /// Returns the crate version.
-    pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-}
+pub use control_plane::{app_router, spawn_outbox_dispatcher, AppState};

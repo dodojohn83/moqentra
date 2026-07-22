@@ -7,6 +7,7 @@ use moqentra_types::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
+use std::str::FromStr;
 
 /// Resource request for a training job.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,6 +174,28 @@ pub enum TrainingJobState {
     TimedOut,
 }
 
+impl FromStr for TrainingJobState {
+    type Err = moqentra_types::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Queued" => Ok(Self::Queued),
+            "Admitted" => Ok(Self::Admitted),
+            "Starting" => Ok(Self::Starting),
+            "Running" => Ok(Self::Running),
+            "Finalizing" => Ok(Self::Finalizing),
+            "Succeeded" => Ok(Self::Succeeded),
+            "Cancelling" => Ok(Self::Cancelling),
+            "Cancelled" => Ok(Self::Cancelled),
+            "Failed" => Ok(Self::Failed),
+            "TimedOut" => Ok(Self::TimedOut),
+            _ => Err(moqentra_types::Error::invalid_argument(format!(
+                "unknown training job state: {s}"
+            ))),
+        }
+    }
+}
+
 /// A single rank in an attempt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RankState {
@@ -182,7 +205,7 @@ pub enum RankState {
     Failed,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rank {
     pub id: RankId,
     pub attempt_id: AttemptId,
@@ -193,7 +216,7 @@ pub struct Rank {
 }
 
 /// A training attempt.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Attempt {
     pub id: AttemptId,
     pub job_id: TrainingJobId,
@@ -256,7 +279,7 @@ impl Attempt {
 }
 
 /// A training metric point.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MetricPoint {
     pub step: u64,
     pub timestamp: UtcTimestamp,

@@ -6,6 +6,7 @@ use moqentra_types::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::str::FromStr;
 
 /// Content-addressed artifact.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,8 +95,26 @@ pub enum ModelVersionState {
     Rejected,
 }
 
+impl FromStr for ModelVersionState {
+    type Err = moqentra_types::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Draft" => Ok(Self::Draft),
+            "Validating" => Ok(Self::Validating),
+            "Ready" => Ok(Self::Ready),
+            "Approved" => Ok(Self::Approved),
+            "Deprecated" => Ok(Self::Deprecated),
+            "Rejected" => Ok(Self::Rejected),
+            _ => Err(moqentra_types::Error::invalid_argument(format!(
+                "unknown model version state: {s}"
+            ))),
+        }
+    }
+}
+
 /// A model version is an immutable release unit.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelVersion {
     pub id: ModelVersionId,
     pub model_id: ModelId,
@@ -242,7 +261,7 @@ impl ModelVersion {
 }
 
 /// Model family aggregate.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Model {
     pub id: ModelId,
     pub tenant_id: TenantId,

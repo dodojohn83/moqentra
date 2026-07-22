@@ -7,6 +7,7 @@ use moqentra_types::{Principal, ProjectId, TenantId, UtcTimestamp};
 pub enum AuditCategory {
     Authentication,
     Authorization,
+    Write,
     DataExport,
     Training,
     ModelPublish,
@@ -20,6 +21,7 @@ impl AuditCategory {
         match self {
             AuditCategory::Authentication => "authentication",
             AuditCategory::Authorization => "authorization",
+            AuditCategory::Write => "write",
             AuditCategory::DataExport => "data_export",
             AuditCategory::Training => "training",
             AuditCategory::ModelPublish => "model_publish",
@@ -55,8 +57,9 @@ pub struct AuditEvent {
 }
 
 /// Sink for audit events.
+#[async_trait::async_trait]
 pub trait AuditLog: Send + Sync {
-    fn record(&self, event: AuditEvent) -> Result<(), moqentra_types::Error>;
+    async fn record(&self, event: AuditEvent) -> Result<(), moqentra_types::Error>;
 }
 
 /// In-memory audit log for tests.
@@ -75,8 +78,9 @@ impl InMemoryAuditLog {
     }
 }
 
+#[async_trait::async_trait]
 impl AuditLog for InMemoryAuditLog {
-    fn record(&self, event: AuditEvent) -> Result<(), moqentra_types::Error> {
+    async fn record(&self, event: AuditEvent) -> Result<(), moqentra_types::Error> {
         self.events.lock().unwrap_or_else(|e| e.into_inner()).push(event);
         Ok(())
     }
@@ -87,8 +91,8 @@ mod tests {
     use super::*;
     use moqentra_types::{Principal, RandomIdGenerator, RequestContext, UserId};
 
-    #[test]
-    fn in_memory_audit_log_records() {
+    #[tokio::test]
+    async fn in_memory_audit_log_records() {
         let gen = RandomIdGenerator;
         let log = InMemoryAuditLog::new();
         let ctx = RequestContext::new(
@@ -109,7 +113,7 @@ mod tests {
             correlation_id: ctx.correlation_id.clone().unwrap_or_default(),
             occurred_at: UtcTimestamp::now(),
         };
-        log.record(event.clone()).unwrap();
+        log.record(event.clone()).await.unwrap();
         assert_eq!(log.events().len(), 1);
     }
 }

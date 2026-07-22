@@ -5,7 +5,7 @@ info:
   description: Northbound HTTP API for Moqentra.
 
 servers:
-  - url: /api/v1
+  - url: /
 
 paths:
   /healthz:
@@ -18,12 +18,8 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                  service:
-                    type: string
+                $ref: '#/components/schemas/HealthResponse'
+
   /readyz:
     get:
       operationId: getReady
@@ -31,233 +27,572 @@ paths:
       responses:
         '200':
           description: Ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
         '503':
           description: Not ready
-  /whoami:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+
+  /v1/whoami:
     get:
       operationId: whoAmI
       summary: Resolve authenticated principal
       parameters:
-        - name: X-Tenant-Id
-          in: header
-          required: true
-          schema:
-            type: string
-        - name: Authorization
-          in: header
-          required: false
-          schema:
-            type: string
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
       responses:
         '200':
           description: Principal context
-  /datasets:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhoAmIResponse'
+
+  /v1/applications:compile:
+    post:
+      operationId: compileApplication
+      summary: Compile an application graph
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompileRequest'
+      responses:
+        '200':
+          description: Compiled graph
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompileResponse'
+
+  /v1/datasets:
     get:
       operationId: listDatasets
       summary: List datasets for tenant
       parameters:
-        - name: X-Tenant-Id
-          in: header
-          required: true
-          schema:
-            type: string
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageOffset'
       responses:
         '200':
           description: Dataset list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
     post:
-      operationId: createDatasetV1
+      operationId: createDataset
       summary: Create dataset
       parameters:
-        - name: X-Tenant-Id
-          in: header
-          required: true
-          schema:
-            type: string
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDatasetRequest'
       responses:
         '201':
           description: Created
-  /experiments:
-    get:
-      operationId: listExperiments
-      summary: List experiments
-      responses:
-        '200':
-          description: Experiment list
-    post:
-      operationId: createExperiment
-      summary: Create experiment
-      responses:
-        '201':
-          description: Created
-  /training-jobs:
-    get:
-      operationId: listTrainingJobs
-      summary: List training jobs
-      responses:
-        '200':
-          description: Job list
-    post:
-      operationId: createTrainingJob
-      summary: Create training job
-      responses:
-        '201':
-          description: Created
-  /models:
-    get:
-      operationId: listModels
-      summary: List models
-      responses:
-        '200':
-          description: Model list
-    post:
-      operationId: createModel
-      summary: Create model family
-      responses:
-        '201':
-          description: Created
-  /annotation-projects:
-    post:
-      operationId: createAnnotationProject
-      summary: Create annotation project
-      responses:
-        '201':
-          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetResponse'
 
-  /tenants/{tenantId}/projects:
+  /v1/datasets/{id}:
     get:
-      operationId: listProjects
-      summary: List projects
+      operationId: getDataset
+      summary: Get dataset by id
       parameters:
-        - name: tenantId
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
           in: path
           required: true
           schema:
             type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
-        - name: offset
-          in: query
-          schema:
-            type: integer
       responses:
         '200':
-          description: Paginated project list
+          description: Dataset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetResponse'
+
+  /v1/experiments:
+    get:
+      operationId: listExperiments
+      summary: List experiments
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageOffset'
+      responses:
+        '200':
+          description: Experiment list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
+    post:
+      operationId: createExperiment
+      summary: Create experiment
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExperimentRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentResponse'
+
+  /v1/training-jobs:
+    get:
+      operationId: listTrainingJobs
+      summary: List training jobs
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageOffset'
+      responses:
+        '200':
+          description: Job list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
+    post:
+      operationId: createTrainingJob
+      summary: Create training job
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTrainingJobRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingJobResponse'
+
+  /v1/training-jobs/{id}/admit:
+    post:
+      operationId: admitTrainingJob
+      summary: Admit a training job
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job admitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingJobResponse'
+
+  /v1/training-jobs/{id}/cancel:
+    post:
+      operationId: cancelTrainingJob
+      summary: Cancel a training job
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingJobResponse'
+
+  /v1/dataset-versions:
+    post:
+      operationId: createDatasetVersion
+      summary: Create dataset version
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDatasetVersionRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetVersionResponse'
+
+  /v1/models:
+    get:
+      operationId: listModels
+      summary: List models
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageOffset'
+      responses:
+        '200':
+          description: Model list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
+    post:
+      operationId: createModel
+      summary: Create model family
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateModelRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelResponse'
+
+  /v1/annotation-projects:
+    post:
+      operationId: createAnnotationProject
+      summary: Create annotation project
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAnnotationProjectRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnotationProjectResponse'
+
+  /v1/annotation-projects/{id}/activate:
+    post:
+      operationId: activateAnnotationProject
+      summary: Activate annotation project
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Activated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnotationProjectResponse'
+
+  /v1/outbox:
+    get:
+      operationId: listOutboxEvents
+      summary: List outbox events
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageOffset'
+      responses:
+        '200':
+          description: Outbox event list
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Page'
 
-    post:
-      operationId: createProject
-      summary: Create project
-      parameters:
-        - name: tenantId
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ProjectSpec'
-      responses:
-        '201':
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Project'
-        '409':
-          description: Conflict
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetails'
-
-  /tenants/{tenantId}/projects/{projectId}/datasets:
-    post:
-      operationId: createDataset
-      summary: Create dataset
-      parameters:
-        - name: tenantId
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: projectId
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/DatasetManifest'
-      responses:
-        '201':
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DatasetManifest'
-
-  /tenants/{tenantId}/projects/{projectId}/training-jobs:
-    post:
-      operationId: createTrainingJob
-      summary: Create training job
-      parameters:
-        - name: tenantId
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: projectId
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TrainingJobSpec'
-      responses:
-        '202':
-          description: Accepted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Operation'
-
-  /operations/{operationId}:
-    get:
-      operationId: getOperation
-      summary: Get operation status
-      parameters:
-        - name: operationId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Operation status
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Operation'
-
 components:
+  parameters:
+    XTenantId:
+      name: X-Tenant-Id
+      in: header
+      required: true
+      schema:
+        type: string
+
+    Authorization:
+      name: Authorization
+      in: header
+      required: false
+      schema:
+        type: string
+
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+
+    PageLimit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 20
+        maximum: 100
+
+    PageOffset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        default: 0
+
   schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+        service:
+          type: string
+
+    ReadyResponse:
+      type: object
+      required: [status, ready]
+      properties:
+        status:
+          type: string
+        ready:
+          type: boolean
+
+    WhoAmIResponse:
+      type: object
+      required: [tenant_id, request_id]
+      properties:
+        principal:
+          type: object
+        tenant_id:
+          type: string
+        request_id:
+          type: string
+
+    CompileRequest:
+      type: object
+      properties:
+        spec:
+          type: object
+
+    CompileResponse:
+      type: object
+      required: [digest, edge_count, node_count, capabilities]
+      properties:
+        digest:
+          type: string
+        edge_count:
+          type: integer
+        node_count:
+          type: integer
+        capabilities:
+          type: array
+          items:
+            type: string
+
+    CreateDatasetRequest:
+      type: object
+      required: [name, project_id]
+      properties:
+        name:
+          type: string
+        project_id:
+          type: string
+
+    DatasetResponse:
+      type: object
+      required: [id, tenant_id, project_id, name, state]
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        state:
+          type: string
+
+    CreateExperimentRequest:
+      type: object
+      required: [name, project_id, dataset_version_id, target_metric]
+      properties:
+        name:
+          type: string
+        project_id:
+          type: string
+        dataset_version_id:
+          type: string
+        target_metric:
+          type: string
+
+    ExperimentResponse:
+      type: object
+      required: [id, name, state]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        state:
+          type: string
+
+    CreateTrainingJobRequest:
+      type: object
+      required: [experiment_id, project_id, code_digest, image_digest, dataset_version_id, argv]
+      properties:
+        experiment_id:
+          type: string
+        project_id:
+          type: string
+        code_digest:
+          type: string
+        image_digest:
+          type: string
+        dataset_version_id:
+          type: string
+        argv:
+          type: array
+          items:
+            type: string
+
+    TrainingJobResponse:
+      type: object
+      required: [id, experiment_id, state]
+      properties:
+        id:
+          type: string
+        experiment_id:
+          type: string
+        state:
+          type: string
+
+    CreateDatasetVersionRequest:
+      type: object
+      required: [dataset_id]
+      properties:
+        dataset_id:
+          type: string
+
+    DatasetVersionResponse:
+      type: object
+      required: [id, dataset_id, state]
+      properties:
+        id:
+          type: string
+        dataset_id:
+          type: string
+        state:
+          type: string
+
+    CreateModelRequest:
+      type: object
+      required: [name, project_id]
+      properties:
+        name:
+          type: string
+        project_id:
+          type: string
+
+    ModelResponse:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    CreateAnnotationProjectRequest:
+      type: object
+      required: [name, project_id, dataset_version_id, task_type]
+      properties:
+        name:
+          type: string
+        project_id:
+          type: string
+        dataset_version_id:
+          type: string
+        task_type:
+          type: string
+
+    AnnotationProjectResponse:
+      type: object
+      required: [id, name, state]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        state:
+          type: string
+
     Page:
       type: object
+      required: [items, total, offset, limit]
       properties:
         items:
           type: array
@@ -270,50 +605,18 @@ components:
         limit:
           type: integer
 
-    ProjectSpec:
-      type: object
-      required: [name]
-      properties:
-        name:
-          type: string
-        description:
-          type: string
-
-    Project:
+    OutboxEvent:
       type: object
       properties:
         id:
           type: string
-        tenantId:
+        aggregate_type:
           type: string
-        name:
+        aggregate_id:
           type: string
-        createdAt:
+        event_type:
           type: string
-          format: date-time
-
-    DatasetManifest:
-      type: object
-      properties:
-        apiVersion:
-          type: string
-        kind:
-          type: string
-        metadata:
-          $ref: '#/components/schemas/Metadata'
-        spec:
-          type: object
-
-    TrainingJobSpec:
-      type: object
-      properties:
-        apiVersion:
-          type: string
-        kind:
-          type: string
-        metadata:
-          $ref: '#/components/schemas/Metadata'
-        spec:
+        payload:
           type: object
 
     Operation:
@@ -330,30 +633,9 @@ components:
         error:
           $ref: '#/components/schemas/ProblemDetails'
 
-    Metadata:
-      type: object
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        tenantId:
-          type: string
-        projectId:
-          type: string
-        labels:
-          type: object
-          additionalProperties:
-            type: string
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-
     ProblemDetails:
       type: object
+      required: [type, title, status, detail, code]
       properties:
         type:
           type: string

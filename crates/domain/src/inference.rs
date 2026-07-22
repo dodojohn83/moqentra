@@ -6,6 +6,7 @@ use moqentra_types::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::str::FromStr;
 
 /// A release bundle linking training and inference artifacts.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -91,7 +92,7 @@ pub struct Endpoint {
 }
 
 /// Deployment desired state.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Deployment {
     pub id: DeploymentId,
     pub tenant_id: TenantId,
@@ -111,6 +112,24 @@ pub enum DeploymentState {
     Paused,
     RollingBack,
     Failed,
+}
+
+impl FromStr for DeploymentState {
+    type Err = moqentra_types::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Pending" => Ok(Self::Pending),
+            "Rolling" => Ok(Self::Rolling),
+            "Stable" => Ok(Self::Stable),
+            "Paused" => Ok(Self::Paused),
+            "RollingBack" => Ok(Self::RollingBack),
+            "Failed" => Ok(Self::Failed),
+            _ => Err(moqentra_types::Error::invalid_argument(format!(
+                "unknown deployment state: {s}"
+            ))),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -6,6 +6,7 @@ use moqentra_types::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::str::FromStr;
 
 /// Port definition on a graph node.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,8 +131,23 @@ pub enum ApplicationVersionState {
     Deprecated,
 }
 
+impl FromStr for ApplicationVersionState {
+    type Err = moqentra_types::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Draft" => Ok(Self::Draft),
+            "Published" => Ok(Self::Published),
+            "Deprecated" => Ok(Self::Deprecated),
+            _ => Err(moqentra_types::Error::invalid_argument(format!(
+                "unknown application version state: {s}"
+            ))),
+        }
+    }
+}
+
 /// A published application graph version.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApplicationVersion {
     pub id: ApplicationVersionId,
     pub application_id: ApplicationId,
@@ -200,7 +216,7 @@ impl ApplicationVersion {
 }
 
 /// Application family.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Application {
     pub id: ApplicationId,
     pub tenant_id: TenantId,

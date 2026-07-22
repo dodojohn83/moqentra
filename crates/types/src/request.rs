@@ -31,6 +31,22 @@ impl Principal {
     pub fn is_authenticated(&self) -> bool {
         !matches!(self, Principal::Anonymous)
     }
+
+    pub fn actor_type(&self) -> &'static str {
+        match self {
+            Principal::User { .. } => "user",
+            Principal::Service { .. } => "service",
+            Principal::Anonymous => "anonymous",
+        }
+    }
+
+    pub fn actor_id(&self) -> String {
+        match self {
+            Principal::User { id } => id.to_string(),
+            Principal::Service { name } => name.clone(),
+            Principal::Anonymous => "anonymous".to_string(),
+        }
+    }
 }
 
 /// Scoped request context carried through every service call.
