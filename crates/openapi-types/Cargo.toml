@@ -1,0 +1,11 @@
+[package]
+name = "moqentra-openapi-types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "OpenAPI-generated shared types for Moqentra HTTP API."
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1"

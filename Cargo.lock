@@ -2238,6 +2238,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "moqentra-openapi-types"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "moqentra-release-manager"
 version = "0.1.0"
 dependencies = [
