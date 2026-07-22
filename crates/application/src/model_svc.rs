@@ -202,6 +202,14 @@ mod tests {
             hyperparameter_digest:
                 "sha256:b29814cf5792e684cd75d6a7fce7a67a11887e312f87ca2ac2496d81f365ff72"
                     .to_string(),
+            dataset_manifest_digest: None,
+            framework: None,
+            template: None,
+            template_version: None,
+            parameters_digest: None,
+            metrics_digest: None,
+            checkpoint_digests: Vec::new(),
+            hardware_environment: None,
         };
         let version = ModelVersion::new(
             ModelVersionId::new_v7(&gen),
@@ -249,6 +257,14 @@ mod tests {
                 hyperparameter_digest:
                     "sha256:b29814cf5792e684cd75d6a7fce7a67a11887e312f87ca2ac2496d81f365ff72"
                         .to_string(),
+                dataset_manifest_digest: None,
+                framework: None,
+                template: None,
+                template_version: None,
+                parameters_digest: None,
+                metrics_digest: None,
+                checkpoint_digests: Vec::new(),
+                hardware_environment: None,
             },
         )
         .unwrap();

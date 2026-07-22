@@ -92,8 +92,8 @@ impl ArtifactValidator for AppArtifactValidator {
 
         let output_manifest = OutputManifest {
             model_artifact_digest: Some(model_artifact_digest.clone()),
-            checkpoint_digests,
-            metric_digest: Some(metric_digest),
+            checkpoint_digests: checkpoint_digests.clone(),
+            metric_digest: Some(metric_digest.clone()),
             log_digest: None,
         };
 
@@ -140,6 +140,14 @@ impl ArtifactValidator for AppArtifactValidator {
                 hyperparameter_digest: Self::compute_hyperparameter_digest(
                     &job.spec.hyperparameters,
                 ),
+                dataset_manifest_digest: None,
+                framework: None,
+                template: None,
+                template_version: None,
+                parameters_digest: None,
+                metrics_digest: Some(metric_digest),
+                checkpoint_digests,
+                hardware_environment: None,
             };
             (job.id, job.tenant_id, job.project_id, lineage)
         };

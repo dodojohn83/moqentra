@@ -521,6 +521,14 @@ mod tests {
                 .into(),
             hyperparameter_digest:
                 "sha256:a8aa236e33e65ccc368827e0af1497b5f655cd460b9db8ebd82ad415d59ad0f2".into(),
+            dataset_manifest_digest: None,
+            framework: None,
+            template: None,
+            template_version: None,
+            parameters_digest: None,
+            metrics_digest: None,
+            checkpoint_digests: Vec::new(),
+            hardware_environment: None,
         }
     }
 

@@ -87,6 +87,24 @@ pub struct ModelLineage {
     pub code_digest: String,
     pub image_digest: String,
     pub hyperparameter_digest: String,
+    /// Optional fields capturing the provenance required by R1-MODEL-003.
+    /// These are populated when the source training job records them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dataset_manifest_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framework: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parameters_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metrics_digest: Option<String>,
+    #[serde(default)]
+    pub checkpoint_digests: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hardware_environment: Option<String>,
 }
 
 /// Model version state.
@@ -380,6 +398,14 @@ mod tests {
             hyperparameter_digest:
                 "sha256:a8aa236e33e65ccc368827e0af1497b5f655cd460b9db8ebd82ad415d59ad0f2"
                     .to_string(),
+            dataset_manifest_digest: None,
+            framework: None,
+            template: None,
+            template_version: None,
+            parameters_digest: None,
+            metrics_digest: None,
+            checkpoint_digests: Vec::new(),
+            hardware_environment: None,
         }
     }
 

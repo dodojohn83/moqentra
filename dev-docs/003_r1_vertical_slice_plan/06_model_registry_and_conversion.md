@@ -4,7 +4,7 @@
 
 - [x] `R1-MODEL-001` 持久化 Model、ModelVersion、Artifact、Signature、Lineage、Attachment、Approval 和状态历史；版本号在模型内唯一。
 - [x] `R1-MODEL-002` 训练结果进入 quarantined/staging；Artifact reconciler 校验大小、SHA-256、媒体类型、反序列化安全、病毒扫描和 manifest 后才可标记 ready。
-- [ ] `R1-MODEL-003` 强制记录 dataset version/manifest digest、training job/attempt、template/version、代码和镜像 digest、framework、参数、指标、checkpoint 与硬件环境。
+- [x] `R1-MODEL-003` 强制记录 dataset version/manifest digest、training job/attempt、template/version、代码和镜像 digest、framework、参数、指标、checkpoint 与硬件环境。
 - [x] `R1-MODEL-004` Worker 重试或 Result 重放使用 `(tenant, attempt, artifact manifest digest)` 去重，不产生重复 ModelVersion。
 - [x] `R1-MODEL-005` 实现 draft → validating → ready → approved/published → deprecated 状态；发布需要算法工程师申请和有权限审批人确认并审计。
 - [x] `R1-MODEL-006` 被 ApplicationVersion 或 Deployment 引用的 Artifact 受引用保护；弃用不删除内容，GC 只处理无引用临时对象。
