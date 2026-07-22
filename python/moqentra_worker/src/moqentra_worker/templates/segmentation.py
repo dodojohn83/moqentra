@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Tuple
 try:
     import numpy as np
     import torch
+    import torch.nn as nn
     import torch.nn.functional as F
     import torchvision
     from PIL import Image
@@ -16,6 +17,7 @@ try:
 except ImportError:  # pragma: no cover - optional heavy deps
     np = None  # type: ignore[assignment]
     torch = None  # type: ignore[assignment]
+    nn = None  # type: ignore[assignment]
     F = None  # type: ignore[assignment]
     torchvision = None  # type: ignore[assignment]
     Image = None  # type: ignore[assignment, misc]
@@ -23,9 +25,25 @@ except ImportError:  # pragma: no cover - optional heavy deps
     Dataset = None  # type: ignore[assignment, misc]
     transforms = None  # type: ignore[assignment]
 
+from moqentra_worker.onnx_validation import (
+    OnnxValidationError,
+    validate_onnx_against_pytorch,
+    write_evaluation_report,
+)
 from moqentra_worker.sdk import MetricPoint, WorkerLifecycle, WorkerSession
 
 from .common import make_environment, read_annotations, set_seed, sha256_file
+
+
+class _DeepLabOutputWrapper(nn.Module):  # type: ignore[valid-type, misc]
+    """Wrap DeepLabV3 to return the 'out' tensor for ONNX export."""
+
+    def __init__(self, model: Any):
+        super().__init__()
+        self.model = model
+
+    def forward(self, x: Any) -> Any:
+        return self.model(x)["out"]
 
 
 class _SegmentationDataset(Dataset):  # type: ignore[valid-type, misc]
@@ -208,8 +226,9 @@ class DeepLabV3SegmentationTemplate(WorkerLifecycle):
         onnx_path = output_dir / "model.onnx"
         self.model.eval()
         dummy = torch.randn(1, 3, 64, 64).to(self.device)
+        wrapped = _DeepLabOutputWrapper(self.model).to(self.device).eval()
         torch.onnx.export(
-            self.model,
+            wrapped,
             dummy,
             onnx_path,
             input_names=["input"],
@@ -223,6 +242,14 @@ class DeepLabV3SegmentationTemplate(WorkerLifecycle):
         )
         onnx_digest = sha256_file(onnx_path)
 
+        try:
+            report = validate_onnx_against_pytorch(
+                onnx_path, wrapped, dummy, tolerance=1e-5
+            )
+            write_evaluation_report(output_dir, report)
+        except OnnxValidationError as exc:  # pragma: no cover - validation failure surfaces as run error
+            raise RuntimeError(f"ONNX validation failed: {exc}") from exc
+
         # Generate a small mask preview for the first training image.
         preview_path = output_dir / "mask_preview.png"
         self._save_preview(preview_path)
@@ -230,6 +257,7 @@ class DeepLabV3SegmentationTemplate(WorkerLifecycle):
         return {
             "onnx_path": str(onnx_path),
             "onnx_digest": onnx_digest,
+            "onnx_evaluation_report": report,
             "preview_path": str(preview_path),
             "environment": make_environment(),
             "num_classes": self.num_classes,
