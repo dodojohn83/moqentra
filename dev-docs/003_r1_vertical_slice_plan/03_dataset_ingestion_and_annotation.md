@@ -19,11 +19,11 @@
 ## 3. LabelU-Kit 与审核
 
 - [ ] `R1-LABEL-001` 固定并引入实际可用的 LabelU-Kit v5.11.0，记录许可证与 lockfile；BLOCK-005 未解除前不声明 v5.11.1。
-- [ ] `R1-LABEL-002` 实现标注项目、ontology、任务切分和进度 API；支持图像分类、矩形检测、语义/实例分割、视频目标与轨迹。
-- [ ] `R1-LABEL-003` 实现 task claim/renew/release、lease deadline、fencing token 和断线恢复；过期或旧 token 保存必须冲突失败。
-- [ ] `R1-LABEL-004` 实现草稿自动保存：`client_update_id + base_revision` 幂等，冲突返回可展示 diff，不静默覆盖服务端版本。
-- [ ] `R1-LABEL-005` 实现 submit → review → approve/reject → rework 状态机和不可变历史；审核人不能审核自己的任务，管理员例外须审计。
-- [ ] `R1-LABEL-006` 媒体 URL 按任务授权即时签发；保存、导出、日志、SSE 和浏览器缓存中不得出现 secret、对象 key 或已过期 URL。
+- [x] `R1-LABEL-002` 实现标注项目、ontology、任务切分和进度 API；支持图像分类、矩形检测、语义/实例分割、视频目标与轨迹。
+- [x] `R1-LABEL-003` 实现 task claim/renew/release、lease deadline、fencing token 和断线恢复；过期或旧 token 保存必须冲突失败。
+- [x] `R1-LABEL-004` 实现草稿自动保存：`client_update_id + base_revision` 幂等，冲突返回可展示 diff，不静默覆盖服务端版本。
+- [x] `R1-LABEL-005` 实现 submit → review → approve/reject → rework 状态机和不可变历史；审核人不能审核自己的任务，管理员例外须审计。
+- [x] `R1-LABEL-006` 媒体 URL 按任务授权即时签发；保存、导出、日志、SSE 和浏览器缓存中不得出现 secret、对象 key 或已过期 URL。
 
 ## 4. 完成条件与测试
 
