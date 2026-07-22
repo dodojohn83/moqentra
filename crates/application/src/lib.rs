@@ -13,12 +13,16 @@ mod training_svc;
 
 /// Repository ports used by application services.
 pub mod coco;
+pub mod labelu;
+pub mod platform;
 pub mod ports;
 
 pub use annotation_svc::InMemoryAnnotationRegistry;
 pub use coco::{CocoAnnotation, CocoCategory, CocoDataset, CocoImage};
 pub use dispatch::{plan_dispatch, DispatchAction};
+pub use labelu::{LabelUAnnotation, LabelUDataset, LabelUProjectConfig, LabelUToolConfig};
 pub use model_svc::InMemoryModelRegistry;
+pub use platform::PlatformAnnotationDataset;
 pub use ports::{
     AnnotationRepository, ApplicationRepository, DatasetRepository, DeploymentRepository,
     ModelRepository, ResourceListFilter, TrainingJobRepository, Versioned,

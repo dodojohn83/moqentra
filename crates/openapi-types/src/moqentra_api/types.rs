@@ -26,6 +26,16 @@ pub struct UploadPartInfo {
     pub size: i64,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PlatformAnnotationDataset {
+    pub annotations: Vec<PlatformAnnotationDatasetAnnotationsItem>,
+    pub project_id: String,
+    pub tasks: Vec<PlatformAnnotationDatasetTasksItem>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct PlatformAnnotationDatasetTasksItem {}
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct PlatformAnnotationDatasetAnnotationsItem {}
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Page {
     pub items: Vec<PageItemsItem>,
     pub limit: i64,
@@ -114,6 +124,44 @@ pub struct AnnotationResponse {
     pub task_id: String,
 }
 pub type ListAnnotationTasksResponse = Vec<TaskResponse>;
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct LabelUDataset {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<LabelUDatasetAnnotations>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config: Option<LabelUProjectConfig>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LabelUProjectConfig {
+    #[serde(rename = "mediaType")]
+    pub media_type: String,
+    pub tools: Vec<LabelUToolConfig>,
+    pub version: String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LabelUToolConfig {
+    pub config: serde_json::Value,
+    pub tool: String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct LabelUDatasetAnnotations {
+    /// Additional properties matching the spec's
+    /// `additionalProperties` value schema.
+    #[serde(flatten)]
+    pub additional_properties: std::collections::BTreeMap<String, Vec<LabelUAnnotation>>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LabelUAnnotation {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frame: Option<i64>,
+    pub id: String,
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub points: Option<Vec<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool: Option<String>,
+    pub r#type: String,
+}
 pub type CreateAnnotationTasksResponse201 = Vec<TaskResponse>;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TaskResponse {
@@ -573,6 +621,8 @@ pub struct ImportJobResponse {
     pub total_bytes: i64,
     pub transferred_bytes: i64,
 }
+pub type ImportLabeluResponse201 = Vec<String>;
+pub type ImportPlatformResponse201 = Vec<String>;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MediaUrlResponse {
     pub expires_at: String,

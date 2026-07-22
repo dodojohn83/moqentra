@@ -25,6 +25,8 @@ All URIs are relative to *http://localhost*
 | [**createTrainingJob**](DefaultApi.md#createtrainingjoboperation) | **POST** /v1/training-jobs | Create training job |
 | [**createUploadSession**](DefaultApi.md#createuploadsessionoperation) | **POST** /v1/upload-sessions | Create a multipart upload session |
 | [**exportCoco**](DefaultApi.md#exportcoco) | **GET** /v1/annotation-projects/{id}/export-coco | Export annotations as COCO |
+| [**exportLabelu**](DefaultApi.md#exportlabelu) | **GET** /v1/annotation-projects/{id}/export-labelu | Export annotations in LabelU native format |
+| [**exportPlatform**](DefaultApi.md#exportplatform) | **GET** /v1/annotation-projects/{id}/export-platform | Export annotations in platform intermediate format |
 | [**generateDatasetVersionSplits**](DefaultApi.md#generatedatasetversionsplits) | **POST** /v1/dataset-versions/{id}/splits | Generate deterministic train/val/test splits |
 | [**getAnnotationTask**](DefaultApi.md#getannotationtask) | **GET** /v1/annotation-projects/{id}/tasks/{taskId} | Get annotation task |
 | [**getAssetMediaUrl**](DefaultApi.md#getassetmediaurl) | **GET** /v1/assets/{assetId}/media-url | Get short-lived signed media URL |
@@ -34,6 +36,8 @@ All URIs are relative to *http://localhost*
 | [**getReady**](DefaultApi.md#getready) | **GET** /readyz | Readiness probe |
 | [**getUploadSession**](DefaultApi.md#getuploadsession) | **GET** /v1/upload-sessions/{id} | Get upload session |
 | [**importCoco**](DefaultApi.md#importcoco) | **POST** /v1/annotation-projects/{id}/import-coco | Import COCO annotations |
+| [**importLabelu**](DefaultApi.md#importlabelu) | **POST** /v1/annotation-projects/{id}/import-labelu | Import LabelU native annotations |
+| [**importPlatform**](DefaultApi.md#importplatform) | **POST** /v1/annotation-projects/{id}/import-platform | Import platform intermediate annotations |
 | [**listAnnotationTasks**](DefaultApi.md#listannotationtasks) | **GET** /v1/annotation-projects/{id}/tasks | List annotation tasks |
 | [**listAnnotations**](DefaultApi.md#listannotations) | **GET** /v1/annotation-projects/{id}/tasks/{taskId}/annotations | List annotations for a task |
 | [**listDatasets**](DefaultApi.md#listdatasets) | **GET** /v1/datasets | List datasets for tenant |
@@ -1591,6 +1595,148 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## exportLabelu
+
+> LabelUDataset exportLabelu(xTenantId, id, authorization)
+
+Export annotations in LabelU native format
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ExportLabeluRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies ExportLabeluRequest;
+
+  try {
+    const data = await api.exportLabelu(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**LabelUDataset**](LabelUDataset.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | LabelU native dataset |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## exportPlatform
+
+> PlatformAnnotationDataset exportPlatform(xTenantId, id, authorization)
+
+Export annotations in platform intermediate format
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ExportPlatformRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies ExportPlatformRequest;
+
+  try {
+    const data = await api.exportPlatform(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**PlatformAnnotationDataset**](PlatformAnnotationDataset.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Platform intermediate dataset |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## generateDatasetVersionSplits
 
 > DatasetVersionResponse generateDatasetVersionSplits(xTenantId, id, generateSplitsRequest, authorization)
@@ -2188,6 +2334,154 @@ example().catch(console.error);
 | **xTenantId** | `string` |  | [Defaults to `undefined`] |
 | **id** | `string` |  | [Defaults to `undefined`] |
 | **cocoDataset** | [CocoDataset](CocoDataset.md) |  | |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+**Array<string>**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **201** | Imported task ids |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## importLabelu
+
+> Array&lt;string&gt; importLabelu(xTenantId, id, labelUDataset, authorization)
+
+Import LabelU native annotations
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ImportLabeluRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // LabelUDataset
+    labelUDataset: ...,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies ImportLabeluRequest;
+
+  try {
+    const data = await api.importLabelu(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **labelUDataset** | [LabelUDataset](LabelUDataset.md) |  | |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+**Array<string>**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **201** | Imported task ids |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## importPlatform
+
+> Array&lt;string&gt; importPlatform(xTenantId, id, platformAnnotationDataset, authorization)
+
+Import platform intermediate annotations
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ImportPlatformRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // PlatformAnnotationDataset
+    platformAnnotationDataset: ...,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies ImportPlatformRequest;
+
+  try {
+    const data = await api.importPlatform(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **platformAnnotationDataset** | [PlatformAnnotationDataset](PlatformAnnotationDataset.md) |  | |
 | **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
 
 ### Return type

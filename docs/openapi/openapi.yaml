@@ -960,6 +960,102 @@ paths:
                 items:
                   type: string
 
+  /v1/annotation-projects/{id}/export-labelu:
+    get:
+      operationId: exportLabelu
+      summary: Export annotations in LabelU native format
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: LabelU native dataset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabelUDataset'
+
+  /v1/annotation-projects/{id}/import-labelu:
+    post:
+      operationId: importLabelu
+      summary: Import LabelU native annotations
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LabelUDataset'
+      responses:
+        '201':
+          description: Imported task ids
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  /v1/annotation-projects/{id}/export-platform:
+    get:
+      operationId: exportPlatform
+      summary: Export annotations in platform intermediate format
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Platform intermediate dataset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformAnnotationDataset'
+
+  /v1/annotation-projects/{id}/import-platform:
+    post:
+      operationId: importPlatform
+      summary: Import platform intermediate annotations
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformAnnotationDataset'
+      responses:
+        '201':
+          description: Imported task ids
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
   /v1/outbox:
     get:
       operationId: listOutboxEvents
@@ -1513,6 +1609,79 @@ components:
                 type: integer
                 format: int64
                 nullable: true
+
+    LabelUDataset:
+      type: object
+      properties:
+        config:
+          $ref: '#/components/schemas/LabelUProjectConfig'
+        annotations:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/LabelUAnnotation'
+
+    LabelUProjectConfig:
+      type: object
+      required: [version, mediaType, tools]
+      properties:
+        version:
+          type: string
+        mediaType:
+          type: string
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/LabelUToolConfig'
+
+    LabelUToolConfig:
+      type: object
+      required: [tool, config]
+      properties:
+        tool:
+          type: string
+        config:
+          type: object
+
+    LabelUAnnotation:
+      type: object
+      required: [id, type, label]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        label:
+          type: string
+        tool:
+          type: string
+          nullable: true
+        frame:
+          type: integer
+          format: int64
+          nullable: true
+        points:
+          type: array
+          items:
+            type: number
+            format: double
+          nullable: true
+
+    PlatformAnnotationDataset:
+      type: object
+      required: [project_id, tasks, annotations]
+      properties:
+        project_id:
+          type: string
+        tasks:
+          type: array
+          items:
+            type: object
+        annotations:
+          type: array
+          items:
+            type: object
 
     Page:
       type: object

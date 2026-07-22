@@ -1897,6 +1897,22 @@ pub fn app_router(state: AppState) -> Router {
             post(crate::annotation::import_coco),
         )
         .route(
+            "/v1/annotation-projects/{id}/export-labelu",
+            get(crate::annotation::export_labelu),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/import-labelu",
+            post(crate::annotation::import_labelu),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/export-platform",
+            get(crate::annotation::export_platform),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/import-platform",
+            post(crate::annotation::import_platform),
+        )
+        .route(
             "/v1/assets/{assetId}/media-url",
             get(crate::annotation::get_asset_media_url),
         )

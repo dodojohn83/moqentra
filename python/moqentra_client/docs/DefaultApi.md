@@ -25,6 +25,8 @@ Method | HTTP request | Description
 [**create_training_job**](DefaultApi.md#create_training_job) | **POST** /v1/training-jobs | Create training job
 [**create_upload_session**](DefaultApi.md#create_upload_session) | **POST** /v1/upload-sessions | Create a multipart upload session
 [**export_coco**](DefaultApi.md#export_coco) | **GET** /v1/annotation-projects/{id}/export-coco | Export annotations as COCO
+[**export_labelu**](DefaultApi.md#export_labelu) | **GET** /v1/annotation-projects/{id}/export-labelu | Export annotations in LabelU native format
+[**export_platform**](DefaultApi.md#export_platform) | **GET** /v1/annotation-projects/{id}/export-platform | Export annotations in platform intermediate format
 [**generate_dataset_version_splits**](DefaultApi.md#generate_dataset_version_splits) | **POST** /v1/dataset-versions/{id}/splits | Generate deterministic train/val/test splits
 [**get_annotation_task**](DefaultApi.md#get_annotation_task) | **GET** /v1/annotation-projects/{id}/tasks/{taskId} | Get annotation task
 [**get_asset_media_url**](DefaultApi.md#get_asset_media_url) | **GET** /v1/assets/{assetId}/media-url | Get short-lived signed media URL
@@ -34,6 +36,8 @@ Method | HTTP request | Description
 [**get_ready**](DefaultApi.md#get_ready) | **GET** /readyz | Readiness probe
 [**get_upload_session**](DefaultApi.md#get_upload_session) | **GET** /v1/upload-sessions/{id} | Get upload session
 [**import_coco**](DefaultApi.md#import_coco) | **POST** /v1/annotation-projects/{id}/import-coco | Import COCO annotations
+[**import_labelu**](DefaultApi.md#import_labelu) | **POST** /v1/annotation-projects/{id}/import-labelu | Import LabelU native annotations
+[**import_platform**](DefaultApi.md#import_platform) | **POST** /v1/annotation-projects/{id}/import-platform | Import platform intermediate annotations
 [**list_annotation_tasks**](DefaultApi.md#list_annotation_tasks) | **GET** /v1/annotation-projects/{id}/tasks | List annotation tasks
 [**list_annotations**](DefaultApi.md#list_annotations) | **GET** /v1/annotation-projects/{id}/tasks/{taskId}/annotations | List annotations for a task
 [**list_datasets**](DefaultApi.md#list_datasets) | **GET** /v1/datasets | List datasets for tenant
@@ -1560,6 +1564,146 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **export_labelu**
+> LabelUDataset export_labelu(x_tenant_id, id, authorization=authorization)
+
+Export annotations in LabelU native format
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.label_u_dataset import LabelUDataset
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Export annotations in LabelU native format
+        api_response = api_instance.export_labelu(x_tenant_id, id, authorization=authorization)
+        print("The response of DefaultApi->export_labelu:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->export_labelu: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**LabelUDataset**](LabelUDataset.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | LabelU native dataset |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **export_platform**
+> PlatformAnnotationDataset export_platform(x_tenant_id, id, authorization=authorization)
+
+Export annotations in platform intermediate format
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.platform_annotation_dataset import PlatformAnnotationDataset
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Export annotations in platform intermediate format
+        api_response = api_instance.export_platform(x_tenant_id, id, authorization=authorization)
+        print("The response of DefaultApi->export_platform:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->export_platform: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**PlatformAnnotationDataset**](PlatformAnnotationDataset.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Platform intermediate dataset |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **generate_dataset_version_splits**
 > DatasetVersionResponse generate_dataset_version_splits(x_tenant_id, id, generate_splits_request, authorization=authorization)
 
@@ -2159,6 +2303,150 @@ Name | Type | Description  | Notes
  **x_tenant_id** | **str**|  | 
  **id** | **str**|  | 
  **coco_dataset** | [**CocoDataset**](CocoDataset.md)|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+**List[str]**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**201** | Imported task ids |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **import_labelu**
+> List[str] import_labelu(x_tenant_id, id, label_u_dataset, authorization=authorization)
+
+Import LabelU native annotations
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.label_u_dataset import LabelUDataset
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    label_u_dataset = moqentra_client.LabelUDataset() # LabelUDataset | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Import LabelU native annotations
+        api_response = api_instance.import_labelu(x_tenant_id, id, label_u_dataset, authorization=authorization)
+        print("The response of DefaultApi->import_labelu:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->import_labelu: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **label_u_dataset** | [**LabelUDataset**](LabelUDataset.md)|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+**List[str]**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**201** | Imported task ids |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **import_platform**
+> List[str] import_platform(x_tenant_id, id, platform_annotation_dataset, authorization=authorization)
+
+Import platform intermediate annotations
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.platform_annotation_dataset import PlatformAnnotationDataset
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    platform_annotation_dataset = moqentra_client.PlatformAnnotationDataset() # PlatformAnnotationDataset | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Import platform intermediate annotations
+        api_response = api_instance.import_platform(x_tenant_id, id, platform_annotation_dataset, authorization=authorization)
+        print("The response of DefaultApi->import_platform:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->import_platform: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **platform_annotation_dataset** | [**PlatformAnnotationDataset**](PlatformAnnotationDataset.md)|  | 
  **authorization** | **str**|  | [optional] 
 
 ### Return type

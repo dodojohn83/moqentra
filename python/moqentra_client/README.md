@@ -106,6 +106,8 @@ Class | Method | HTTP request | Description
 *DefaultApi* | [**create_training_job**](docs/DefaultApi.md#create_training_job) | **POST** /v1/training-jobs | Create training job
 *DefaultApi* | [**create_upload_session**](docs/DefaultApi.md#create_upload_session) | **POST** /v1/upload-sessions | Create a multipart upload session
 *DefaultApi* | [**export_coco**](docs/DefaultApi.md#export_coco) | **GET** /v1/annotation-projects/{id}/export-coco | Export annotations as COCO
+*DefaultApi* | [**export_labelu**](docs/DefaultApi.md#export_labelu) | **GET** /v1/annotation-projects/{id}/export-labelu | Export annotations in LabelU native format
+*DefaultApi* | [**export_platform**](docs/DefaultApi.md#export_platform) | **GET** /v1/annotation-projects/{id}/export-platform | Export annotations in platform intermediate format
 *DefaultApi* | [**generate_dataset_version_splits**](docs/DefaultApi.md#generate_dataset_version_splits) | **POST** /v1/dataset-versions/{id}/splits | Generate deterministic train/val/test splits
 *DefaultApi* | [**get_annotation_task**](docs/DefaultApi.md#get_annotation_task) | **GET** /v1/annotation-projects/{id}/tasks/{taskId} | Get annotation task
 *DefaultApi* | [**get_asset_media_url**](docs/DefaultApi.md#get_asset_media_url) | **GET** /v1/assets/{assetId}/media-url | Get short-lived signed media URL
@@ -115,6 +117,8 @@ Class | Method | HTTP request | Description
 *DefaultApi* | [**get_ready**](docs/DefaultApi.md#get_ready) | **GET** /readyz | Readiness probe
 *DefaultApi* | [**get_upload_session**](docs/DefaultApi.md#get_upload_session) | **GET** /v1/upload-sessions/{id} | Get upload session
 *DefaultApi* | [**import_coco**](docs/DefaultApi.md#import_coco) | **POST** /v1/annotation-projects/{id}/import-coco | Import COCO annotations
+*DefaultApi* | [**import_labelu**](docs/DefaultApi.md#import_labelu) | **POST** /v1/annotation-projects/{id}/import-labelu | Import LabelU native annotations
+*DefaultApi* | [**import_platform**](docs/DefaultApi.md#import_platform) | **POST** /v1/annotation-projects/{id}/import-platform | Import platform intermediate annotations
 *DefaultApi* | [**list_annotation_tasks**](docs/DefaultApi.md#list_annotation_tasks) | **GET** /v1/annotation-projects/{id}/tasks | List annotation tasks
 *DefaultApi* | [**list_annotations**](docs/DefaultApi.md#list_annotations) | **GET** /v1/annotation-projects/{id}/tasks/{taskId}/annotations | List annotations for a task
 *DefaultApi* | [**list_datasets**](docs/DefaultApi.md#list_datasets) | **GET** /v1/datasets | List datasets for tenant
@@ -160,11 +164,16 @@ Class | Method | HTTP request | Description
  - [GenerateSplitsRequest](docs/GenerateSplitsRequest.md)
  - [HealthResponse](docs/HealthResponse.md)
  - [ImportJobResponse](docs/ImportJobResponse.md)
+ - [LabelUAnnotation](docs/LabelUAnnotation.md)
+ - [LabelUDataset](docs/LabelUDataset.md)
+ - [LabelUProjectConfig](docs/LabelUProjectConfig.md)
+ - [LabelUToolConfig](docs/LabelUToolConfig.md)
  - [MediaUrlResponse](docs/MediaUrlResponse.md)
  - [ModelResponse](docs/ModelResponse.md)
  - [Operation](docs/Operation.md)
  - [OutboxEvent](docs/OutboxEvent.md)
  - [Page](docs/Page.md)
+ - [PlatformAnnotationDataset](docs/PlatformAnnotationDataset.md)
  - [ProblemDetails](docs/ProblemDetails.md)
  - [ProblemDetailsViolationsInner](docs/ProblemDetailsViolationsInner.md)
  - [ReadyResponse](docs/ReadyResponse.md)

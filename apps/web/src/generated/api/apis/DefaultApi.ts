@@ -129,6 +129,11 @@ import {
     ImportJobResponseToJSON,
 } from '../models/ImportJobResponse';
 import {
+    type LabelUDataset,
+    LabelUDatasetFromJSON,
+    LabelUDatasetToJSON,
+} from '../models/LabelUDataset';
+import {
     type MediaUrlResponse,
     MediaUrlResponseFromJSON,
     MediaUrlResponseToJSON,
@@ -143,6 +148,11 @@ import {
     PageFromJSON,
     PageToJSON,
 } from '../models/Page';
+import {
+    type PlatformAnnotationDataset,
+    PlatformAnnotationDatasetFromJSON,
+    PlatformAnnotationDatasetToJSON,
+} from '../models/PlatformAnnotationDataset';
 import {
     type ReadyResponse,
     ReadyResponseFromJSON,
@@ -316,6 +326,18 @@ export interface ExportCocoRequest {
     authorization?: string;
 }
 
+export interface ExportLabeluRequest {
+    xTenantId: string;
+    id: string;
+    authorization?: string;
+}
+
+export interface ExportPlatformRequest {
+    xTenantId: string;
+    id: string;
+    authorization?: string;
+}
+
 export interface GenerateDatasetVersionSplitsRequest {
     xTenantId: string;
     id: string;
@@ -358,6 +380,20 @@ export interface ImportCocoRequest {
     xTenantId: string;
     id: string;
     cocoDataset: CocoDataset;
+    authorization?: string;
+}
+
+export interface ImportLabeluRequest {
+    xTenantId: string;
+    id: string;
+    labelUDataset: LabelUDataset;
+    authorization?: string;
+}
+
+export interface ImportPlatformRequest {
+    xTenantId: string;
+    id: string;
+    platformAnnotationDataset: PlatformAnnotationDataset;
     authorization?: string;
 }
 
@@ -1845,6 +1881,126 @@ export class DefaultApi extends runtime.BaseAPI {
     }
 
     /**
+     * Creates request options for exportLabelu without sending the request
+     */
+    async exportLabeluRequestOpts(requestParameters: ExportLabeluRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling exportLabelu().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling exportLabelu().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/annotation-projects/{id}/export-labelu`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Export annotations in LabelU native format
+     */
+    async exportLabeluRaw(requestParameters: ExportLabeluRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LabelUDataset>> {
+        const requestOptions = await this.exportLabeluRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => LabelUDatasetFromJSON(jsonValue));
+    }
+
+    /**
+     * Export annotations in LabelU native format
+     */
+    async exportLabelu(requestParameters: ExportLabeluRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LabelUDataset> {
+        const response = await this.exportLabeluRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for exportPlatform without sending the request
+     */
+    async exportPlatformRequestOpts(requestParameters: ExportPlatformRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling exportPlatform().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling exportPlatform().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/annotation-projects/{id}/export-platform`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Export annotations in platform intermediate format
+     */
+    async exportPlatformRaw(requestParameters: ExportPlatformRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PlatformAnnotationDataset>> {
+        const requestOptions = await this.exportPlatformRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PlatformAnnotationDatasetFromJSON(jsonValue));
+    }
+
+    /**
+     * Export annotations in platform intermediate format
+     */
+    async exportPlatform(requestParameters: ExportPlatformRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PlatformAnnotationDataset> {
+        const response = await this.exportPlatformRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for generateDatasetVersionSplits without sending the request
      */
     async generateDatasetVersionSplitsRequestOpts(requestParameters: GenerateDatasetVersionSplitsRequest): Promise<runtime.RequestOpts> {
@@ -2363,6 +2519,146 @@ export class DefaultApi extends runtime.BaseAPI {
      */
     async importCoco(requestParameters: ImportCocoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<string>> {
         const response = await this.importCocoRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for importLabelu without sending the request
+     */
+    async importLabeluRequestOpts(requestParameters: ImportLabeluRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling importLabelu().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling importLabelu().'
+            );
+        }
+
+        if (requestParameters['labelUDataset'] == null) {
+            throw new runtime.RequiredError(
+                'labelUDataset',
+                'Required parameter "labelUDataset" was null or undefined when calling importLabelu().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/annotation-projects/{id}/import-labelu`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: LabelUDatasetToJSON(requestParameters['labelUDataset']),
+        };
+    }
+
+    /**
+     * Import LabelU native annotations
+     */
+    async importLabeluRaw(requestParameters: ImportLabeluRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<string>>> {
+        const requestOptions = await this.importLabeluRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse<any>(response);
+    }
+
+    /**
+     * Import LabelU native annotations
+     */
+    async importLabelu(requestParameters: ImportLabeluRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<string>> {
+        const response = await this.importLabeluRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for importPlatform without sending the request
+     */
+    async importPlatformRequestOpts(requestParameters: ImportPlatformRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling importPlatform().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling importPlatform().'
+            );
+        }
+
+        if (requestParameters['platformAnnotationDataset'] == null) {
+            throw new runtime.RequiredError(
+                'platformAnnotationDataset',
+                'Required parameter "platformAnnotationDataset" was null or undefined when calling importPlatform().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/annotation-projects/{id}/import-platform`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PlatformAnnotationDatasetToJSON(requestParameters['platformAnnotationDataset']),
+        };
+    }
+
+    /**
+     * Import platform intermediate annotations
+     */
+    async importPlatformRaw(requestParameters: ImportPlatformRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<string>>> {
+        const requestOptions = await this.importPlatformRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse<any>(response);
+    }
+
+    /**
+     * Import platform intermediate annotations
+     */
+    async importPlatform(requestParameters: ImportPlatformRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<string>> {
+        const response = await this.importPlatformRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

@@ -173,6 +173,20 @@ class TestDefaultApi(unittest.TestCase):
         """
         pass
 
+    def test_export_labelu(self) -> None:
+        """Test case for export_labelu
+
+        Export annotations in LabelU native format
+        """
+        pass
+
+    def test_export_platform(self) -> None:
+        """Test case for export_platform
+
+        Export annotations in platform intermediate format
+        """
+        pass
+
     def test_generate_dataset_version_splits(self) -> None:
         """Test case for generate_dataset_version_splits
 
@@ -233,6 +247,20 @@ class TestDefaultApi(unittest.TestCase):
         """Test case for import_coco
 
         Import COCO annotations
+        """
+        pass
+
+    def test_import_labelu(self) -> None:
+        """Test case for import_labelu
+
+        Import LabelU native annotations
+        """
+        pass
+
+    def test_import_platform(self) -> None:
+        """Test case for import_platform
+
+        Import platform intermediate annotations
         """
         pass
 

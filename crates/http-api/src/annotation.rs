@@ -9,6 +9,8 @@ use axum::{
     Json,
 };
 use moqentra_application::coco::CocoDataset;
+use moqentra_application::labelu::LabelUDataset;
+use moqentra_application::platform::PlatformAnnotationDataset;
 use moqentra_auth::{Action, AuditCategory, AuditOutcome, Resource};
 use moqentra_domain::annotation::{Annotation, AnnotationTask};
 use moqentra_types::{
@@ -438,6 +440,130 @@ pub(crate) async fn import_coco(
         &ctx,
         AuditCategory::Write,
         "annotation_project.import_coco",
+        Resource::AnnotationTask,
+        Some(&project_id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(ids.iter().map(|id| id.to_string()).collect()),
+    ))
+}
+
+pub(crate) async fn export_labelu(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<String>,
+) -> Result<Json<LabelUDataset>, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Read, Resource::AnnotationTask).await?;
+
+    let project_id = AnnotationProjectId::try_from(project_id.as_str())?;
+    let (dataset_version_id, task_type) = {
+        let reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
+        let project = reg.get_project(ctx.tenant_id, project_id)?;
+        (project.dataset_version_id, project.task_type)
+    };
+
+    let assets = {
+        let reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
+        reg.get_version(ctx.tenant_id, dataset_version_id)?.assets.clone()
+    };
+
+    let dataset = {
+        let reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
+        reg.export_labelu(ctx.tenant_id, project_id, task_type, &assets)?
+    };
+
+    Ok(Json(dataset))
+}
+
+pub(crate) async fn import_labelu(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<String>,
+    Json(dataset): Json<LabelUDataset>,
+) -> Result<(StatusCode, Json<Vec<String>>), ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Update, Resource::AnnotationTask).await?;
+
+    let project_id = AnnotationProjectId::try_from(project_id.as_str())?;
+    let (dataset_version_id, task_type) = {
+        let reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
+        let project = reg.get_project(ctx.tenant_id, project_id)?;
+        (project.dataset_version_id, project.task_type)
+    };
+
+    let assets = {
+        let reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
+        reg.get_version(ctx.tenant_id, dataset_version_id)?.assets.clone()
+    };
+
+    let ids = {
+        let mut reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
+        reg.import_labelu(ctx.tenant_id, project_id, task_type, &assets, &dataset)?
+    };
+
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "annotation_project.import_labelu",
+        Resource::AnnotationTask,
+        Some(&project_id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(ids.iter().map(|id| id.to_string()).collect()),
+    ))
+}
+
+pub(crate) async fn export_platform(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<String>,
+) -> Result<Json<PlatformAnnotationDataset>, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Read, Resource::AnnotationTask).await?;
+
+    let project_id = AnnotationProjectId::try_from(project_id.as_str())?;
+    let dataset = {
+        let reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
+        reg.export_platform(ctx.tenant_id, project_id)?
+    };
+
+    Ok(Json(dataset))
+}
+
+pub(crate) async fn import_platform(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<String>,
+    Json(dataset): Json<PlatformAnnotationDataset>,
+) -> Result<(StatusCode, Json<Vec<String>>), ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Update, Resource::AnnotationTask).await?;
+
+    let project_id = AnnotationProjectId::try_from(project_id.as_str())?;
+    let ids = {
+        let mut reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
+        reg.import_platform(ctx.tenant_id, project_id, &dataset)?
+    };
+
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "annotation_project.import_platform",
         Resource::AnnotationTask,
         Some(&project_id.to_string()),
         AuditOutcome::Success,
