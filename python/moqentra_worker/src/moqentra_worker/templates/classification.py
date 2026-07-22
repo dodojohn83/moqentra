@@ -22,6 +22,11 @@ except ImportError:  # pragma: no cover - optional heavy deps
     Dataset = None  # type: ignore[assignment, misc]
     transforms = None  # type: ignore[assignment]
 
+from moqentra_worker.onnx_validation import (
+    OnnxValidationError,
+    validate_onnx_against_pytorch,
+    write_evaluation_report,
+)
 from moqentra_worker.sdk import MetricPoint, WorkerLifecycle, WorkerSession
 
 from .common import make_environment, read_annotations, set_seed, sha256_file
@@ -197,9 +202,18 @@ class ResNet18ClassificationTemplate(WorkerLifecycle):
             dynamo=False,
         )
         onnx_digest = sha256_file(onnx_path)
+        try:
+            report = validate_onnx_against_pytorch(
+                onnx_path, self.model, dummy, tolerance=1e-5
+            )
+            write_evaluation_report(output_dir, report)
+        except OnnxValidationError as exc:  # pragma: no cover - validation failure surfaces as run error
+            raise RuntimeError(f"ONNX validation failed: {exc}") from exc
+
         return {
             "onnx_path": str(onnx_path),
             "onnx_digest": onnx_digest,
+            "onnx_evaluation_report": report,
             "environment": make_environment(),
             "num_classes": self.num_classes,
             "classes": self.classes,

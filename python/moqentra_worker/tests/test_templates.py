@@ -60,6 +60,9 @@ class TestTemplates(unittest.TestCase):
         manifest = Path(self.root / "output" / "manifest.json")
         self.assertTrue(manifest.exists())
         self.assertTrue((self.root / "output" / "model.onnx").exists())
+        self.assertTrue((self.root / "output" / "onnx_evaluation_report.json").exists())
+        onnx_eval = result["manifest"].get("onnx_evaluation_report", {})
+        self.assertTrue(onnx_eval.get("passed"), onnx_eval)
 
     def test_ssdlite320_detection(self):
         generate_detection_fixture(self.root, n=4, seed=11, split="train")
@@ -85,6 +88,9 @@ class TestTemplates(unittest.TestCase):
         manifest = Path(self.root / "output" / "manifest.json")
         self.assertTrue(manifest.exists())
         self.assertTrue((self.root / "output" / "model.onnx").exists())
+        self.assertTrue((self.root / "output" / "onnx_evaluation_report.json").exists())
+        onnx_eval = result["manifest"].get("onnx_evaluation_report", {})
+        self.assertTrue(onnx_eval.get("passed"), onnx_eval)
         self.assertTrue((self.root / "output" / "mask_preview.png").exists())
 
 

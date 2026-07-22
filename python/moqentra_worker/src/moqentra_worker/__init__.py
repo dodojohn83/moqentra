@@ -6,6 +6,11 @@ from .fixtures import (
     generate_segmentation_fixture,
 )
 from .grpc_client import WorkerAgentClient
+from .onnx_validation import (
+    OnnxValidationError,
+    validate_onnx_against_pytorch,
+    write_evaluation_report,
+)
 from .sdk import (
     MetricPoint,
     PyTorchAdapter,
@@ -17,6 +22,7 @@ from .sdk import (
 
 __all__ = [
     "MetricPoint",
+    "OnnxValidationError",
     "PyTorchAdapter",
     "WorkerAgentClient",
     "WorkerLifecycle",
@@ -26,4 +32,6 @@ __all__ = [
     "generate_detection_fixture",
     "generate_segmentation_fixture",
     "get_device_info",
+    "validate_onnx_against_pytorch",
+    "write_evaluation_report",
 ]

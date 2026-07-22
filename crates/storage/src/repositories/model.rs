@@ -454,8 +454,8 @@ mod tests {
         Artifact, Attachment, ModelLineage, ModelSignature, TensorSpec,
     };
     use moqentra_types::{
-        AssetId, DatasetVersionId, ExperimentId, Principal, RandomIdGenerator, TrainingJobId,
-        UserId,
+        AssetId, AttemptId, DatasetVersionId, ExperimentId, Principal, RandomIdGenerator,
+        TrainingJobId, UserId,
     };
     use sqlx::PgPool;
 
@@ -512,6 +512,7 @@ mod tests {
             training_job_id: Some(TrainingJobId::new_v7(&gen)),
             experiment_id: Some(ExperimentId::new_v7(&gen)),
             dataset_version_id,
+            attempt_id: Some(AttemptId::new_v7(&gen)),
             annotation_project_id: None,
             base_model_version_id: None,
             code_digest: "sha256:5694d08a2e53ffcae0c3103e5ad6f6076abd960eb1f8a56577040bc1028f702b"
@@ -520,6 +521,14 @@ mod tests {
                 .into(),
             hyperparameter_digest:
                 "sha256:a8aa236e33e65ccc368827e0af1497b5f655cd460b9db8ebd82ad415d59ad0f2".into(),
+            dataset_manifest_digest: None,
+            framework: None,
+            template: None,
+            template_version: None,
+            parameters_digest: None,
+            metrics_digest: None,
+            checkpoint_digests: Vec::new(),
+            hardware_environment: None,
         }
     }
 
@@ -546,6 +555,7 @@ mod tests {
             size_bytes: 1024,
             media_type: "application/octet-stream".into(),
             scan_status: "clean".into(),
+            object_key: None,
         });
         version.signature = ModelSignature {
             inputs: vec![TensorSpec {
@@ -563,6 +573,7 @@ mod tests {
             kind: "license".into(),
             asset_id: AssetId::new_v7(&gen),
         });
+        version.metrics.insert("accuracy".into(), 0.95);
         version.validate().unwrap();
         version.mark_ready().unwrap();
         version.approve(UserId::new_v7(&gen)).unwrap();

@@ -7,6 +7,8 @@ use moqentra_types::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::fmt;
+use std::str::FromStr;
 
 /// Target backend for conversion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -19,8 +21,75 @@ pub enum ConversionTarget {
     Onnx,
 }
 
+impl fmt::Display for ConversionTarget {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConversionTarget::TensorRT => write!(f, "TensorRT"),
+            ConversionTarget::OpenVINO => write!(f, "OpenVINO"),
+            ConversionTarget::Rknn => write!(f, "Rknn"),
+            ConversionTarget::Sophon => write!(f, "Sophon"),
+            ConversionTarget::AscendOM => write!(f, "AscendOM"),
+            ConversionTarget::Onnx => write!(f, "Onnx"),
+        }
+    }
+}
+
+impl FromStr for ConversionTarget {
+    type Err = moqentra_types::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "TensorRT" => Ok(Self::TensorRT),
+            "OpenVINO" => Ok(Self::OpenVINO),
+            "Rknn" => Ok(Self::Rknn),
+            "Sophon" => Ok(Self::Sophon),
+            "AscendOM" => Ok(Self::AscendOM),
+            "Onnx" => Ok(Self::Onnx),
+            _ => Err(moqentra_types::Error::invalid_argument(format!(
+                "unknown conversion target: {s}"
+            ))),
+        }
+    }
+}
+
+/// Support tier for a conversion target.
+///
+/// * `Verified`   - real export, runtime load and fixture inference are
+///   implemented; a successful conversion can be marked as `preview`.
+/// * `CompileOnly` - a toolchain can compile the model, but runtime
+///   verification is not yet available in this worker.
+/// * `Unsupported` - no conversion path is implemented.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConversionSupportTier {
+    Verified,
+    CompileOnly,
+    Unsupported,
+}
+
+impl ConversionTarget {
+    /// The conversion support matrix for this release. TensorRT/OpenVINO
+    /// are compile-only until real fixture inference passes; Rknn/Sophon/
+    /// AscendOM are unsupported.
+    pub fn support_tier(&self) -> ConversionSupportTier {
+        match self {
+            Self::Onnx => ConversionSupportTier::Verified,
+            Self::TensorRT | Self::OpenVINO => ConversionSupportTier::CompileOnly,
+            Self::Rknn | Self::Sophon | Self::AscendOM => ConversionSupportTier::Unsupported,
+        }
+    }
+}
+
+/// Post-processing contract required by the conversion target runtime.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PostprocessContract {
+    pub confidence_threshold: Option<f64>,
+    pub nms_threshold: Option<f64>,
+    pub box_format: Option<String>,
+    pub class_map: Vec<String>,
+}
+
 /// Toolchain and hardware profile for a conversion target.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConversionProfile {
     pub target: ConversionTarget,
     pub sdk_version: String,
@@ -29,6 +98,7 @@ pub struct ConversionProfile {
     pub precision: String,
     pub dynamic_shapes: bool,
     pub capabilities: Vec<String>,
+    pub postprocess: Option<PostprocessContract>,
 }
 
 /// Conversion job state.
@@ -41,8 +111,37 @@ pub enum ConversionJobState {
     Cancelled,
 }
 
+impl fmt::Display for ConversionJobState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConversionJobState::Pending => write!(f, "Pending"),
+            ConversionJobState::Running => write!(f, "Running"),
+            ConversionJobState::Succeeded => write!(f, "Succeeded"),
+            ConversionJobState::Failed => write!(f, "Failed"),
+            ConversionJobState::Cancelled => write!(f, "Cancelled"),
+        }
+    }
+}
+
+impl FromStr for ConversionJobState {
+    type Err = moqentra_types::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Pending" => Ok(Self::Pending),
+            "Running" => Ok(Self::Running),
+            "Succeeded" => Ok(Self::Succeeded),
+            "Failed" => Ok(Self::Failed),
+            "Cancelled" => Ok(Self::Cancelled),
+            _ => Err(moqentra_types::Error::invalid_argument(format!(
+                "unknown conversion job state: {s}"
+            ))),
+        }
+    }
+}
+
 /// A model conversion job.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConversionJob {
     pub id: ConversionJobId,
     pub tenant_id: TenantId,
@@ -53,6 +152,10 @@ pub struct ConversionJob {
     pub parameters: BTreeMap<String, String>,
     pub state: ConversionJobState,
     pub output_artifacts: Vec<Artifact>,
+    /// `true` only when real export, runtime load and fixture inference passed.
+    /// `preview` is never persisted to PostgreSQL in this release; it is kept in
+    /// memory for workers/agents that can verify the converted model.
+    pub preview: bool,
     pub cache_key: String,
     pub log_digest: Option<String>,
     pub created_at: UtcTimestamp,
@@ -94,6 +197,7 @@ impl ConversionJob {
             parameters,
             state: ConversionJobState::Pending,
             output_artifacts: Vec::new(),
+            preview: false,
             cache_key,
             log_digest: None,
             created_at: now,
@@ -118,6 +222,20 @@ impl ConversionJob {
         for cap in &profile.capabilities {
             hasher.update(cap.as_bytes());
         }
+        if let Some(pp) = &profile.postprocess {
+            if let Some(v) = pp.confidence_threshold {
+                hasher.update(v.to_string().as_bytes());
+            }
+            if let Some(v) = pp.nms_threshold {
+                hasher.update(v.to_string().as_bytes());
+            }
+            if let Some(v) = &pp.box_format {
+                hasher.update(v.as_bytes());
+            }
+            for c in &pp.class_map {
+                hasher.update(c.as_bytes());
+            }
+        }
         for (k, v) in parameters {
             hasher.update(k.as_bytes());
             hasher.update(v.as_bytes());
@@ -138,6 +256,7 @@ impl ConversionJob {
         &mut self,
         artifacts: Vec<Artifact>,
         log_digest: String,
+        verified: bool,
     ) -> Result<(), moqentra_types::Error> {
         if !matches!(self.state, ConversionJobState::Running) {
             return Err(moqentra_types::Error::conflict("conversion not running"));
@@ -160,6 +279,25 @@ impl ConversionJob {
                 ));
             }
         }
+
+        match self.target.support_tier() {
+            ConversionSupportTier::Unsupported => {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "conversion target is unsupported in this release",
+                ));
+            }
+            ConversionSupportTier::CompileOnly if verified => {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "compile-only target cannot claim runtime verification (preview)",
+                ));
+            }
+            _ => {}
+        }
+
+        self.preview = matches!(
+            (self.target.support_tier(), verified),
+            (ConversionSupportTier::Verified, true)
+        );
         self.output_artifacts = artifacts;
         self.log_digest = Some(log_digest);
         self.state = ConversionJobState::Succeeded;
@@ -207,6 +345,33 @@ pub enum EvaluationRunState {
     Running,
     Succeeded,
     Failed,
+}
+
+impl fmt::Display for EvaluationRunState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EvaluationRunState::Pending => write!(f, "Pending"),
+            EvaluationRunState::Running => write!(f, "Running"),
+            EvaluationRunState::Succeeded => write!(f, "Succeeded"),
+            EvaluationRunState::Failed => write!(f, "Failed"),
+        }
+    }
+}
+
+impl FromStr for EvaluationRunState {
+    type Err = moqentra_types::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Pending" => Ok(Self::Pending),
+            "Running" => Ok(Self::Running),
+            "Succeeded" => Ok(Self::Succeeded),
+            "Failed" => Ok(Self::Failed),
+            _ => Err(moqentra_types::Error::invalid_argument(format!(
+                "unknown evaluation run state: {s}"
+            ))),
+        }
+    }
 }
 
 /// A model evaluation run.
@@ -372,6 +537,7 @@ mod tests {
             precision: "fp32".to_string(),
             dynamic_shapes: false,
             capabilities: vec!["opset17".to_string()],
+            postprocess: None,
         }
     }
 
@@ -402,11 +568,14 @@ mod tests {
                 size_bytes: 100,
                 media_type: "application/octet-stream".to_string(),
                 scan_status: "clean".to_string(),
+                object_key: None,
             }],
             "sha256:836ff184e7b41b1e13cb5fd89fa1de98dbbab99e9d2918913ff43b86a5c7c213".to_string(),
+            true,
         )
         .unwrap();
         assert!(matches!(job.state, ConversionJobState::Succeeded));
+        assert!(job.preview);
     }
 
     #[test]
@@ -424,9 +593,11 @@ mod tests {
                     size_bytes: 1,
                     media_type: "application/octet-stream".to_string(),
                     scan_status: "infected".to_string(),
+                    object_key: None,
                 }],
                 "sha256:836ff184e7b41b1e13cb5fd89fa1de98dbbab99e9d2918913ff43b86a5c7c213"
                     .to_string(),
+                true,
             )
             .is_err());
     }

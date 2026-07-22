@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use moqentra_application::{InMemoryModelRegistry, InMemoryTrainingRegistry};
 use moqentra_domain::model_registry::{Artifact, Model, ModelLineage, ModelVersion};
 use moqentra_domain::training::{OutputManifest, TrainingJobState};
+use moqentra_object_store::ObjectKey;
 use moqentra_types::{AssetId, AttemptId, ModelId, ModelVersionId, RandomIdGenerator};
 use moqentra_worker_control::ArtifactValidator;
 use sha2::Digest;
@@ -91,8 +92,8 @@ impl ArtifactValidator for AppArtifactValidator {
 
         let output_manifest = OutputManifest {
             model_artifact_digest: Some(model_artifact_digest.clone()),
-            checkpoint_digests,
-            metric_digest: Some(metric_digest),
+            checkpoint_digests: checkpoint_digests.clone(),
+            metric_digest: Some(metric_digest.clone()),
             log_digest: None,
         };
 
@@ -126,10 +127,12 @@ impl ArtifactValidator for AppArtifactValidator {
             job.mark_finalizing(fencing_token)?;
             job.finalize(fencing_token, output_manifest)?;
 
+            let attempt_id = job.current_attempt.as_ref().map(|a| a.id);
             let lineage = ModelLineage {
                 training_job_id: Some(job.id),
                 experiment_id: Some(job.experiment_id),
                 dataset_version_id: job.spec.dataset_version_id,
+                attempt_id,
                 annotation_project_id: None,
                 base_model_version_id: None,
                 code_digest: job.spec.code_digest.clone(),
@@ -137,12 +140,33 @@ impl ArtifactValidator for AppArtifactValidator {
                 hyperparameter_digest: Self::compute_hyperparameter_digest(
                     &job.spec.hyperparameters,
                 ),
+                dataset_manifest_digest: None,
+                framework: None,
+                template: None,
+                template_version: None,
+                parameters_digest: None,
+                metrics_digest: Some(metric_digest),
+                checkpoint_digests,
+                hardware_environment: None,
             };
             (job.id, job.tenant_id, job.project_id, lineage)
         };
 
-        // 5. Create a unique ModelVersion for the validated artifact.
+        // 5. Check for an existing ModelVersion from the same (tenant, attempt, artifact digest)
+        //    before creating a new one.
         let mut models = self.models.lock().unwrap();
+        if let Some(existing) =
+            models.find_duplicate_version(tenant_id, attempt_id, &model_artifact_digest)
+        {
+            tracing::info!(
+                job_id = %job_id,
+                version_id = %existing.id,
+                "duplicate model version detected; skipping creation"
+            );
+            return Ok(());
+        }
+
+        // 6. Create a unique ModelVersion for the validated artifact.
         let model_id = ModelId::new_v7(&gen);
         let model = Model::new(model_id, tenant_id, project_id, format!("model-{job_id}"))?;
         models.create_model(model)?;
@@ -168,13 +192,24 @@ impl ArtifactValidator for AppArtifactValidator {
         }
         version.metrics = metrics;
 
-        // Add the validated artifact.
+        // Add the validated artifact. Record the controlled object key so the
+        // artifact is protected from GC while the ModelVersion exists.
+        let asset_id = AssetId::new_v7(&gen);
+        let object_key = ObjectKey::asset(
+            tenant_id,
+            project_id,
+            "models",
+            &model_id.to_string(),
+            &version_id.to_string(),
+            &format!("artifact-{asset_id}.json"),
+        )?;
         version.artifacts.push(Artifact {
-            asset_id: AssetId::new_v7(&gen),
+            asset_id,
             digest: model_artifact_digest,
             size_bytes: manifest_json.len() as u64,
             media_type: "application/json".to_string(),
             scan_status: "clean".to_string(),
+            object_key: Some(object_key.to_string()),
         });
 
         // Run the ModelVersion validation state machine.

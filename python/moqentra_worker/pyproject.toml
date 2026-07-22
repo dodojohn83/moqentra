@@ -13,6 +13,7 @@ dependencies = [
 [project.optional-dependencies]
 torch = [
   "onnx>=1.15.0",
+  "onnxruntime>=1.17.0",
   "torch>=2.0.0",
   "torchvision>=0.15.0",
 ]

@@ -209,6 +209,7 @@ fn role_permissions(role: Role) -> HashSet<Permission> {
             perms.insert(Permission::new(Resource::Project, Action::Delete));
             perms.insert(Permission::new(Resource::Secret, Action::Read));
             perms.insert(Permission::new(Resource::Secret, Action::Update));
+            perms.insert(Permission::new(Resource::ModelVersion, Action::Admin));
         }
         Role::TenantAdmin => {
             perms.extend(role_permissions(Role::ProjectAdmin));

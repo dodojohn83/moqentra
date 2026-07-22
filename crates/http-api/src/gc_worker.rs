@@ -36,6 +36,12 @@ pub fn spawn_gc_worker(state: AppState) {
                 referenced.extend(reg.referenced_object_keys());
             }
 
+            // Model version artifacts.
+            {
+                let reg = state.models.lock().unwrap_or_else(|e| e.into_inner());
+                referenced.extend(reg.referenced_object_keys());
+            }
+
             // Active upload sessions target keys.
             if let Ok(sessions) = state.upload_sessions.list().await {
                 for s in sessions {
