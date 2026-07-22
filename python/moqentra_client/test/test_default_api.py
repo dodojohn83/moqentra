@@ -166,6 +166,13 @@ class TestDefaultApi(unittest.TestCase):
         """
         pass
 
+    def test_export_coco(self) -> None:
+        """Test case for export_coco
+
+        Export annotations as COCO
+        """
+        pass
+
     def test_generate_dataset_version_splits(self) -> None:
         """Test case for generate_dataset_version_splits
 
@@ -219,6 +226,13 @@ class TestDefaultApi(unittest.TestCase):
         """Test case for get_upload_session
 
         Get upload session
+        """
+        pass
+
+    def test_import_coco(self) -> None:
+        """Test case for import_coco
+
+        Import COCO annotations
         """
         pass
 

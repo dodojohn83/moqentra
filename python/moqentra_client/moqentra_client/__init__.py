@@ -33,6 +33,10 @@ __all__ = [
     "AnnotationResponse",
     "AssignRequest",
     "AutosaveRequest",
+    "CocoDataset",
+    "CocoDatasetAnnotationsInner",
+    "CocoDatasetCategoriesInner",
+    "CocoDatasetImagesInner",
     "CompileRequest",
     "CompileResponse",
     "CreateAnnotationProjectRequest",
@@ -86,6 +90,10 @@ from moqentra_client.models.annotation_project_response import AnnotationProject
 from moqentra_client.models.annotation_response import AnnotationResponse as AnnotationResponse
 from moqentra_client.models.assign_request import AssignRequest as AssignRequest
 from moqentra_client.models.autosave_request import AutosaveRequest as AutosaveRequest
+from moqentra_client.models.coco_dataset import CocoDataset as CocoDataset
+from moqentra_client.models.coco_dataset_annotations_inner import CocoDatasetAnnotationsInner as CocoDatasetAnnotationsInner
+from moqentra_client.models.coco_dataset_categories_inner import CocoDatasetCategoriesInner as CocoDatasetCategoriesInner
+from moqentra_client.models.coco_dataset_images_inner import CocoDatasetImagesInner as CocoDatasetImagesInner
 from moqentra_client.models.compile_request import CompileRequest as CompileRequest
 from moqentra_client.models.compile_response import CompileResponse as CompileResponse
 from moqentra_client.models.create_annotation_project_request import CreateAnnotationProjectRequest as CreateAnnotationProjectRequest

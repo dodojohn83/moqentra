@@ -1,9 +1,11 @@
 //! Annotation project application services.
 
+use crate::coco::CocoDataset;
 use moqentra_domain::annotation::{
     Annotation, AnnotationLog, AnnotationProject, AnnotationProjectState, AnnotationTask,
-    AnnotationTaskState, AutosaveResult,
+    AnnotationTaskState, AutosaveResult, TaskType,
 };
+use moqentra_domain::dataset::AssetRef;
 use moqentra_types::{
     AnnotationProjectId, AnnotationTaskId, AssetId, Error, ProjectId, TenantId, UserId,
 };
@@ -282,6 +284,60 @@ impl InMemoryAnnotationRegistry {
         }
         let log = self.logs.get(&task_id).ok_or_else(|| Error::not_found("annotation log"))?;
         Ok(log.get_all().into_iter().cloned().collect())
+    }
+
+    /// Export this project's annotations to COCO format.
+    pub fn export_coco(
+        &self,
+        tenant_id: TenantId,
+        project_id: AnnotationProjectId,
+        task_type: TaskType,
+        assets: &[AssetRef],
+    ) -> Result<CocoDataset, Error> {
+        self.get_project(tenant_id, project_id)?;
+        let tasks: Vec<AnnotationTask> = self
+            .tasks
+            .values()
+            .filter(|t| t.tenant_id == tenant_id && t.project_id == project_id)
+            .cloned()
+            .collect();
+        let mut annotations_by_task: BTreeMap<AnnotationTaskId, Vec<Annotation>> = BTreeMap::new();
+        for (task_id, log) in &self.logs {
+            if let Some(t) = self.tasks.get(task_id) {
+                if t.tenant_id == tenant_id && t.project_id == project_id {
+                    annotations_by_task
+                        .insert(*task_id, log.get_all().into_iter().cloned().collect());
+                }
+            }
+        }
+        CocoDataset::export(project_id, task_type, &tasks, &annotations_by_task, assets)
+    }
+
+    /// Import COCO annotations into this project, creating approved tasks.
+    pub fn import_coco(
+        &mut self,
+        tenant_id: TenantId,
+        project_id: AnnotationProjectId,
+        task_type: TaskType,
+        assets: &[AssetRef],
+        dataset: &CocoDataset,
+    ) -> Result<Vec<AnnotationTaskId>, Error> {
+        self.get_project(tenant_id, project_id)?;
+        let pairs = dataset.import(project_id, tenant_id, task_type, assets)?;
+        let mut ids = Vec::with_capacity(pairs.len());
+        for (task, annotations) in pairs {
+            if self.tasks.contains_key(&task.id) {
+                return Err(Error::conflict("task id collision during import"));
+            }
+            let task_id = task.id;
+            self.tasks.insert(task_id, task);
+            let log = self.logs.entry(task_id).or_default();
+            for annotation in annotations {
+                log.autosave(annotation)?;
+            }
+            ids.push(task_id);
+        }
+        Ok(ids)
     }
 
     /// Active project count (ops metric).

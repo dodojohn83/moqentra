@@ -912,6 +912,54 @@ paths:
               schema:
                 $ref: '#/components/schemas/MediaUrlResponse'
 
+  /v1/annotation-projects/{id}/export-coco:
+    get:
+      operationId: exportCoco
+      summary: Export annotations as COCO
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: COCO dataset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CocoDataset'
+
+  /v1/annotation-projects/{id}/import-coco:
+    post:
+      operationId: importCoco
+      summary: Import COCO annotations
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CocoDataset'
+      responses:
+        '201':
+          description: Imported task ids
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
   /v1/outbox:
     get:
       operationId: listOutboxEvents
@@ -1392,6 +1440,79 @@ components:
           type: string
         expires_at:
           type: string
+
+    CocoDataset:
+      type: object
+      required: [images, categories, annotations]
+      properties:
+        info:
+          type: object
+        images:
+          type: array
+          items:
+            type: object
+            required: [id, file_name, width, height]
+            properties:
+              id:
+                type: integer
+                format: int64
+              file_name:
+                type: string
+              width:
+                type: integer
+                format: int64
+              height:
+                type: integer
+                format: int64
+        categories:
+          type: array
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id:
+                type: integer
+                format: int64
+              name:
+                type: string
+              supercategory:
+                type: string
+                nullable: true
+        annotations:
+          type: array
+          items:
+            type: object
+            required: [id, image_id, category_id]
+            properties:
+              id:
+                type: integer
+                format: int64
+              image_id:
+                type: integer
+                format: int64
+              category_id:
+                type: integer
+                format: int64
+              bbox:
+                type: array
+                items:
+                  type: number
+                  format: double
+                nullable: true
+              segmentation:
+                type: object
+                nullable: true
+              keypoints:
+                type: object
+                nullable: true
+              area:
+                type: number
+                format: double
+                nullable: true
+              iscrowd:
+                type: integer
+                format: int64
+                nullable: true
 
     Page:
       type: object

@@ -24,6 +24,7 @@ Method | HTTP request | Description
 [**create_model**](DefaultApi.md#create_model) | **POST** /v1/models | Create model family
 [**create_training_job**](DefaultApi.md#create_training_job) | **POST** /v1/training-jobs | Create training job
 [**create_upload_session**](DefaultApi.md#create_upload_session) | **POST** /v1/upload-sessions | Create a multipart upload session
+[**export_coco**](DefaultApi.md#export_coco) | **GET** /v1/annotation-projects/{id}/export-coco | Export annotations as COCO
 [**generate_dataset_version_splits**](DefaultApi.md#generate_dataset_version_splits) | **POST** /v1/dataset-versions/{id}/splits | Generate deterministic train/val/test splits
 [**get_annotation_task**](DefaultApi.md#get_annotation_task) | **GET** /v1/annotation-projects/{id}/tasks/{taskId} | Get annotation task
 [**get_asset_media_url**](DefaultApi.md#get_asset_media_url) | **GET** /v1/assets/{assetId}/media-url | Get short-lived signed media URL
@@ -32,6 +33,7 @@ Method | HTTP request | Description
 [**get_import_job**](DefaultApi.md#get_import_job) | **GET** /v1/import-jobs/{id} | Get import job status
 [**get_ready**](DefaultApi.md#get_ready) | **GET** /readyz | Readiness probe
 [**get_upload_session**](DefaultApi.md#get_upload_session) | **GET** /v1/upload-sessions/{id} | Get upload session
+[**import_coco**](DefaultApi.md#import_coco) | **POST** /v1/annotation-projects/{id}/import-coco | Import COCO annotations
 [**list_annotation_tasks**](DefaultApi.md#list_annotation_tasks) | **GET** /v1/annotation-projects/{id}/tasks | List annotation tasks
 [**list_annotations**](DefaultApi.md#list_annotations) | **GET** /v1/annotation-projects/{id}/tasks/{taskId}/annotations | List annotations for a task
 [**list_datasets**](DefaultApi.md#list_datasets) | **GET** /v1/datasets | List datasets for tenant
@@ -1488,6 +1490,76 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **export_coco**
+> CocoDataset export_coco(x_tenant_id, id, authorization=authorization)
+
+Export annotations as COCO
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.coco_dataset import CocoDataset
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Export annotations as COCO
+        api_response = api_instance.export_coco(x_tenant_id, id, authorization=authorization)
+        print("The response of DefaultApi->export_coco:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->export_coco: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**CocoDataset**](CocoDataset.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | COCO dataset |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **generate_dataset_version_splits**
 > DatasetVersionResponse generate_dataset_version_splits(x_tenant_id, id, generate_splits_request, authorization=authorization)
 
@@ -2035,6 +2107,78 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 **200** | Session |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **import_coco**
+> List[str] import_coco(x_tenant_id, id, coco_dataset, authorization=authorization)
+
+Import COCO annotations
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.coco_dataset import CocoDataset
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    coco_dataset = moqentra_client.CocoDataset() # CocoDataset | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Import COCO annotations
+        api_response = api_instance.import_coco(x_tenant_id, id, coco_dataset, authorization=authorization)
+        print("The response of DefaultApi->import_coco:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->import_coco: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **coco_dataset** | [**CocoDataset**](CocoDataset.md)|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+**List[str]**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**201** | Imported task ids |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 

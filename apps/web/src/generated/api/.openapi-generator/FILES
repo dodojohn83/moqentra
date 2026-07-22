@@ -6,6 +6,10 @@ docs/AnnotationProjectResponse.md
 docs/AnnotationResponse.md
 docs/AssignRequest.md
 docs/AutosaveRequest.md
+docs/CocoDataset.md
+docs/CocoDatasetAnnotationsInner.md
+docs/CocoDatasetCategoriesInner.md
+docs/CocoDatasetImagesInner.md
 docs/CompileRequest.md
 docs/CompileResponse.md
 docs/CreateAnnotationProjectRequest.md
@@ -44,6 +48,10 @@ models/AnnotationProjectResponse.ts
 models/AnnotationResponse.ts
 models/AssignRequest.ts
 models/AutosaveRequest.ts
+models/CocoDataset.ts
+models/CocoDatasetAnnotationsInner.ts
+models/CocoDatasetCategoriesInner.ts
+models/CocoDatasetImagesInner.ts
 models/CompileRequest.ts
 models/CompileResponse.ts
 models/CreateAnnotationProjectRequest.ts

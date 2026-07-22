@@ -9,6 +9,10 @@ docs/AnnotationProjectResponse.md
 docs/AnnotationResponse.md
 docs/AssignRequest.md
 docs/AutosaveRequest.md
+docs/CocoDataset.md
+docs/CocoDatasetAnnotationsInner.md
+docs/CocoDatasetCategoriesInner.md
+docs/CocoDatasetImagesInner.md
 docs/CompileRequest.md
 docs/CompileResponse.md
 docs/CreateAnnotationProjectRequest.md
@@ -55,6 +59,10 @@ moqentra_client/models/annotation_project_response.py
 moqentra_client/models/annotation_response.py
 moqentra_client/models/assign_request.py
 moqentra_client/models/autosave_request.py
+moqentra_client/models/coco_dataset.py
+moqentra_client/models/coco_dataset_annotations_inner.py
+moqentra_client/models/coco_dataset_categories_inner.py
+moqentra_client/models/coco_dataset_images_inner.py
 moqentra_client/models/compile_request.py
 moqentra_client/models/compile_response.py
 moqentra_client/models/create_annotation_project_request.py
@@ -99,6 +107,10 @@ test/test_annotation_project_response.py
 test/test_annotation_response.py
 test/test_assign_request.py
 test/test_autosave_request.py
+test/test_coco_dataset.py
+test/test_coco_dataset_annotations_inner.py
+test/test_coco_dataset_categories_inner.py
+test/test_coco_dataset_images_inner.py
 test/test_compile_request.py
 test/test_compile_response.py
 test/test_create_annotation_project_request.py

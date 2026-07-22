@@ -127,6 +127,95 @@ pub struct TaskResponse {
     pub state: String,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CocoDataset {
+    pub annotations: Vec<CocoDatasetAnnotationsItem>,
+    pub categories: Vec<CocoDatasetCategoriesItem>,
+    pub images: Vec<CocoDatasetImagesItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub info: Option<serde_json::Value>,
+}
+impl CocoDataset {
+    /// Construct this request with every required wire field.
+    pub fn new(
+        annotations: Vec<CocoDatasetAnnotationsItem>,
+        categories: Vec<CocoDatasetCategoriesItem>,
+        images: Vec<CocoDatasetImagesItem>,
+    ) -> Self {
+        Self {
+            annotations,
+            categories,
+            images,
+            info: None,
+        }
+    }
+    /// Start a dependency-free builder with every required wire field.
+    pub fn builder(
+        annotations: Vec<CocoDatasetAnnotationsItem>,
+        categories: Vec<CocoDatasetCategoriesItem>,
+        images: Vec<CocoDatasetImagesItem>,
+    ) -> CocoDatasetBuilder {
+        CocoDatasetBuilder::new(annotations, categories, images)
+    }
+}
+/// Dependency-free builder for [`#struct_name`].
+#[derive(Debug, Clone)]
+#[must_use]
+pub struct CocoDatasetBuilder {
+    value: CocoDataset,
+}
+impl CocoDatasetBuilder {
+    /// Start a builder with every required wire field.
+    pub fn new(
+        annotations: Vec<CocoDatasetAnnotationsItem>,
+        categories: Vec<CocoDatasetCategoriesItem>,
+        images: Vec<CocoDatasetImagesItem>,
+    ) -> Self {
+        Self {
+            value: CocoDataset::new(annotations, categories, images),
+        }
+    }
+    #[doc = concat!("Set the optional `", "info", "` request field.")]
+    #[must_use]
+    pub fn info(mut self, info: serde_json::Value) -> Self {
+        self.value.info = Some(info);
+        self
+    }
+    /// Finish building the request model.
+    pub fn build(self) -> CocoDataset {
+        self.value
+    }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CocoDatasetImagesItem {
+    pub file_name: String,
+    pub height: i64,
+    pub id: i64,
+    pub width: i64,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CocoDatasetCategoriesItem {
+    pub id: i64,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supercategory: Option<String>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CocoDatasetAnnotationsItem {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub area: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bbox: Option<Vec<f64>>,
+    pub category_id: i64,
+    pub id: i64,
+    pub image_id: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub iscrowd: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keypoints: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub segmentation: Option<serde_json::Value>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AddAssetRequest {
     pub digest: String,
     pub media_type: String,
@@ -466,6 +555,7 @@ pub struct HealthResponse {
     pub service: Option<String>,
     pub status: String,
 }
+pub type ImportCocoResponse201 = Vec<String>;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ImportJobResponse {
     pub concurrency: i64,

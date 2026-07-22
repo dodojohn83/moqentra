@@ -8,6 +8,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json,
 };
+use moqentra_application::coco::CocoDataset;
 use moqentra_auth::{Action, AuditCategory, AuditOutcome, Resource};
 use moqentra_domain::annotation::{Annotation, AnnotationTask};
 use moqentra_types::{
@@ -374,6 +375,79 @@ pub(crate) async fn list_annotations(
         reg.list_annotations(ctx.tenant_id, task_id)?
     };
     Ok(Json(annotations.iter().map(|a| a.into()).collect()))
+}
+
+pub(crate) async fn export_coco(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<String>,
+) -> Result<Json<CocoDataset>, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Read, Resource::AnnotationTask).await?;
+
+    let project_id = AnnotationProjectId::try_from(project_id.as_str())?;
+    let (dataset_version_id, task_type) = {
+        let reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
+        let project = reg.get_project(ctx.tenant_id, project_id)?;
+        (project.dataset_version_id, project.task_type)
+    };
+
+    let assets = {
+        let reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
+        reg.get_version(ctx.tenant_id, dataset_version_id)?.assets.clone()
+    };
+
+    let coco = {
+        let reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
+        reg.export_coco(ctx.tenant_id, project_id, task_type, &assets)?
+    };
+
+    Ok(Json(coco))
+}
+
+pub(crate) async fn import_coco(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<String>,
+    Json(dataset): Json<CocoDataset>,
+) -> Result<(StatusCode, Json<Vec<String>>), ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Update, Resource::AnnotationTask).await?;
+
+    let project_id = AnnotationProjectId::try_from(project_id.as_str())?;
+    let (dataset_version_id, task_type) = {
+        let reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
+        let project = reg.get_project(ctx.tenant_id, project_id)?;
+        (project.dataset_version_id, project.task_type)
+    };
+
+    let assets = {
+        let reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
+        reg.get_version(ctx.tenant_id, dataset_version_id)?.assets.clone()
+    };
+
+    let ids = {
+        let mut reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
+        reg.import_coco(ctx.tenant_id, project_id, task_type, &assets, &dataset)?
+    };
+
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "annotation_project.import_coco",
+        Resource::AnnotationTask,
+        Some(&project_id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(ids.iter().map(|id| id.to_string()).collect()),
+    ))
 }
 
 pub(crate) async fn get_asset_media_url(

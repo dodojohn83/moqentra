@@ -1889,6 +1889,14 @@ pub fn app_router(state: AppState) -> Router {
             post(crate::annotation::autosave_annotation).get(crate::annotation::list_annotations),
         )
         .route(
+            "/v1/annotation-projects/{id}/export-coco",
+            get(crate::annotation::export_coco),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/import-coco",
+            post(crate::annotation::import_coco),
+        )
+        .route(
             "/v1/assets/{assetId}/media-url",
             get(crate::annotation::get_asset_media_url),
         )

@@ -12,9 +12,11 @@ mod model_svc;
 mod training_svc;
 
 /// Repository ports used by application services.
+pub mod coco;
 pub mod ports;
 
 pub use annotation_svc::InMemoryAnnotationRegistry;
+pub use coco::{CocoAnnotation, CocoCategory, CocoDataset, CocoImage};
 pub use dispatch::{plan_dispatch, DispatchAction};
 pub use model_svc::InMemoryModelRegistry;
 pub use ports::{

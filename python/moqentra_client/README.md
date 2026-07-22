@@ -105,6 +105,7 @@ Class | Method | HTTP request | Description
 *DefaultApi* | [**create_model**](docs/DefaultApi.md#create_model) | **POST** /v1/models | Create model family
 *DefaultApi* | [**create_training_job**](docs/DefaultApi.md#create_training_job) | **POST** /v1/training-jobs | Create training job
 *DefaultApi* | [**create_upload_session**](docs/DefaultApi.md#create_upload_session) | **POST** /v1/upload-sessions | Create a multipart upload session
+*DefaultApi* | [**export_coco**](docs/DefaultApi.md#export_coco) | **GET** /v1/annotation-projects/{id}/export-coco | Export annotations as COCO
 *DefaultApi* | [**generate_dataset_version_splits**](docs/DefaultApi.md#generate_dataset_version_splits) | **POST** /v1/dataset-versions/{id}/splits | Generate deterministic train/val/test splits
 *DefaultApi* | [**get_annotation_task**](docs/DefaultApi.md#get_annotation_task) | **GET** /v1/annotation-projects/{id}/tasks/{taskId} | Get annotation task
 *DefaultApi* | [**get_asset_media_url**](docs/DefaultApi.md#get_asset_media_url) | **GET** /v1/assets/{assetId}/media-url | Get short-lived signed media URL
@@ -113,6 +114,7 @@ Class | Method | HTTP request | Description
 *DefaultApi* | [**get_import_job**](docs/DefaultApi.md#get_import_job) | **GET** /v1/import-jobs/{id} | Get import job status
 *DefaultApi* | [**get_ready**](docs/DefaultApi.md#get_ready) | **GET** /readyz | Readiness probe
 *DefaultApi* | [**get_upload_session**](docs/DefaultApi.md#get_upload_session) | **GET** /v1/upload-sessions/{id} | Get upload session
+*DefaultApi* | [**import_coco**](docs/DefaultApi.md#import_coco) | **POST** /v1/annotation-projects/{id}/import-coco | Import COCO annotations
 *DefaultApi* | [**list_annotation_tasks**](docs/DefaultApi.md#list_annotation_tasks) | **GET** /v1/annotation-projects/{id}/tasks | List annotation tasks
 *DefaultApi* | [**list_annotations**](docs/DefaultApi.md#list_annotations) | **GET** /v1/annotation-projects/{id}/tasks/{taskId}/annotations | List annotations for a task
 *DefaultApi* | [**list_datasets**](docs/DefaultApi.md#list_datasets) | **GET** /v1/datasets | List datasets for tenant
@@ -137,6 +139,10 @@ Class | Method | HTTP request | Description
  - [AnnotationResponse](docs/AnnotationResponse.md)
  - [AssignRequest](docs/AssignRequest.md)
  - [AutosaveRequest](docs/AutosaveRequest.md)
+ - [CocoDataset](docs/CocoDataset.md)
+ - [CocoDatasetAnnotationsInner](docs/CocoDatasetAnnotationsInner.md)
+ - [CocoDatasetCategoriesInner](docs/CocoDatasetCategoriesInner.md)
+ - [CocoDatasetImagesInner](docs/CocoDatasetImagesInner.md)
  - [CompileRequest](docs/CompileRequest.md)
  - [CompileResponse](docs/CompileResponse.md)
  - [CreateAnnotationProjectRequest](docs/CreateAnnotationProjectRequest.md)

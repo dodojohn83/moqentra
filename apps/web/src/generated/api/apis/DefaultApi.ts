@@ -39,6 +39,11 @@ import {
     AutosaveRequestToJSON,
 } from '../models/AutosaveRequest';
 import {
+    type CocoDataset,
+    CocoDatasetFromJSON,
+    CocoDatasetToJSON,
+} from '../models/CocoDataset';
+import {
     type CompileRequest,
     CompileRequestFromJSON,
     CompileRequestToJSON,
@@ -305,6 +310,12 @@ export interface CreateUploadSessionOperationRequest {
     idempotencyKey?: string;
 }
 
+export interface ExportCocoRequest {
+    xTenantId: string;
+    id: string;
+    authorization?: string;
+}
+
 export interface GenerateDatasetVersionSplitsRequest {
     xTenantId: string;
     id: string;
@@ -340,6 +351,13 @@ export interface GetImportJobRequest {
 export interface GetUploadSessionRequest {
     xTenantId: string;
     id: string;
+    authorization?: string;
+}
+
+export interface ImportCocoRequest {
+    xTenantId: string;
+    id: string;
+    cocoDataset: CocoDataset;
     authorization?: string;
 }
 
@@ -1767,6 +1785,66 @@ export class DefaultApi extends runtime.BaseAPI {
     }
 
     /**
+     * Creates request options for exportCoco without sending the request
+     */
+    async exportCocoRequestOpts(requestParameters: ExportCocoRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling exportCoco().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling exportCoco().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/annotation-projects/{id}/export-coco`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Export annotations as COCO
+     */
+    async exportCocoRaw(requestParameters: ExportCocoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CocoDataset>> {
+        const requestOptions = await this.exportCocoRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => CocoDatasetFromJSON(jsonValue));
+    }
+
+    /**
+     * Export annotations as COCO
+     */
+    async exportCoco(requestParameters: ExportCocoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CocoDataset> {
+        const response = await this.exportCocoRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for generateDatasetVersionSplits without sending the request
      */
     async generateDatasetVersionSplitsRequestOpts(requestParameters: GenerateDatasetVersionSplitsRequest): Promise<runtime.RequestOpts> {
@@ -2215,6 +2293,76 @@ export class DefaultApi extends runtime.BaseAPI {
      */
     async getUploadSession(requestParameters: GetUploadSessionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UploadSessionResponse> {
         const response = await this.getUploadSessionRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for importCoco without sending the request
+     */
+    async importCocoRequestOpts(requestParameters: ImportCocoRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling importCoco().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling importCoco().'
+            );
+        }
+
+        if (requestParameters['cocoDataset'] == null) {
+            throw new runtime.RequiredError(
+                'cocoDataset',
+                'Required parameter "cocoDataset" was null or undefined when calling importCoco().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/annotation-projects/{id}/import-coco`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: CocoDatasetToJSON(requestParameters['cocoDataset']),
+        };
+    }
+
+    /**
+     * Import COCO annotations
+     */
+    async importCocoRaw(requestParameters: ImportCocoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<string>>> {
+        const requestOptions = await this.importCocoRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse<any>(response);
+    }
+
+    /**
+     * Import COCO annotations
+     */
+    async importCoco(requestParameters: ImportCocoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<string>> {
+        const response = await this.importCocoRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

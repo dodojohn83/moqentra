@@ -24,6 +24,7 @@ All URIs are relative to *http://localhost*
 | [**createModel**](DefaultApi.md#createmodeloperation) | **POST** /v1/models | Create model family |
 | [**createTrainingJob**](DefaultApi.md#createtrainingjoboperation) | **POST** /v1/training-jobs | Create training job |
 | [**createUploadSession**](DefaultApi.md#createuploadsessionoperation) | **POST** /v1/upload-sessions | Create a multipart upload session |
+| [**exportCoco**](DefaultApi.md#exportcoco) | **GET** /v1/annotation-projects/{id}/export-coco | Export annotations as COCO |
 | [**generateDatasetVersionSplits**](DefaultApi.md#generatedatasetversionsplits) | **POST** /v1/dataset-versions/{id}/splits | Generate deterministic train/val/test splits |
 | [**getAnnotationTask**](DefaultApi.md#getannotationtask) | **GET** /v1/annotation-projects/{id}/tasks/{taskId} | Get annotation task |
 | [**getAssetMediaUrl**](DefaultApi.md#getassetmediaurl) | **GET** /v1/assets/{assetId}/media-url | Get short-lived signed media URL |
@@ -32,6 +33,7 @@ All URIs are relative to *http://localhost*
 | [**getImportJob**](DefaultApi.md#getimportjob) | **GET** /v1/import-jobs/{id} | Get import job status |
 | [**getReady**](DefaultApi.md#getready) | **GET** /readyz | Readiness probe |
 | [**getUploadSession**](DefaultApi.md#getuploadsession) | **GET** /v1/upload-sessions/{id} | Get upload session |
+| [**importCoco**](DefaultApi.md#importcoco) | **POST** /v1/annotation-projects/{id}/import-coco | Import COCO annotations |
 | [**listAnnotationTasks**](DefaultApi.md#listannotationtasks) | **GET** /v1/annotation-projects/{id}/tasks | List annotation tasks |
 | [**listAnnotations**](DefaultApi.md#listannotations) | **GET** /v1/annotation-projects/{id}/tasks/{taskId}/annotations | List annotations for a task |
 | [**listDatasets**](DefaultApi.md#listdatasets) | **GET** /v1/datasets | List datasets for tenant |
@@ -1518,6 +1520,77 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## exportCoco
+
+> CocoDataset exportCoco(xTenantId, id, authorization)
+
+Export annotations as COCO
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ExportCocoRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies ExportCocoRequest;
+
+  try {
+    const data = await api.exportCoco(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**CocoDataset**](CocoDataset.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | COCO dataset |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## generateDatasetVersionSplits
 
 > DatasetVersionResponse generateDatasetVersionSplits(xTenantId, id, generateSplitsRequest, authorization)
@@ -2061,6 +2134,80 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Session |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## importCoco
+
+> Array&lt;string&gt; importCoco(xTenantId, id, cocoDataset, authorization)
+
+Import COCO annotations
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ImportCocoRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // CocoDataset
+    cocoDataset: ...,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies ImportCocoRequest;
+
+  try {
+    const data = await api.importCoco(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **cocoDataset** | [CocoDataset](CocoDataset.md) |  | |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+**Array<string>**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **201** | Imported task ids |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
