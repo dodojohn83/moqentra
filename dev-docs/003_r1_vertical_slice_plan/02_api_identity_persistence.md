@@ -37,7 +37,8 @@
 
 - [x] `R1-IAM-001` 实现 OIDC discovery、JWKS 缓存与轮换、issuer/audience/nonce 校验、clock skew 和失败降级；移除生产 HMAC 开发 token 路径。
   - Evidence: `crates/auth/src/oidc.rs` (`OidcConfig`, `JwkSetValidator`), `crates/auth/src/jwt.rs` (`TokenClaims.nonce`, async `TokenValidator`, `CompositeTokenValidator.with_oidc`); `apps/control-plane/src/main.rs` uses `MOQENTRA_OIDC_ISSUER`/`MOQENTRA_OIDC_AUDIENCE` and OIDC takes precedence, HMAC only as local test fallback.
-- [ ] `R1-IAM-002` 从 token 得到 principal，只从数据库成员关系解析 tenant/project role；切换租户必须重新授权。
+- [x] `R1-IAM-002` 从 token 得到 principal，只从数据库成员关系解析 tenant/project role；切换租户必须重新授权。
+  - Evidence: `crates/auth/src/role_store.rs` (`RoleStore`); `crates/storage/src/pg_role_store.rs` (`PgRoleStore`); `apps/control-plane/src/main.rs` `resolve_context` resolves roles from `project_members` when `db_pool` is configured, ignoring JWT claim roles; JWT claim `tenant_ids` no longer trusted for tenant switch.
 - [x] `R1-IAM-003` 实现 tenant admin、data engineer、annotator、reviewer、algorithm engineer、operator 的 deny-by-default 权限矩阵。
   - Evidence: `crates/auth/src/rbac.rs` (`Authorizer` with `Role::{TenantAdmin,DataEngineer,Annotator,Reviewer,AlgorithmEngineer,Operator}`, deny-by-default, project/tenant isolation, tests).
 - [~] `R1-IAM-004` 每个写操作、审核、发布、下载授权和拒绝结果写入结构化审计；审计内容脱敏且不可被普通租户用户修改。
