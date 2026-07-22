@@ -24,6 +24,21 @@ import {
     AnnotationProjectResponseToJSON,
 } from '../models/AnnotationProjectResponse';
 import {
+    type AnnotationResponse,
+    AnnotationResponseFromJSON,
+    AnnotationResponseToJSON,
+} from '../models/AnnotationResponse';
+import {
+    type AssignRequest,
+    AssignRequestFromJSON,
+    AssignRequestToJSON,
+} from '../models/AssignRequest';
+import {
+    type AutosaveRequest,
+    AutosaveRequestFromJSON,
+    AutosaveRequestToJSON,
+} from '../models/AutosaveRequest';
+import {
     type CompileRequest,
     CompileRequestFromJSON,
     CompileRequestToJSON,
@@ -63,6 +78,11 @@ import {
     CreateModelRequestFromJSON,
     CreateModelRequestToJSON,
 } from '../models/CreateModelRequest';
+import {
+    type CreateTasksRequest,
+    CreateTasksRequestFromJSON,
+    CreateTasksRequestToJSON,
+} from '../models/CreateTasksRequest';
 import {
     type CreateTrainingJobRequest,
     CreateTrainingJobRequestFromJSON,
@@ -104,6 +124,11 @@ import {
     ImportJobResponseToJSON,
 } from '../models/ImportJobResponse';
 import {
+    type MediaUrlResponse,
+    MediaUrlResponseFromJSON,
+    MediaUrlResponseToJSON,
+} from '../models/MediaUrlResponse';
+import {
     type ModelResponse,
     ModelResponseFromJSON,
     ModelResponseToJSON,
@@ -118,6 +143,11 @@ import {
     ReadyResponseFromJSON,
     ReadyResponseToJSON,
 } from '../models/ReadyResponse';
+import {
+    type TaskResponse,
+    TaskResponseFromJSON,
+    TaskResponseToJSON,
+} from '../models/TaskResponse';
 import {
     type TrainingJobResponse,
     TrainingJobResponseFromJSON,
@@ -165,6 +195,29 @@ export interface AdmitTrainingJobRequest {
     authorization?: string;
 }
 
+export interface ApproveAnnotationTaskRequest {
+    xTenantId: string;
+    id: string;
+    taskId: string;
+    authorization?: string;
+}
+
+export interface AssignAnnotationTaskRequest {
+    xTenantId: string;
+    id: string;
+    taskId: string;
+    assignRequest: AssignRequest;
+    authorization?: string;
+}
+
+export interface AutosaveAnnotationRequest {
+    xTenantId: string;
+    id: string;
+    taskId: string;
+    autosaveRequest: AutosaveRequest;
+    authorization?: string;
+}
+
 export interface CancelImportJobRequest {
     xTenantId: string;
     id: string;
@@ -194,6 +247,13 @@ export interface CreateAnnotationProjectOperationRequest {
     createAnnotationProjectRequest: CreateAnnotationProjectRequest;
     authorization?: string;
     idempotencyKey?: string;
+}
+
+export interface CreateAnnotationTasksRequest {
+    xTenantId: string;
+    id: string;
+    createTasksRequest: CreateTasksRequest;
+    authorization?: string;
 }
 
 export interface CreateDatasetOperationRequest {
@@ -252,6 +312,19 @@ export interface GenerateDatasetVersionSplitsRequest {
     authorization?: string;
 }
 
+export interface GetAnnotationTaskRequest {
+    xTenantId: string;
+    id: string;
+    taskId: string;
+    authorization?: string;
+}
+
+export interface GetAssetMediaUrlRequest {
+    xTenantId: string;
+    assetId: string;
+    authorization?: string;
+}
+
 export interface GetDatasetRequest {
     xTenantId: string;
     id: string;
@@ -267,6 +340,19 @@ export interface GetImportJobRequest {
 export interface GetUploadSessionRequest {
     xTenantId: string;
     id: string;
+    authorization?: string;
+}
+
+export interface ListAnnotationTasksRequest {
+    xTenantId: string;
+    id: string;
+    authorization?: string;
+}
+
+export interface ListAnnotationsRequest {
+    xTenantId: string;
+    id: string;
+    taskId: string;
     authorization?: string;
 }
 
@@ -320,6 +406,27 @@ export interface ListUploadSessionPartsRequest {
 export interface PublishDatasetVersionRequest {
     xTenantId: string;
     id: string;
+    authorization?: string;
+}
+
+export interface ReturnAnnotationTaskRequest {
+    xTenantId: string;
+    id: string;
+    taskId: string;
+    authorization?: string;
+}
+
+export interface StartAnnotationTaskRequest {
+    xTenantId: string;
+    id: string;
+    taskId: string;
+    authorization?: string;
+}
+
+export interface SubmitAnnotationTaskRequest {
+    xTenantId: string;
+    id: string;
+    taskId: string;
     authorization?: string;
 }
 
@@ -593,6 +700,230 @@ export class DefaultApi extends runtime.BaseAPI {
      */
     async admitTrainingJob(requestParameters: AdmitTrainingJobRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TrainingJobResponse> {
         const response = await this.admitTrainingJobRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for approveAnnotationTask without sending the request
+     */
+    async approveAnnotationTaskRequestOpts(requestParameters: ApproveAnnotationTaskRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling approveAnnotationTask().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling approveAnnotationTask().'
+            );
+        }
+
+        if (requestParameters['taskId'] == null) {
+            throw new runtime.RequiredError(
+                'taskId',
+                'Required parameter "taskId" was null or undefined when calling approveAnnotationTask().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/annotation-projects/{id}/tasks/{taskId}/approve`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+        urlPath = urlPath.replace('{taskId}', encodeURIComponent(String(requestParameters['taskId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Approve an annotation task
+     */
+    async approveAnnotationTaskRaw(requestParameters: ApproveAnnotationTaskRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TaskResponse>> {
+        const requestOptions = await this.approveAnnotationTaskRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TaskResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Approve an annotation task
+     */
+    async approveAnnotationTask(requestParameters: ApproveAnnotationTaskRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TaskResponse> {
+        const response = await this.approveAnnotationTaskRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for assignAnnotationTask without sending the request
+     */
+    async assignAnnotationTaskRequestOpts(requestParameters: AssignAnnotationTaskRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling assignAnnotationTask().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling assignAnnotationTask().'
+            );
+        }
+
+        if (requestParameters['taskId'] == null) {
+            throw new runtime.RequiredError(
+                'taskId',
+                'Required parameter "taskId" was null or undefined when calling assignAnnotationTask().'
+            );
+        }
+
+        if (requestParameters['assignRequest'] == null) {
+            throw new runtime.RequiredError(
+                'assignRequest',
+                'Required parameter "assignRequest" was null or undefined when calling assignAnnotationTask().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/annotation-projects/{id}/tasks/{taskId}/assign`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+        urlPath = urlPath.replace('{taskId}', encodeURIComponent(String(requestParameters['taskId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: AssignRequestToJSON(requestParameters['assignRequest']),
+        };
+    }
+
+    /**
+     * Assign/claim an annotation task
+     */
+    async assignAnnotationTaskRaw(requestParameters: AssignAnnotationTaskRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TaskResponse>> {
+        const requestOptions = await this.assignAnnotationTaskRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TaskResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Assign/claim an annotation task
+     */
+    async assignAnnotationTask(requestParameters: AssignAnnotationTaskRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TaskResponse> {
+        const response = await this.assignAnnotationTaskRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for autosaveAnnotation without sending the request
+     */
+    async autosaveAnnotationRequestOpts(requestParameters: AutosaveAnnotationRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling autosaveAnnotation().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling autosaveAnnotation().'
+            );
+        }
+
+        if (requestParameters['taskId'] == null) {
+            throw new runtime.RequiredError(
+                'taskId',
+                'Required parameter "taskId" was null or undefined when calling autosaveAnnotation().'
+            );
+        }
+
+        if (requestParameters['autosaveRequest'] == null) {
+            throw new runtime.RequiredError(
+                'autosaveRequest',
+                'Required parameter "autosaveRequest" was null or undefined when calling autosaveAnnotation().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/annotation-projects/{id}/tasks/{taskId}/annotations`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+        urlPath = urlPath.replace('{taskId}', encodeURIComponent(String(requestParameters['taskId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: AutosaveRequestToJSON(requestParameters['autosaveRequest']),
+        };
+    }
+
+    /**
+     * Autosave an annotation
+     */
+    async autosaveAnnotationRaw(requestParameters: AutosaveAnnotationRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationResponse>> {
+        const requestOptions = await this.autosaveAnnotationRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AnnotationResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Autosave an annotation
+     */
+    async autosaveAnnotation(requestParameters: AutosaveAnnotationRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationResponse> {
+        const response = await this.autosaveAnnotationRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -900,6 +1231,76 @@ export class DefaultApi extends runtime.BaseAPI {
      */
     async createAnnotationProject(requestParameters: CreateAnnotationProjectOperationRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationProjectResponse> {
         const response = await this.createAnnotationProjectRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for createAnnotationTasks without sending the request
+     */
+    async createAnnotationTasksRequestOpts(requestParameters: CreateAnnotationTasksRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling createAnnotationTasks().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling createAnnotationTasks().'
+            );
+        }
+
+        if (requestParameters['createTasksRequest'] == null) {
+            throw new runtime.RequiredError(
+                'createTasksRequest',
+                'Required parameter "createTasksRequest" was null or undefined when calling createAnnotationTasks().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/annotation-projects/{id}/tasks`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: CreateTasksRequestToJSON(requestParameters['createTasksRequest']),
+        };
+    }
+
+    /**
+     * Create annotation tasks
+     */
+    async createAnnotationTasksRaw(requestParameters: CreateAnnotationTasksRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<TaskResponse>>> {
+        const requestOptions = await this.createAnnotationTasksRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(TaskResponseFromJSON));
+    }
+
+    /**
+     * Create annotation tasks
+     */
+    async createAnnotationTasks(requestParameters: CreateAnnotationTasksRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<TaskResponse>> {
+        const response = await this.createAnnotationTasksRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -1436,6 +1837,134 @@ export class DefaultApi extends runtime.BaseAPI {
     }
 
     /**
+     * Creates request options for getAnnotationTask without sending the request
+     */
+    async getAnnotationTaskRequestOpts(requestParameters: GetAnnotationTaskRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling getAnnotationTask().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling getAnnotationTask().'
+            );
+        }
+
+        if (requestParameters['taskId'] == null) {
+            throw new runtime.RequiredError(
+                'taskId',
+                'Required parameter "taskId" was null or undefined when calling getAnnotationTask().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/annotation-projects/{id}/tasks/{taskId}`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+        urlPath = urlPath.replace('{taskId}', encodeURIComponent(String(requestParameters['taskId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Get annotation task
+     */
+    async getAnnotationTaskRaw(requestParameters: GetAnnotationTaskRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TaskResponse>> {
+        const requestOptions = await this.getAnnotationTaskRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TaskResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Get annotation task
+     */
+    async getAnnotationTask(requestParameters: GetAnnotationTaskRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TaskResponse> {
+        const response = await this.getAnnotationTaskRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getAssetMediaUrl without sending the request
+     */
+    async getAssetMediaUrlRequestOpts(requestParameters: GetAssetMediaUrlRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling getAssetMediaUrl().'
+            );
+        }
+
+        if (requestParameters['assetId'] == null) {
+            throw new runtime.RequiredError(
+                'assetId',
+                'Required parameter "assetId" was null or undefined when calling getAssetMediaUrl().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/assets/{assetId}/media-url`;
+        urlPath = urlPath.replace('{assetId}', encodeURIComponent(String(requestParameters['assetId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Get short-lived signed media URL
+     */
+    async getAssetMediaUrlRaw(requestParameters: GetAssetMediaUrlRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<MediaUrlResponse>> {
+        const requestOptions = await this.getAssetMediaUrlRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => MediaUrlResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Get short-lived signed media URL
+     */
+    async getAssetMediaUrl(requestParameters: GetAssetMediaUrlRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<MediaUrlResponse> {
+        const response = await this.getAssetMediaUrlRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for getDataset without sending the request
      */
     async getDatasetRequestOpts(requestParameters: GetDatasetRequest): Promise<runtime.RequestOpts> {
@@ -1686,6 +2215,134 @@ export class DefaultApi extends runtime.BaseAPI {
      */
     async getUploadSession(requestParameters: GetUploadSessionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UploadSessionResponse> {
         const response = await this.getUploadSessionRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for listAnnotationTasks without sending the request
+     */
+    async listAnnotationTasksRequestOpts(requestParameters: ListAnnotationTasksRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling listAnnotationTasks().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling listAnnotationTasks().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/annotation-projects/{id}/tasks`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * List annotation tasks
+     */
+    async listAnnotationTasksRaw(requestParameters: ListAnnotationTasksRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<TaskResponse>>> {
+        const requestOptions = await this.listAnnotationTasksRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(TaskResponseFromJSON));
+    }
+
+    /**
+     * List annotation tasks
+     */
+    async listAnnotationTasks(requestParameters: ListAnnotationTasksRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<TaskResponse>> {
+        const response = await this.listAnnotationTasksRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for listAnnotations without sending the request
+     */
+    async listAnnotationsRequestOpts(requestParameters: ListAnnotationsRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling listAnnotations().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling listAnnotations().'
+            );
+        }
+
+        if (requestParameters['taskId'] == null) {
+            throw new runtime.RequiredError(
+                'taskId',
+                'Required parameter "taskId" was null or undefined when calling listAnnotations().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/annotation-projects/{id}/tasks/{taskId}/annotations`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+        urlPath = urlPath.replace('{taskId}', encodeURIComponent(String(requestParameters['taskId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * List annotations for a task
+     */
+    async listAnnotationsRaw(requestParameters: ListAnnotationsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<AnnotationResponse>>> {
+        const requestOptions = await this.listAnnotationsRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(AnnotationResponseFromJSON));
+    }
+
+    /**
+     * List annotations for a task
+     */
+    async listAnnotations(requestParameters: ListAnnotationsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<AnnotationResponse>> {
+        const response = await this.listAnnotationsRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -2166,6 +2823,210 @@ export class DefaultApi extends runtime.BaseAPI {
      */
     async publishDatasetVersion(requestParameters: PublishDatasetVersionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DatasetVersionResponse> {
         const response = await this.publishDatasetVersionRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for returnAnnotationTask without sending the request
+     */
+    async returnAnnotationTaskRequestOpts(requestParameters: ReturnAnnotationTaskRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling returnAnnotationTask().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling returnAnnotationTask().'
+            );
+        }
+
+        if (requestParameters['taskId'] == null) {
+            throw new runtime.RequiredError(
+                'taskId',
+                'Required parameter "taskId" was null or undefined when calling returnAnnotationTask().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/annotation-projects/{id}/tasks/{taskId}/return`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+        urlPath = urlPath.replace('{taskId}', encodeURIComponent(String(requestParameters['taskId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Return an annotation task for rework
+     */
+    async returnAnnotationTaskRaw(requestParameters: ReturnAnnotationTaskRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TaskResponse>> {
+        const requestOptions = await this.returnAnnotationTaskRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TaskResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Return an annotation task for rework
+     */
+    async returnAnnotationTask(requestParameters: ReturnAnnotationTaskRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TaskResponse> {
+        const response = await this.returnAnnotationTaskRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for startAnnotationTask without sending the request
+     */
+    async startAnnotationTaskRequestOpts(requestParameters: StartAnnotationTaskRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling startAnnotationTask().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling startAnnotationTask().'
+            );
+        }
+
+        if (requestParameters['taskId'] == null) {
+            throw new runtime.RequiredError(
+                'taskId',
+                'Required parameter "taskId" was null or undefined when calling startAnnotationTask().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/annotation-projects/{id}/tasks/{taskId}/start`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+        urlPath = urlPath.replace('{taskId}', encodeURIComponent(String(requestParameters['taskId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Start an assigned annotation task
+     */
+    async startAnnotationTaskRaw(requestParameters: StartAnnotationTaskRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TaskResponse>> {
+        const requestOptions = await this.startAnnotationTaskRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TaskResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Start an assigned annotation task
+     */
+    async startAnnotationTask(requestParameters: StartAnnotationTaskRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TaskResponse> {
+        const response = await this.startAnnotationTaskRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for submitAnnotationTask without sending the request
+     */
+    async submitAnnotationTaskRequestOpts(requestParameters: SubmitAnnotationTaskRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling submitAnnotationTask().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling submitAnnotationTask().'
+            );
+        }
+
+        if (requestParameters['taskId'] == null) {
+            throw new runtime.RequiredError(
+                'taskId',
+                'Required parameter "taskId" was null or undefined when calling submitAnnotationTask().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/annotation-projects/{id}/tasks/{taskId}/submit`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+        urlPath = urlPath.replace('{taskId}', encodeURIComponent(String(requestParameters['taskId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Submit annotations for review
+     */
+    async submitAnnotationTaskRaw(requestParameters: SubmitAnnotationTaskRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TaskResponse>> {
+        const requestOptions = await this.submitAnnotationTaskRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TaskResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Submit annotations for review
+     */
+    async submitAnnotationTask(requestParameters: SubmitAnnotationTaskRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TaskResponse> {
+        const response = await this.submitAnnotationTaskRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

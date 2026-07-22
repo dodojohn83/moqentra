@@ -632,6 +632,286 @@ paths:
               schema:
                 $ref: '#/components/schemas/AnnotationProjectResponse'
 
+  /v1/annotation-projects/{id}/tasks:
+    post:
+      operationId: createAnnotationTasks
+      summary: Create annotation tasks
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTasksRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TaskResponse'
+    get:
+      operationId: listAnnotationTasks
+      summary: List annotation tasks
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TaskResponse'
+
+  /v1/annotation-projects/{id}/tasks/{taskId}:
+    get:
+      operationId: getAnnotationTask
+      summary: Get annotation task
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+
+  /v1/annotation-projects/{id}/tasks/{taskId}/assign:
+    post:
+      operationId: assignAnnotationTask
+      summary: Assign/claim an annotation task
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignRequest'
+      responses:
+        '200':
+          description: Assigned task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+
+  /v1/annotation-projects/{id}/tasks/{taskId}/start:
+    post:
+      operationId: startAnnotationTask
+      summary: Start an assigned annotation task
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Started task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+
+  /v1/annotation-projects/{id}/tasks/{taskId}/submit:
+    post:
+      operationId: submitAnnotationTask
+      summary: Submit annotations for review
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Submitted task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+
+  /v1/annotation-projects/{id}/tasks/{taskId}/return:
+    post:
+      operationId: returnAnnotationTask
+      summary: Return an annotation task for rework
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Returned task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+
+  /v1/annotation-projects/{id}/tasks/{taskId}/approve:
+    post:
+      operationId: approveAnnotationTask
+      summary: Approve an annotation task
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Approved task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+
+  /v1/annotation-projects/{id}/tasks/{taskId}/annotations:
+    post:
+      operationId: autosaveAnnotation
+      summary: Autosave an annotation
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutosaveRequest'
+      responses:
+        '200':
+          description: Saved annotation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnotationResponse'
+    get:
+      operationId: listAnnotations
+      summary: List annotations for a task
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Annotation list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AnnotationResponse'
+
+  /v1/assets/{assetId}/media-url:
+    get:
+      operationId: getAssetMediaUrl
+      summary: Get short-lived signed media URL
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Signed URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaUrlResponse'
+
   /v1/outbox:
     get:
       operationId: listOutboxEvents
@@ -1035,6 +1315,82 @@ components:
         name:
           type: string
         state:
+          type: string
+
+    CreateTasksRequest:
+      type: object
+      required: [asset_ids]
+      properties:
+        asset_ids:
+          type: array
+          items:
+            type: string
+
+    TaskResponse:
+      type: object
+      required: [id, project_id, state, asset_ids]
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        state:
+          type: string
+        assignee:
+          type: string
+          nullable: true
+        asset_ids:
+          type: array
+          items:
+            type: string
+        lease_expires_at:
+          type: string
+          nullable: true
+
+    AssignRequest:
+      type: object
+      required: [ttl_seconds]
+      properties:
+        ttl_seconds:
+          type: integer
+          format: int64
+
+    AutosaveRequest:
+      type: object
+      required: [client_update_id, payload]
+      properties:
+        client_update_id:
+          type: string
+        payload:
+          type: object
+
+    AnnotationResponse:
+      type: object
+      required: [id, task_id, asset_id, revision, client_update_id, actor_id, payload]
+      properties:
+        id:
+          type: string
+        task_id:
+          type: string
+        asset_id:
+          type: string
+        revision:
+          type: integer
+          format: int64
+        client_update_id:
+          type: string
+        actor_id:
+          type: string
+        payload:
+          type: object
+
+    MediaUrlResponse:
+      type: object
+      required: [url, expires_at]
+      properties:
+        url:
+          type: string
+        expires_at:
           type: string
 
     Page:

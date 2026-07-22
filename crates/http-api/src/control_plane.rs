@@ -34,7 +34,7 @@ use moqentra_object_store::{
 };
 use moqentra_storage::{InMemoryOutbox, OutboxEvent, OutboxStatus, OutboxStore, PgRoleStore};
 use moqentra_types::{
-    AnnotationProjectId, DatasetId, DatasetVersionId, Error, ExperimentId, ModelId, Page,
+    AnnotationProjectId, AssetId, DatasetId, DatasetVersionId, Error, ExperimentId, ModelId, Page,
     PageRequest, Principal, ProjectId, RandomIdGenerator, RequestContext, TenantId, TrainingJobId,
     UtcTimestamp,
 };
@@ -118,7 +118,7 @@ struct WhoAmIResponse {
     request_id: String,
 }
 
-struct ApiError {
+pub(crate) struct ApiError {
     status: StatusCode,
     problem: ProblemDetails,
 }
@@ -150,7 +150,10 @@ fn header_str(headers: &HeaderMap, name: &str) -> Option<String> {
     headers.get(name).and_then(|v| v.to_str().ok()).map(|s| s.to_string())
 }
 
-async fn resolve_context(state: &AppState, headers: &HeaderMap) -> Result<RequestContext, Error> {
+pub(crate) async fn resolve_context(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<RequestContext, Error> {
     let request_id = header_str(headers, "x-request-id")
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| format!("req-{}", UtcTimestamp::now()));
@@ -230,7 +233,10 @@ async fn emit_event(
     let _ = state.outbox.append(event).await;
 }
 
-fn resolve_project_id(ctx: &RequestContext, body_project_id: &str) -> Result<ProjectId, Error> {
+pub(crate) fn resolve_project_id(
+    ctx: &RequestContext,
+    body_project_id: &str,
+) -> Result<ProjectId, Error> {
     if let Some(p) = ctx.project_id {
         if !body_project_id.is_empty() {
             let body = ProjectId::try_from(body_project_id)?;
@@ -246,7 +252,7 @@ fn resolve_project_id(ctx: &RequestContext, body_project_id: &str) -> Result<Pro
     }
 }
 
-fn check_rate_limit(state: &AppState, tenant_id: TenantId) -> Result<(), Error> {
+pub(crate) fn check_rate_limit(state: &AppState, tenant_id: TenantId) -> Result<(), Error> {
     let now = UtcTimestamp::now();
     let mut map = state.rate_limiters.lock().unwrap_or_else(|e| e.into_inner());
     let limiter = map.entry(tenant_id).or_insert_with(|| {
@@ -260,7 +266,7 @@ fn check_rate_limit(state: &AppState, tenant_id: TenantId) -> Result<(), Error> 
     Ok(())
 }
 
-async fn authorize(
+pub(crate) async fn authorize(
     state: &AppState,
     ctx: &RequestContext,
     action: Action,
@@ -303,7 +309,7 @@ async fn authorize(
     }
 }
 
-async fn audit_write(
+pub(crate) async fn audit_write(
     state: &AppState,
     ctx: &RequestContext,
     category: AuditCategory,
@@ -902,7 +908,9 @@ async fn add_dataset_version_asset(
     authorize(&state, &ctx, Action::Update, Resource::DatasetVersion).await?;
     let version_id = DatasetVersionId::try_from(version_id.as_str())?;
     let metadata = req.metadata.unwrap_or(serde_json::Value::Null);
+    let gen = RandomIdGenerator;
     let asset = AssetRef {
+        id: AssetId::new_v7(&gen),
         name: req.name,
         object_key: req.object_key,
         digest: req.digest,
@@ -995,37 +1003,44 @@ async fn publish_dataset_version(
             v.tenant_id,
             v.assets
                 .iter()
-                .map(|a| (a.name.clone(), a.object_key.clone(), a.media_type.clone()))
+                .map(|a| {
+                    (
+                        a.id.to_string(),
+                        a.name.clone(),
+                        a.object_key.clone(),
+                        a.media_type.clone(),
+                    )
+                })
                 .collect::<Vec<_>>(),
         )
     };
 
-    let mut failures: Vec<(String, String)> = Vec::new();
-    for (name, key, media_type) in &assets {
+    let mut failures: Vec<(String, String, String)> = Vec::new();
+    for (id, _name, key, media_type) in &assets {
         match state.object_store.get_object(key).await {
             Ok((bytes, _)) => {
                 if let Err(e) = state.media_validator.validate(&bytes, media_type).await {
-                    failures.push((name.clone(), e.to_string()));
+                    failures.push((id.clone(), _name.clone(), e.to_string()));
                 }
             }
-            Err(e) => failures.push((name.clone(), e.to_string())),
+            Err(e) => failures.push((id.clone(), _name.clone(), e.to_string())),
         }
     }
 
     let updated = {
         let mut reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
-        for (name, reason) in &failures {
-            reg.mark_asset_failed(tenant_id, version_id, name, reason)?;
+        for (id, _name, reason) in &failures {
+            reg.mark_asset_failed(tenant_id, version_id, id, reason)?;
         }
-        for (name, _, _) in &assets {
-            if !failures.iter().any(|(n, _)| n == name) {
-                reg.mark_asset_valid(tenant_id, version_id, name)?;
+        for (id, _name, _, _) in &assets {
+            if !failures.iter().any(|(fid, _, _)| fid == id) {
+                reg.mark_asset_valid(tenant_id, version_id, id)?;
             }
         }
         if !failures.is_empty() {
             return Err(Error::invalid_argument(format!(
                 "asset validation failed: {}",
-                failures.iter().map(|(_, r)| r.as_str()).collect::<Vec<_>>().join(", ")
+                failures.iter().map(|(_, _, r)| r.as_str()).collect::<Vec<_>>().join(", ")
             ))
             .into());
         }
@@ -1840,6 +1855,42 @@ pub fn app_router(state: AppState) -> Router {
         .route(
             "/v1/annotation-projects/{id}/activate",
             post(activate_annotation_project),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/tasks",
+            post(crate::annotation::create_tasks).get(crate::annotation::list_tasks),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/tasks/{taskId}",
+            get(crate::annotation::get_task),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/tasks/{taskId}/assign",
+            post(crate::annotation::assign_task),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/tasks/{taskId}/start",
+            post(crate::annotation::start_task),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/tasks/{taskId}/submit",
+            post(crate::annotation::submit_task),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/tasks/{taskId}/return",
+            post(crate::annotation::return_task),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/tasks/{taskId}/approve",
+            post(crate::annotation::approve_task),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/tasks/{taskId}/annotations",
+            post(crate::annotation::autosave_annotation).get(crate::annotation::list_annotations),
+        )
+        .route(
+            "/v1/assets/{assetId}/media-url",
+            get(crate::annotation::get_asset_media_url),
         )
         .route("/v1/outbox", get(list_outbox))
         .with_state(state.clone())

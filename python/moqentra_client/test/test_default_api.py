@@ -54,6 +54,27 @@ class TestDefaultApi(unittest.TestCase):
         """
         pass
 
+    def test_approve_annotation_task(self) -> None:
+        """Test case for approve_annotation_task
+
+        Approve an annotation task
+        """
+        pass
+
+    def test_assign_annotation_task(self) -> None:
+        """Test case for assign_annotation_task
+
+        Assign/claim an annotation task
+        """
+        pass
+
+    def test_autosave_annotation(self) -> None:
+        """Test case for autosave_annotation
+
+        Autosave an annotation
+        """
+        pass
+
     def test_cancel_import_job(self) -> None:
         """Test case for cancel_import_job
 
@@ -86,6 +107,13 @@ class TestDefaultApi(unittest.TestCase):
         """Test case for create_annotation_project
 
         Create annotation project
+        """
+        pass
+
+    def test_create_annotation_tasks(self) -> None:
+        """Test case for create_annotation_tasks
+
+        Create annotation tasks
         """
         pass
 
@@ -145,6 +173,20 @@ class TestDefaultApi(unittest.TestCase):
         """
         pass
 
+    def test_get_annotation_task(self) -> None:
+        """Test case for get_annotation_task
+
+        Get annotation task
+        """
+        pass
+
+    def test_get_asset_media_url(self) -> None:
+        """Test case for get_asset_media_url
+
+        Get short-lived signed media URL
+        """
+        pass
+
     def test_get_dataset(self) -> None:
         """Test case for get_dataset
 
@@ -177,6 +219,20 @@ class TestDefaultApi(unittest.TestCase):
         """Test case for get_upload_session
 
         Get upload session
+        """
+        pass
+
+    def test_list_annotation_tasks(self) -> None:
+        """Test case for list_annotation_tasks
+
+        List annotation tasks
+        """
+        pass
+
+    def test_list_annotations(self) -> None:
+        """Test case for list_annotations
+
+        List annotations for a task
         """
         pass
 
@@ -233,6 +289,27 @@ class TestDefaultApi(unittest.TestCase):
         """Test case for publish_dataset_version
 
         Publish a dataset version
+        """
+        pass
+
+    def test_return_annotation_task(self) -> None:
+        """Test case for return_annotation_task
+
+        Return an annotation task for rework
+        """
+        pass
+
+    def test_start_annotation_task(self) -> None:
+        """Test case for start_annotation_task
+
+        Start an assigned annotation task
+        """
+        pass
+
+    def test_submit_annotation_task(self) -> None:
+        """Test case for submit_annotation_task
+
+        Submit annotations for review
         """
         pass
 

@@ -8,11 +8,15 @@ Method | HTTP request | Description
 [**activate_annotation_project**](DefaultApi.md#activate_annotation_project) | **POST** /v1/annotation-projects/{id}/activate | Activate annotation project
 [**add_dataset_version_asset**](DefaultApi.md#add_dataset_version_asset) | **POST** /v1/dataset-versions/{id}/assets | Add an asset to a draft dataset version
 [**admit_training_job**](DefaultApi.md#admit_training_job) | **POST** /v1/training-jobs/{id}/admit | Admit a training job
+[**approve_annotation_task**](DefaultApi.md#approve_annotation_task) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/approve | Approve an annotation task
+[**assign_annotation_task**](DefaultApi.md#assign_annotation_task) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/assign | Assign/claim an annotation task
+[**autosave_annotation**](DefaultApi.md#autosave_annotation) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/annotations | Autosave an annotation
 [**cancel_import_job**](DefaultApi.md#cancel_import_job) | **DELETE** /v1/import-jobs/{id} | Cancel an import job
 [**cancel_training_job**](DefaultApi.md#cancel_training_job) | **POST** /v1/training-jobs/{id}/cancel | Cancel a training job
 [**compile_application**](DefaultApi.md#compile_application) | **POST** /v1/applications:compile | Compile an application graph
 [**complete_upload_session**](DefaultApi.md#complete_upload_session) | **POST** /v1/upload-sessions/{id}/complete | Complete an upload session
 [**create_annotation_project**](DefaultApi.md#create_annotation_project) | **POST** /v1/annotation-projects | Create annotation project
+[**create_annotation_tasks**](DefaultApi.md#create_annotation_tasks) | **POST** /v1/annotation-projects/{id}/tasks | Create annotation tasks
 [**create_dataset**](DefaultApi.md#create_dataset) | **POST** /v1/datasets | Create dataset
 [**create_dataset_version**](DefaultApi.md#create_dataset_version) | **POST** /v1/dataset-versions | Create dataset version
 [**create_experiment**](DefaultApi.md#create_experiment) | **POST** /v1/experiments | Create experiment
@@ -21,11 +25,15 @@ Method | HTTP request | Description
 [**create_training_job**](DefaultApi.md#create_training_job) | **POST** /v1/training-jobs | Create training job
 [**create_upload_session**](DefaultApi.md#create_upload_session) | **POST** /v1/upload-sessions | Create a multipart upload session
 [**generate_dataset_version_splits**](DefaultApi.md#generate_dataset_version_splits) | **POST** /v1/dataset-versions/{id}/splits | Generate deterministic train/val/test splits
+[**get_annotation_task**](DefaultApi.md#get_annotation_task) | **GET** /v1/annotation-projects/{id}/tasks/{taskId} | Get annotation task
+[**get_asset_media_url**](DefaultApi.md#get_asset_media_url) | **GET** /v1/assets/{assetId}/media-url | Get short-lived signed media URL
 [**get_dataset**](DefaultApi.md#get_dataset) | **GET** /v1/datasets/{id} | Get dataset by id
 [**get_health**](DefaultApi.md#get_health) | **GET** /healthz | Liveness probe
 [**get_import_job**](DefaultApi.md#get_import_job) | **GET** /v1/import-jobs/{id} | Get import job status
 [**get_ready**](DefaultApi.md#get_ready) | **GET** /readyz | Readiness probe
 [**get_upload_session**](DefaultApi.md#get_upload_session) | **GET** /v1/upload-sessions/{id} | Get upload session
+[**list_annotation_tasks**](DefaultApi.md#list_annotation_tasks) | **GET** /v1/annotation-projects/{id}/tasks | List annotation tasks
+[**list_annotations**](DefaultApi.md#list_annotations) | **GET** /v1/annotation-projects/{id}/tasks/{taskId}/annotations | List annotations for a task
 [**list_datasets**](DefaultApi.md#list_datasets) | **GET** /v1/datasets | List datasets for tenant
 [**list_experiments**](DefaultApi.md#list_experiments) | **GET** /v1/experiments | List experiments
 [**list_models**](DefaultApi.md#list_models) | **GET** /v1/models | List models
@@ -34,6 +42,9 @@ Method | HTTP request | Description
 [**list_training_jobs**](DefaultApi.md#list_training_jobs) | **GET** /v1/training-jobs | List training jobs
 [**list_upload_session_parts**](DefaultApi.md#list_upload_session_parts) | **GET** /v1/upload-sessions/{id}/parts | List upload session parts
 [**publish_dataset_version**](DefaultApi.md#publish_dataset_version) | **POST** /v1/dataset-versions/{id}/publish | Publish a dataset version
+[**return_annotation_task**](DefaultApi.md#return_annotation_task) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/return | Return an annotation task for rework
+[**start_annotation_task**](DefaultApi.md#start_annotation_task) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/start | Start an assigned annotation task
+[**submit_annotation_task**](DefaultApi.md#submit_annotation_task) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/submit | Submit annotations for review
 [**upload_part**](DefaultApi.md#upload_part) | **POST** /v1/upload-sessions/{id}/parts/{partNumber} | Upload a part
 [**who_am_i**](DefaultApi.md#who_am_i) | **GET** /v1/whoami | Resolve authenticated principal
 
@@ -317,6 +328,228 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 **200** | Job admitted |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **approve_annotation_task**
+> TaskResponse approve_annotation_task(x_tenant_id, id, task_id, authorization=authorization)
+
+Approve an annotation task
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.task_response import TaskResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    task_id = 'task_id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Approve an annotation task
+        api_response = api_instance.approve_annotation_task(x_tenant_id, id, task_id, authorization=authorization)
+        print("The response of DefaultApi->approve_annotation_task:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->approve_annotation_task: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **task_id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**TaskResponse**](TaskResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Approved task |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **assign_annotation_task**
+> TaskResponse assign_annotation_task(x_tenant_id, id, task_id, assign_request, authorization=authorization)
+
+Assign/claim an annotation task
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.assign_request import AssignRequest
+from moqentra_client.models.task_response import TaskResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    task_id = 'task_id_example' # str | 
+    assign_request = moqentra_client.AssignRequest() # AssignRequest | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Assign/claim an annotation task
+        api_response = api_instance.assign_annotation_task(x_tenant_id, id, task_id, assign_request, authorization=authorization)
+        print("The response of DefaultApi->assign_annotation_task:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->assign_annotation_task: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **task_id** | **str**|  | 
+ **assign_request** | [**AssignRequest**](AssignRequest.md)|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**TaskResponse**](TaskResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Assigned task |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **autosave_annotation**
+> AnnotationResponse autosave_annotation(x_tenant_id, id, task_id, autosave_request, authorization=authorization)
+
+Autosave an annotation
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.annotation_response import AnnotationResponse
+from moqentra_client.models.autosave_request import AutosaveRequest
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    task_id = 'task_id_example' # str | 
+    autosave_request = moqentra_client.AutosaveRequest() # AutosaveRequest | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Autosave an annotation
+        api_response = api_instance.autosave_annotation(x_tenant_id, id, task_id, autosave_request, authorization=authorization)
+        print("The response of DefaultApi->autosave_annotation:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->autosave_annotation: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **task_id** | **str**|  | 
+ **autosave_request** | [**AutosaveRequest**](AutosaveRequest.md)|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**AnnotationResponse**](AnnotationResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Saved annotation |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
@@ -653,6 +886,79 @@ Name | Type | Description  | Notes
 ### Return type
 
 [**AnnotationProjectResponse**](AnnotationProjectResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**201** | Created |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **create_annotation_tasks**
+> List[TaskResponse] create_annotation_tasks(x_tenant_id, id, create_tasks_request, authorization=authorization)
+
+Create annotation tasks
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.create_tasks_request import CreateTasksRequest
+from moqentra_client.models.task_response import TaskResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    create_tasks_request = moqentra_client.CreateTasksRequest() # CreateTasksRequest | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Create annotation tasks
+        api_response = api_instance.create_annotation_tasks(x_tenant_id, id, create_tasks_request, authorization=authorization)
+        print("The response of DefaultApi->create_annotation_tasks:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->create_annotation_tasks: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **create_tasks_request** | [**CreateTasksRequest**](CreateTasksRequest.md)|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**List[TaskResponse]**](TaskResponse.md)
 
 ### Authorization
 
@@ -1255,6 +1561,148 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **get_annotation_task**
+> TaskResponse get_annotation_task(x_tenant_id, id, task_id, authorization=authorization)
+
+Get annotation task
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.task_response import TaskResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    task_id = 'task_id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Get annotation task
+        api_response = api_instance.get_annotation_task(x_tenant_id, id, task_id, authorization=authorization)
+        print("The response of DefaultApi->get_annotation_task:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->get_annotation_task: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **task_id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**TaskResponse**](TaskResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Task |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **get_asset_media_url**
+> MediaUrlResponse get_asset_media_url(x_tenant_id, asset_id, authorization=authorization)
+
+Get short-lived signed media URL
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.media_url_response import MediaUrlResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    asset_id = 'asset_id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Get short-lived signed media URL
+        api_response = api_instance.get_asset_media_url(x_tenant_id, asset_id, authorization=authorization)
+        print("The response of DefaultApi->get_asset_media_url:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->get_asset_media_url: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **asset_id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**MediaUrlResponse**](MediaUrlResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Signed URL |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **get_dataset**
 > DatasetResponse get_dataset(x_tenant_id, id, authorization=authorization)
 
@@ -1587,6 +2035,148 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 **200** | Session |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **list_annotation_tasks**
+> List[TaskResponse] list_annotation_tasks(x_tenant_id, id, authorization=authorization)
+
+List annotation tasks
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.task_response import TaskResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # List annotation tasks
+        api_response = api_instance.list_annotation_tasks(x_tenant_id, id, authorization=authorization)
+        print("The response of DefaultApi->list_annotation_tasks:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->list_annotation_tasks: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**List[TaskResponse]**](TaskResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Task list |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **list_annotations**
+> List[AnnotationResponse] list_annotations(x_tenant_id, id, task_id, authorization=authorization)
+
+List annotations for a task
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.annotation_response import AnnotationResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    task_id = 'task_id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # List annotations for a task
+        api_response = api_instance.list_annotations(x_tenant_id, id, task_id, authorization=authorization)
+        print("The response of DefaultApi->list_annotations:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->list_annotations: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **task_id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**List[AnnotationResponse]**](AnnotationResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Annotation list |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
@@ -2157,6 +2747,222 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 **200** | Version published |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **return_annotation_task**
+> TaskResponse return_annotation_task(x_tenant_id, id, task_id, authorization=authorization)
+
+Return an annotation task for rework
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.task_response import TaskResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    task_id = 'task_id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Return an annotation task for rework
+        api_response = api_instance.return_annotation_task(x_tenant_id, id, task_id, authorization=authorization)
+        print("The response of DefaultApi->return_annotation_task:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->return_annotation_task: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **task_id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**TaskResponse**](TaskResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Returned task |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **start_annotation_task**
+> TaskResponse start_annotation_task(x_tenant_id, id, task_id, authorization=authorization)
+
+Start an assigned annotation task
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.task_response import TaskResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    task_id = 'task_id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Start an assigned annotation task
+        api_response = api_instance.start_annotation_task(x_tenant_id, id, task_id, authorization=authorization)
+        print("The response of DefaultApi->start_annotation_task:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->start_annotation_task: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **task_id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**TaskResponse**](TaskResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Started task |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **submit_annotation_task**
+> TaskResponse submit_annotation_task(x_tenant_id, id, task_id, authorization=authorization)
+
+Submit annotations for review
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.task_response import TaskResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    task_id = 'task_id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Submit annotations for review
+        api_response = api_instance.submit_annotation_task(x_tenant_id, id, task_id, authorization=authorization)
+        print("The response of DefaultApi->submit_annotation_task:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->submit_annotation_task: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **task_id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**TaskResponse**](TaskResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Submitted task |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 

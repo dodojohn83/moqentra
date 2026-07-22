@@ -30,6 +30,9 @@ __all__ = [
     "ApiException",
     "AddAssetRequest",
     "AnnotationProjectResponse",
+    "AnnotationResponse",
+    "AssignRequest",
+    "AutosaveRequest",
     "CompileRequest",
     "CompileResponse",
     "CreateAnnotationProjectRequest",
@@ -38,6 +41,7 @@ __all__ = [
     "CreateExperimentRequest",
     "CreateImportJobRequest",
     "CreateModelRequest",
+    "CreateTasksRequest",
     "CreateTrainingJobRequest",
     "CreateUploadSessionRequest",
     "DatasetResponse",
@@ -46,6 +50,7 @@ __all__ = [
     "GenerateSplitsRequest",
     "HealthResponse",
     "ImportJobResponse",
+    "MediaUrlResponse",
     "ModelResponse",
     "Operation",
     "OutboxEvent",
@@ -53,6 +58,7 @@ __all__ = [
     "ProblemDetails",
     "ProblemDetailsViolationsInner",
     "ReadyResponse",
+    "TaskResponse",
     "TrainingJobResponse",
     "UploadPartInfo",
     "UploadPartUrl",
@@ -77,6 +83,9 @@ from moqentra_client.exceptions import ApiException as ApiException
 # import models into sdk package
 from moqentra_client.models.add_asset_request import AddAssetRequest as AddAssetRequest
 from moqentra_client.models.annotation_project_response import AnnotationProjectResponse as AnnotationProjectResponse
+from moqentra_client.models.annotation_response import AnnotationResponse as AnnotationResponse
+from moqentra_client.models.assign_request import AssignRequest as AssignRequest
+from moqentra_client.models.autosave_request import AutosaveRequest as AutosaveRequest
 from moqentra_client.models.compile_request import CompileRequest as CompileRequest
 from moqentra_client.models.compile_response import CompileResponse as CompileResponse
 from moqentra_client.models.create_annotation_project_request import CreateAnnotationProjectRequest as CreateAnnotationProjectRequest
@@ -85,6 +94,7 @@ from moqentra_client.models.create_dataset_version_request import CreateDatasetV
 from moqentra_client.models.create_experiment_request import CreateExperimentRequest as CreateExperimentRequest
 from moqentra_client.models.create_import_job_request import CreateImportJobRequest as CreateImportJobRequest
 from moqentra_client.models.create_model_request import CreateModelRequest as CreateModelRequest
+from moqentra_client.models.create_tasks_request import CreateTasksRequest as CreateTasksRequest
 from moqentra_client.models.create_training_job_request import CreateTrainingJobRequest as CreateTrainingJobRequest
 from moqentra_client.models.create_upload_session_request import CreateUploadSessionRequest as CreateUploadSessionRequest
 from moqentra_client.models.dataset_response import DatasetResponse as DatasetResponse
@@ -93,6 +103,7 @@ from moqentra_client.models.experiment_response import ExperimentResponse as Exp
 from moqentra_client.models.generate_splits_request import GenerateSplitsRequest as GenerateSplitsRequest
 from moqentra_client.models.health_response import HealthResponse as HealthResponse
 from moqentra_client.models.import_job_response import ImportJobResponse as ImportJobResponse
+from moqentra_client.models.media_url_response import MediaUrlResponse as MediaUrlResponse
 from moqentra_client.models.model_response import ModelResponse as ModelResponse
 from moqentra_client.models.operation import Operation as Operation
 from moqentra_client.models.outbox_event import OutboxEvent as OutboxEvent
@@ -100,6 +111,7 @@ from moqentra_client.models.page import Page as Page
 from moqentra_client.models.problem_details import ProblemDetails as ProblemDetails
 from moqentra_client.models.problem_details_violations_inner import ProblemDetailsViolationsInner as ProblemDetailsViolationsInner
 from moqentra_client.models.ready_response import ReadyResponse as ReadyResponse
+from moqentra_client.models.task_response import TaskResponse as TaskResponse
 from moqentra_client.models.training_job_response import TrainingJobResponse as TrainingJobResponse
 from moqentra_client.models.upload_part_info import UploadPartInfo as UploadPartInfo
 from moqentra_client.models.upload_part_url import UploadPartUrl as UploadPartUrl

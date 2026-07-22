@@ -102,6 +102,30 @@ pub struct UploadPartUrl {
     pub part_number: i64,
     pub upload_url: String,
 }
+pub type ListAnnotationsResponse = Vec<AnnotationResponse>;
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AnnotationResponse {
+    pub actor_id: String,
+    pub asset_id: String,
+    pub client_update_id: String,
+    pub id: String,
+    pub payload: serde_json::Value,
+    pub revision: i64,
+    pub task_id: String,
+}
+pub type ListAnnotationTasksResponse = Vec<TaskResponse>;
+pub type CreateAnnotationTasksResponse201 = Vec<TaskResponse>;
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TaskResponse {
+    pub asset_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assignee: Option<String>,
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lease_expires_at: Option<String>,
+    pub project_id: String,
+    pub state: String,
+}
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AddAssetRequest {
     pub digest: String,
@@ -176,6 +200,15 @@ pub struct AnnotationProjectResponse {
     pub id: String,
     pub name: String,
     pub state: String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AssignRequest {
+    pub ttl_seconds: i64,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AutosaveRequest {
+    pub client_update_id: String,
+    pub payload: serde_json::Value,
 }
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct CompileRequest {
@@ -289,6 +322,10 @@ impl CreateImportJobRequestBuilder {
 pub struct CreateModelRequest {
     pub name: String,
     pub project_id: String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CreateTasksRequest {
+    pub asset_ids: Vec<String>,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateTrainingJobRequest {
@@ -445,6 +482,11 @@ pub struct ImportJobResponse {
     pub target_key: String,
     pub total_bytes: i64,
     pub transferred_bytes: i64,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MediaUrlResponse {
+    pub expires_at: String,
+    pub url: String,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ModelResponse {

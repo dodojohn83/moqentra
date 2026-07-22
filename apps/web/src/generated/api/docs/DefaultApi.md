@@ -8,11 +8,15 @@ All URIs are relative to *http://localhost*
 | [**activateAnnotationProject**](DefaultApi.md#activateannotationproject) | **POST** /v1/annotation-projects/{id}/activate | Activate annotation project |
 | [**addDatasetVersionAsset**](DefaultApi.md#adddatasetversionasset) | **POST** /v1/dataset-versions/{id}/assets | Add an asset to a draft dataset version |
 | [**admitTrainingJob**](DefaultApi.md#admittrainingjob) | **POST** /v1/training-jobs/{id}/admit | Admit a training job |
+| [**approveAnnotationTask**](DefaultApi.md#approveannotationtask) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/approve | Approve an annotation task |
+| [**assignAnnotationTask**](DefaultApi.md#assignannotationtask) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/assign | Assign/claim an annotation task |
+| [**autosaveAnnotation**](DefaultApi.md#autosaveannotation) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/annotations | Autosave an annotation |
 | [**cancelImportJob**](DefaultApi.md#cancelimportjob) | **DELETE** /v1/import-jobs/{id} | Cancel an import job |
 | [**cancelTrainingJob**](DefaultApi.md#canceltrainingjob) | **POST** /v1/training-jobs/{id}/cancel | Cancel a training job |
 | [**compileApplication**](DefaultApi.md#compileapplication) | **POST** /v1/applications:compile | Compile an application graph |
 | [**completeUploadSession**](DefaultApi.md#completeuploadsession) | **POST** /v1/upload-sessions/{id}/complete | Complete an upload session |
 | [**createAnnotationProject**](DefaultApi.md#createannotationprojectoperation) | **POST** /v1/annotation-projects | Create annotation project |
+| [**createAnnotationTasks**](DefaultApi.md#createannotationtasks) | **POST** /v1/annotation-projects/{id}/tasks | Create annotation tasks |
 | [**createDataset**](DefaultApi.md#createdatasetoperation) | **POST** /v1/datasets | Create dataset |
 | [**createDatasetVersion**](DefaultApi.md#createdatasetversionoperation) | **POST** /v1/dataset-versions | Create dataset version |
 | [**createExperiment**](DefaultApi.md#createexperimentoperation) | **POST** /v1/experiments | Create experiment |
@@ -21,11 +25,15 @@ All URIs are relative to *http://localhost*
 | [**createTrainingJob**](DefaultApi.md#createtrainingjoboperation) | **POST** /v1/training-jobs | Create training job |
 | [**createUploadSession**](DefaultApi.md#createuploadsessionoperation) | **POST** /v1/upload-sessions | Create a multipart upload session |
 | [**generateDatasetVersionSplits**](DefaultApi.md#generatedatasetversionsplits) | **POST** /v1/dataset-versions/{id}/splits | Generate deterministic train/val/test splits |
+| [**getAnnotationTask**](DefaultApi.md#getannotationtask) | **GET** /v1/annotation-projects/{id}/tasks/{taskId} | Get annotation task |
+| [**getAssetMediaUrl**](DefaultApi.md#getassetmediaurl) | **GET** /v1/assets/{assetId}/media-url | Get short-lived signed media URL |
 | [**getDataset**](DefaultApi.md#getdataset) | **GET** /v1/datasets/{id} | Get dataset by id |
 | [**getHealth**](DefaultApi.md#gethealth) | **GET** /healthz | Liveness probe |
 | [**getImportJob**](DefaultApi.md#getimportjob) | **GET** /v1/import-jobs/{id} | Get import job status |
 | [**getReady**](DefaultApi.md#getready) | **GET** /readyz | Readiness probe |
 | [**getUploadSession**](DefaultApi.md#getuploadsession) | **GET** /v1/upload-sessions/{id} | Get upload session |
+| [**listAnnotationTasks**](DefaultApi.md#listannotationtasks) | **GET** /v1/annotation-projects/{id}/tasks | List annotation tasks |
+| [**listAnnotations**](DefaultApi.md#listannotations) | **GET** /v1/annotation-projects/{id}/tasks/{taskId}/annotations | List annotations for a task |
 | [**listDatasets**](DefaultApi.md#listdatasets) | **GET** /v1/datasets | List datasets for tenant |
 | [**listExperiments**](DefaultApi.md#listexperiments) | **GET** /v1/experiments | List experiments |
 | [**listModels**](DefaultApi.md#listmodels) | **GET** /v1/models | List models |
@@ -34,6 +42,9 @@ All URIs are relative to *http://localhost*
 | [**listTrainingJobs**](DefaultApi.md#listtrainingjobs) | **GET** /v1/training-jobs | List training jobs |
 | [**listUploadSessionParts**](DefaultApi.md#listuploadsessionparts) | **GET** /v1/upload-sessions/{id}/parts | List upload session parts |
 | [**publishDatasetVersion**](DefaultApi.md#publishdatasetversion) | **POST** /v1/dataset-versions/{id}/publish | Publish a dataset version |
+| [**returnAnnotationTask**](DefaultApi.md#returnannotationtask) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/return | Return an annotation task for rework |
+| [**startAnnotationTask**](DefaultApi.md#startannotationtask) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/start | Start an assigned annotation task |
+| [**submitAnnotationTask**](DefaultApi.md#submitannotationtask) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/submit | Submit annotations for review |
 | [**uploadPart**](DefaultApi.md#uploadpart) | **POST** /v1/upload-sessions/{id}/parts/{partNumber} | Upload a part |
 | [**whoAmI**](DefaultApi.md#whoami) | **GET** /v1/whoami | Resolve authenticated principal |
 
@@ -325,6 +336,234 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Job admitted |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## approveAnnotationTask
+
+> TaskResponse approveAnnotationTask(xTenantId, id, taskId, authorization)
+
+Approve an annotation task
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ApproveAnnotationTaskRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string
+    taskId: taskId_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies ApproveAnnotationTaskRequest;
+
+  try {
+    const data = await api.approveAnnotationTask(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **taskId** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**TaskResponse**](TaskResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Approved task |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## assignAnnotationTask
+
+> TaskResponse assignAnnotationTask(xTenantId, id, taskId, assignRequest, authorization)
+
+Assign/claim an annotation task
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { AssignAnnotationTaskRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string
+    taskId: taskId_example,
+    // AssignRequest
+    assignRequest: ...,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies AssignAnnotationTaskRequest;
+
+  try {
+    const data = await api.assignAnnotationTask(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **taskId** | `string` |  | [Defaults to `undefined`] |
+| **assignRequest** | [AssignRequest](AssignRequest.md) |  | |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**TaskResponse**](TaskResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Assigned task |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## autosaveAnnotation
+
+> AnnotationResponse autosaveAnnotation(xTenantId, id, taskId, autosaveRequest, authorization)
+
+Autosave an annotation
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { AutosaveAnnotationRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string
+    taskId: taskId_example,
+    // AutosaveRequest
+    autosaveRequest: ...,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies AutosaveAnnotationRequest;
+
+  try {
+    const data = await api.autosaveAnnotation(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **taskId** | `string` |  | [Defaults to `undefined`] |
+| **autosaveRequest** | [AutosaveRequest](AutosaveRequest.md) |  | |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**AnnotationResponse**](AnnotationResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Saved annotation |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
@@ -668,6 +907,80 @@ example().catch(console.error);
 ### Return type
 
 [**AnnotationProjectResponse**](AnnotationProjectResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **201** | Created |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## createAnnotationTasks
+
+> Array&lt;TaskResponse&gt; createAnnotationTasks(xTenantId, id, createTasksRequest, authorization)
+
+Create annotation tasks
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { CreateAnnotationTasksRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // CreateTasksRequest
+    createTasksRequest: ...,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies CreateAnnotationTasksRequest;
+
+  try {
+    const data = await api.createAnnotationTasks(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **createTasksRequest** | [CreateTasksRequest](CreateTasksRequest.md) |  | |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**Array&lt;TaskResponse&gt;**](TaskResponse.md)
 
 ### Authorization
 
@@ -1279,6 +1592,151 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## getAnnotationTask
+
+> TaskResponse getAnnotationTask(xTenantId, id, taskId, authorization)
+
+Get annotation task
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetAnnotationTaskRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string
+    taskId: taskId_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies GetAnnotationTaskRequest;
+
+  try {
+    const data = await api.getAnnotationTask(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **taskId** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**TaskResponse**](TaskResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Task |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## getAssetMediaUrl
+
+> MediaUrlResponse getAssetMediaUrl(xTenantId, assetId, authorization)
+
+Get short-lived signed media URL
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetAssetMediaUrlRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    assetId: assetId_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies GetAssetMediaUrlRequest;
+
+  try {
+    const data = await api.getAssetMediaUrl(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **assetId** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**MediaUrlResponse**](MediaUrlResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Signed URL |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## getDataset
 
 > DatasetResponse getDataset(xTenantId, id, authorization)
@@ -1603,6 +2061,151 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Session |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## listAnnotationTasks
+
+> Array&lt;TaskResponse&gt; listAnnotationTasks(xTenantId, id, authorization)
+
+List annotation tasks
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ListAnnotationTasksRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies ListAnnotationTasksRequest;
+
+  try {
+    const data = await api.listAnnotationTasks(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**Array&lt;TaskResponse&gt;**](TaskResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Task list |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## listAnnotations
+
+> Array&lt;AnnotationResponse&gt; listAnnotations(xTenantId, id, taskId, authorization)
+
+List annotations for a task
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ListAnnotationsRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string
+    taskId: taskId_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies ListAnnotationsRequest;
+
+  try {
+    const data = await api.listAnnotations(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **taskId** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**Array&lt;AnnotationResponse&gt;**](AnnotationResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Annotation list |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
@@ -2186,6 +2789,228 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Version published |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## returnAnnotationTask
+
+> TaskResponse returnAnnotationTask(xTenantId, id, taskId, authorization)
+
+Return an annotation task for rework
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ReturnAnnotationTaskRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string
+    taskId: taskId_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies ReturnAnnotationTaskRequest;
+
+  try {
+    const data = await api.returnAnnotationTask(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **taskId** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**TaskResponse**](TaskResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Returned task |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## startAnnotationTask
+
+> TaskResponse startAnnotationTask(xTenantId, id, taskId, authorization)
+
+Start an assigned annotation task
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { StartAnnotationTaskRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string
+    taskId: taskId_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies StartAnnotationTaskRequest;
+
+  try {
+    const data = await api.startAnnotationTask(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **taskId** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**TaskResponse**](TaskResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Started task |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## submitAnnotationTask
+
+> TaskResponse submitAnnotationTask(xTenantId, id, taskId, authorization)
+
+Submit annotations for review
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { SubmitAnnotationTaskRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string
+    taskId: taskId_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies SubmitAnnotationTaskRequest;
+
+  try {
+    const data = await api.submitAnnotationTask(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **taskId** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**TaskResponse**](TaskResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Submitted task |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 

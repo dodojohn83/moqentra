@@ -310,6 +310,28 @@ impl InMemoryDatasetRegistry {
         Self::default()
     }
 
+    /// Find an asset by id across all dataset versions.
+    pub fn find_asset(
+        &self,
+        tenant_id: TenantId,
+        asset_id: moqentra_types::AssetId,
+    ) -> Option<(
+        moqentra_types::DatasetVersionId,
+        moqentra_domain::dataset::AssetRef,
+    )> {
+        for v in self.versions.values() {
+            if v.tenant_id != tenant_id {
+                continue;
+            }
+            for a in &v.assets {
+                if a.id == asset_id {
+                    return Some((v.id, a.clone()));
+                }
+            }
+        }
+        None
+    }
+
     /// Return all object keys referenced by dataset version assets.
     pub fn referenced_object_keys(&self) -> std::collections::BTreeSet<String> {
         let mut keys = std::collections::BTreeSet::new();
@@ -321,13 +343,14 @@ impl InMemoryDatasetRegistry {
         keys
     }
 
-    /// Return pending (tenant_id, version_id, asset_name, object_key, media_type)
+    /// Return pending (tenant_id, version_id, asset_id, asset_name, object_key, media_type)
     /// tuples that need media validation.
     pub fn pending_validations(
         &self,
     ) -> Vec<(
         moqentra_types::TenantId,
         moqentra_types::DatasetVersionId,
+        String,
         String,
         String,
         String,
@@ -342,11 +365,13 @@ impl InMemoryDatasetRegistry {
                 continue;
             }
             for a in &v.assets {
-                match v.asset_validations.get(&a.name) {
+                let key = a.id.to_string();
+                match v.asset_validations.get(&key) {
                     None | Some(moqentra_domain::dataset::AssetValidation::Pending) => {
                         out.push((
                             v.tenant_id,
                             v.id,
+                            key,
                             a.name.clone(),
                             a.object_key.clone(),
                             a.media_type.clone(),

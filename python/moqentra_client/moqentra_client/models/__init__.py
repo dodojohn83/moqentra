@@ -15,6 +15,9 @@
 # import models into model package
 from moqentra_client.models.add_asset_request import AddAssetRequest
 from moqentra_client.models.annotation_project_response import AnnotationProjectResponse
+from moqentra_client.models.annotation_response import AnnotationResponse
+from moqentra_client.models.assign_request import AssignRequest
+from moqentra_client.models.autosave_request import AutosaveRequest
 from moqentra_client.models.compile_request import CompileRequest
 from moqentra_client.models.compile_response import CompileResponse
 from moqentra_client.models.create_annotation_project_request import CreateAnnotationProjectRequest
@@ -23,6 +26,7 @@ from moqentra_client.models.create_dataset_version_request import CreateDatasetV
 from moqentra_client.models.create_experiment_request import CreateExperimentRequest
 from moqentra_client.models.create_import_job_request import CreateImportJobRequest
 from moqentra_client.models.create_model_request import CreateModelRequest
+from moqentra_client.models.create_tasks_request import CreateTasksRequest
 from moqentra_client.models.create_training_job_request import CreateTrainingJobRequest
 from moqentra_client.models.create_upload_session_request import CreateUploadSessionRequest
 from moqentra_client.models.dataset_response import DatasetResponse
@@ -31,6 +35,7 @@ from moqentra_client.models.experiment_response import ExperimentResponse
 from moqentra_client.models.generate_splits_request import GenerateSplitsRequest
 from moqentra_client.models.health_response import HealthResponse
 from moqentra_client.models.import_job_response import ImportJobResponse
+from moqentra_client.models.media_url_response import MediaUrlResponse
 from moqentra_client.models.model_response import ModelResponse
 from moqentra_client.models.operation import Operation
 from moqentra_client.models.outbox_event import OutboxEvent
@@ -38,6 +43,7 @@ from moqentra_client.models.page import Page
 from moqentra_client.models.problem_details import ProblemDetails
 from moqentra_client.models.problem_details_violations_inner import ProblemDetailsViolationsInner
 from moqentra_client.models.ready_response import ReadyResponse
+from moqentra_client.models.task_response import TaskResponse
 from moqentra_client.models.training_job_response import TrainingJobResponse
 from moqentra_client.models.upload_part_info import UploadPartInfo
 from moqentra_client.models.upload_part_url import UploadPartUrl

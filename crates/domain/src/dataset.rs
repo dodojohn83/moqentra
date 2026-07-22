@@ -55,6 +55,7 @@ impl FromStr for DatasetVersionState {
 /// A dataset asset reference.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssetRef {
+    pub id: moqentra_types::AssetId,
     pub name: String,
     pub object_key: String,
     pub digest: String,
@@ -149,7 +150,7 @@ impl DatasetVersion {
                 "cannot modify a published or deprecated dataset version",
             ));
         }
-        if self.assets.iter().any(|a| a.name == asset.name) {
+        if self.assets.iter().any(|a| a.id == asset.id || a.name == asset.name) {
             return Err(moqentra_types::Error::conflict(
                 "asset name already exists in version",
             ));
@@ -160,15 +161,15 @@ impl DatasetVersion {
             ));
         }
         asset.validate()?;
-        self.asset_validations.insert(asset.name.clone(), AssetValidation::Pending);
+        self.asset_validations.insert(asset.id.to_string(), AssetValidation::Pending);
         self.assets.push(asset);
         Ok(())
     }
 
-    pub fn mark_asset_valid(&mut self, name: &str) -> Result<(), moqentra_types::Error> {
+    pub fn mark_asset_valid(&mut self, id: &str) -> Result<(), moqentra_types::Error> {
         self.ensure_modifiable()?;
-        if self.assets.iter().any(|a| a.name == name) {
-            self.asset_validations.insert(name.to_string(), AssetValidation::Valid);
+        if self.assets.iter().any(|a| a.id.to_string() == id) {
+            self.asset_validations.insert(id.to_string(), AssetValidation::Valid);
             Ok(())
         } else {
             Err(moqentra_types::Error::not_found("asset"))
@@ -177,13 +178,13 @@ impl DatasetVersion {
 
     pub fn mark_asset_failed(
         &mut self,
-        name: &str,
+        id: &str,
         reason: impl Into<String>,
     ) -> Result<(), moqentra_types::Error> {
         self.ensure_modifiable()?;
-        if self.assets.iter().any(|a| a.name == name) {
+        if self.assets.iter().any(|a| a.id.to_string() == id) {
             self.asset_validations
-                .insert(name.to_string(), AssetValidation::Failed(reason.into()));
+                .insert(id.to_string(), AssetValidation::Failed(reason.into()));
             Ok(())
         } else {
             Err(moqentra_types::Error::not_found("asset"))
@@ -194,7 +195,7 @@ impl DatasetVersion {
         !self.assets.is_empty()
             && self.assets.iter().all(|a| {
                 matches!(
-                    self.asset_validations.get(&a.name),
+                    self.asset_validations.get(&a.id.to_string()),
                     Some(AssetValidation::Valid)
                 )
             })
@@ -428,7 +429,9 @@ pub fn compute_manifest_digest(version: &DatasetVersion) -> Result<String, moqen
 #[cfg(test)]
 mod tests {
     use super::*;
-    use moqentra_types::{DatasetId, DatasetVersionId, ProjectId, RandomIdGenerator, TenantId};
+    use moqentra_types::{
+        AssetId, DatasetId, DatasetVersionId, ProjectId, RandomIdGenerator, TenantId,
+    };
 
     #[test]
     fn dataset_version_lifecycle() {
@@ -439,26 +442,28 @@ mod tests {
         let mut version =
             DatasetVersion::new(DatasetVersionId::new_v7(&gen), dataset, tenant, project);
 
-        version
-            .add_asset(AssetRef {
-                name: "train.parquet".to_string(),
-                object_key: "tenants/.../train.parquet".to_string(),
-                digest: "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-                    .to_string(),
-                size: 1024,
-                media_type: "application/octet-stream".to_string(),
-                metadata: serde_json::json!({}),
-            })
-            .unwrap();
+        let asset1 = AssetRef {
+            id: AssetId::new_v7(&gen),
+            name: "train.parquet".to_string(),
+            object_key: "tenants/.../train.parquet".to_string(),
+            digest: "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                .to_string(),
+            size: 1024,
+            media_type: "application/octet-stream".to_string(),
+            metadata: serde_json::json!({}),
+        };
+        let asset1_id = asset1.id.to_string();
+        version.add_asset(asset1).unwrap();
 
         version.set_splits(serde_json::json!({"train": 0.8, "test": 0.2})).unwrap();
-        version.mark_asset_valid("train.parquet").unwrap();
+        version.mark_asset_valid(&asset1_id).unwrap();
         version.publish().unwrap();
         assert!(matches!(version.state, DatasetVersionState::Published));
         assert!(version.manifest_digest.is_some());
 
         assert!(version
             .add_asset(AssetRef {
+                id: AssetId::new_v7(&gen),
                 name: "extra.parquet".to_string(),
                 object_key: "x".to_string(),
                 digest: "sha256:cb8379ac2098aa165029e3938a51da0bcecfc008fd6795f401178647f96c5b34"
@@ -478,18 +483,19 @@ mod tests {
         let dataset = DatasetId::new_v7(&gen);
         let mut version =
             DatasetVersion::new(DatasetVersionId::new_v7(&gen), dataset, tenant, project);
-        version
-            .add_asset(AssetRef {
-                name: "a.bin".to_string(),
-                object_key: "a".to_string(),
-                digest: "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
-                    .to_string(),
-                size: 1,
-                media_type: "application/octet-stream".to_string(),
-                metadata: serde_json::json!({}),
-            })
-            .unwrap();
-        version.mark_asset_valid("a.bin").unwrap();
+        let asset_a = AssetRef {
+            id: AssetId::new_v7(&gen),
+            name: "a.bin".to_string(),
+            object_key: "a".to_string(),
+            digest: "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+                .to_string(),
+            size: 1,
+            media_type: "application/octet-stream".to_string(),
+            metadata: serde_json::json!({}),
+        };
+        let asset_a_id = asset_a.id.to_string();
+        version.add_asset(asset_a).unwrap();
+        version.mark_asset_valid(&asset_a_id).unwrap();
         version.publish().unwrap();
         assert!(version.set_splits(serde_json::json!({})).is_err());
     }

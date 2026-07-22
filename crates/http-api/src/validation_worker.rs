@@ -15,7 +15,7 @@ pub fn spawn_media_validation_worker(state: AppState) {
                 reg.pending_validations()
             };
 
-            for (tenant_id, version_id, asset_name, object_key, media_type) in pending {
+            for (tenant_id, version_id, asset_id, _asset_name, object_key, media_type) in pending {
                 let result = async {
                     let (bytes, _) = state
                         .object_store
@@ -32,10 +32,8 @@ pub fn spawn_media_validation_worker(state: AppState) {
 
                 let mut reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
                 let _ = match result {
-                    Ok(_) => reg.mark_asset_valid(tenant_id, version_id, &asset_name),
-                    Err(reason) => {
-                        reg.mark_asset_failed(tenant_id, version_id, &asset_name, reason)
-                    }
+                    Ok(_) => reg.mark_asset_valid(tenant_id, version_id, &asset_id),
+                    Err(reason) => reg.mark_asset_failed(tenant_id, version_id, &asset_id, reason),
                 };
             }
 

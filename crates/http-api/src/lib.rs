@@ -5,6 +5,7 @@
 
 #![allow(missing_docs)]
 
+pub mod annotation;
 pub mod control_plane;
 pub mod gc_worker;
 pub mod import;

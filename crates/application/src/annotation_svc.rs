@@ -1,13 +1,20 @@
 //! Annotation project application services.
 
-use moqentra_domain::annotation::{AnnotationProject, AnnotationProjectState};
-use moqentra_types::{AnnotationProjectId, Error, ProjectId, TenantId};
+use moqentra_domain::annotation::{
+    Annotation, AnnotationLog, AnnotationProject, AnnotationProjectState, AnnotationTask,
+    AnnotationTaskState, AutosaveResult,
+};
+use moqentra_types::{
+    AnnotationProjectId, AnnotationTaskId, AssetId, Error, ProjectId, TenantId, UserId,
+};
 use std::collections::BTreeMap;
 
 /// In-memory annotation project registry.
 #[derive(Debug, Default)]
 pub struct InMemoryAnnotationRegistry {
     projects: BTreeMap<AnnotationProjectId, AnnotationProject>,
+    tasks: BTreeMap<AnnotationTaskId, AnnotationTask>,
+    logs: BTreeMap<AnnotationTaskId, AnnotationLog>,
 }
 
 impl InMemoryAnnotationRegistry {
@@ -86,6 +93,195 @@ impl InMemoryAnnotationRegistry {
         }
         p.archive()?;
         Ok(p)
+    }
+
+    /// Create annotation tasks for a project, one per asset in `asset_ids`.
+    pub fn create_tasks(
+        &mut self,
+        tenant_id: TenantId,
+        project_id: AnnotationProjectId,
+        task_ids: Vec<AnnotationTaskId>,
+        asset_ids: Vec<AssetId>,
+    ) -> Result<Vec<AnnotationTask>, Error> {
+        let p = self.get_project(tenant_id, project_id)?;
+        if !matches!(p.state, AnnotationProjectState::Active) {
+            return Err(Error::conflict("project is not active"));
+        }
+        if task_ids.len() != asset_ids.len() {
+            return Err(Error::invalid_argument(
+                "task_ids and asset_ids must have the same length",
+            ));
+        }
+        let mut created = Vec::with_capacity(task_ids.len());
+        for (task_id, asset_id) in task_ids.into_iter().zip(asset_ids.into_iter()) {
+            if self.tasks.contains_key(&task_id) {
+                return Err(Error::conflict("task id already exists"));
+            }
+            let task = AnnotationTask::new(task_id, project_id, tenant_id, vec![asset_id])?;
+            self.tasks.insert(task.id, task.clone());
+            self.logs.entry(task.id).or_default();
+            created.push(task);
+        }
+        Ok(created)
+    }
+
+    /// List tasks for a project, optionally filtered by state.
+    pub fn list_tasks(
+        &self,
+        tenant_id: TenantId,
+        project_id: AnnotationProjectId,
+        state: Option<AnnotationTaskState>,
+    ) -> Result<Vec<AnnotationTask>, Error> {
+        self.get_project(tenant_id, project_id)?;
+        Ok(self
+            .tasks
+            .values()
+            .filter(|t| t.tenant_id == tenant_id && t.project_id == project_id)
+            .filter(|t| state.is_none_or(|s| t.state == s))
+            .cloned()
+            .collect())
+    }
+
+    /// Get a single task with tenant isolation.
+    pub fn get_task(
+        &self,
+        tenant_id: TenantId,
+        task_id: AnnotationTaskId,
+    ) -> Result<&AnnotationTask, Error> {
+        let t = self.tasks.get(&task_id).ok_or_else(|| Error::not_found("annotation task"))?;
+        if t.tenant_id != tenant_id {
+            return Err(Error::not_found("annotation task"));
+        }
+        Ok(t)
+    }
+
+    /// Assign/claim a task with a time-bounded lease.
+    pub fn assign_task(
+        &mut self,
+        tenant_id: TenantId,
+        task_id: AnnotationTaskId,
+        assignee: UserId,
+        fencing_token: u64,
+        expires_at: moqentra_types::UtcTimestamp,
+    ) -> Result<&AnnotationTask, Error> {
+        let t = self
+            .tasks
+            .get_mut(&task_id)
+            .ok_or_else(|| Error::not_found("annotation task"))?;
+        if t.tenant_id != tenant_id {
+            return Err(Error::not_found("annotation task"));
+        }
+        t.assign(assignee, fencing_token, expires_at)?;
+        Ok(t)
+    }
+
+    /// Start a task (worker confirms they are actively annotating).
+    pub fn start_task(
+        &mut self,
+        tenant_id: TenantId,
+        task_id: AnnotationTaskId,
+        assignee: UserId,
+        fencing_token: u64,
+    ) -> Result<&AnnotationTask, Error> {
+        let t = self
+            .tasks
+            .get_mut(&task_id)
+            .ok_or_else(|| Error::not_found("annotation task"))?;
+        if t.tenant_id != tenant_id {
+            return Err(Error::not_found("annotation task"));
+        }
+        t.start(assignee, fencing_token)?;
+        Ok(t)
+    }
+
+    /// Submit annotations for review.
+    pub fn submit_task(
+        &mut self,
+        tenant_id: TenantId,
+        task_id: AnnotationTaskId,
+        assignee: UserId,
+        fencing_token: u64,
+    ) -> Result<&AnnotationTask, Error> {
+        let t = self
+            .tasks
+            .get_mut(&task_id)
+            .ok_or_else(|| Error::not_found("annotation task"))?;
+        if t.tenant_id != tenant_id {
+            return Err(Error::not_found("annotation task"));
+        }
+        t.submit(assignee, fencing_token)?;
+        Ok(t)
+    }
+
+    /// Return a submitted/reviewing task for rework.
+    pub fn return_task(
+        &mut self,
+        tenant_id: TenantId,
+        task_id: AnnotationTaskId,
+    ) -> Result<&AnnotationTask, Error> {
+        let t = self
+            .tasks
+            .get_mut(&task_id)
+            .ok_or_else(|| Error::not_found("annotation task"))?;
+        if t.tenant_id != tenant_id {
+            return Err(Error::not_found("annotation task"));
+        }
+        t.return_for_rework()?;
+        Ok(t)
+    }
+
+    /// Approve a submitted/reviewing task.
+    pub fn approve_task(
+        &mut self,
+        tenant_id: TenantId,
+        task_id: AnnotationTaskId,
+    ) -> Result<&AnnotationTask, Error> {
+        let t = self
+            .tasks
+            .get_mut(&task_id)
+            .ok_or_else(|| Error::not_found("annotation task"))?;
+        if t.tenant_id != tenant_id {
+            return Err(Error::not_found("annotation task"));
+        }
+        t.approve()?;
+        Ok(t)
+    }
+
+    /// Autosave an annotation for a task, with idempotent client_update_id.
+    pub fn autosave(
+        &mut self,
+        tenant_id: TenantId,
+        task_id: AnnotationTaskId,
+        annotation: Annotation,
+    ) -> Result<AutosaveResult, Error> {
+        let t = self.tasks.get(&task_id).ok_or_else(|| Error::not_found("annotation task"))?;
+        if t.tenant_id != tenant_id {
+            return Err(Error::not_found("annotation task"));
+        }
+        if !t.asset_ids.contains(&annotation.asset_id) {
+            return Err(Error::invalid_argument(
+                "asset does not belong to this task",
+            ));
+        }
+        if t.lease.as_ref().is_none_or(|l| l.assignee_id != annotation.actor_id) {
+            return Err(Error::permission_denied("task not assigned to actor"));
+        }
+        let log = self.logs.entry(task_id).or_default();
+        log.autosave(annotation)
+    }
+
+    /// List annotations for a task.
+    pub fn list_annotations(
+        &self,
+        tenant_id: TenantId,
+        task_id: AnnotationTaskId,
+    ) -> Result<Vec<Annotation>, Error> {
+        let t = self.tasks.get(&task_id).ok_or_else(|| Error::not_found("annotation task"))?;
+        if t.tenant_id != tenant_id {
+            return Err(Error::not_found("annotation task"));
+        }
+        let log = self.logs.get(&task_id).ok_or_else(|| Error::not_found("annotation log"))?;
+        Ok(log.get_all().into_iter().cloned().collect())
     }
 
     /// Active project count (ops metric).

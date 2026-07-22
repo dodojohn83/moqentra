@@ -89,11 +89,15 @@ Class | Method | HTTP request | Description
 *DefaultApi* | [**activate_annotation_project**](docs/DefaultApi.md#activate_annotation_project) | **POST** /v1/annotation-projects/{id}/activate | Activate annotation project
 *DefaultApi* | [**add_dataset_version_asset**](docs/DefaultApi.md#add_dataset_version_asset) | **POST** /v1/dataset-versions/{id}/assets | Add an asset to a draft dataset version
 *DefaultApi* | [**admit_training_job**](docs/DefaultApi.md#admit_training_job) | **POST** /v1/training-jobs/{id}/admit | Admit a training job
+*DefaultApi* | [**approve_annotation_task**](docs/DefaultApi.md#approve_annotation_task) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/approve | Approve an annotation task
+*DefaultApi* | [**assign_annotation_task**](docs/DefaultApi.md#assign_annotation_task) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/assign | Assign/claim an annotation task
+*DefaultApi* | [**autosave_annotation**](docs/DefaultApi.md#autosave_annotation) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/annotations | Autosave an annotation
 *DefaultApi* | [**cancel_import_job**](docs/DefaultApi.md#cancel_import_job) | **DELETE** /v1/import-jobs/{id} | Cancel an import job
 *DefaultApi* | [**cancel_training_job**](docs/DefaultApi.md#cancel_training_job) | **POST** /v1/training-jobs/{id}/cancel | Cancel a training job
 *DefaultApi* | [**compile_application**](docs/DefaultApi.md#compile_application) | **POST** /v1/applications:compile | Compile an application graph
 *DefaultApi* | [**complete_upload_session**](docs/DefaultApi.md#complete_upload_session) | **POST** /v1/upload-sessions/{id}/complete | Complete an upload session
 *DefaultApi* | [**create_annotation_project**](docs/DefaultApi.md#create_annotation_project) | **POST** /v1/annotation-projects | Create annotation project
+*DefaultApi* | [**create_annotation_tasks**](docs/DefaultApi.md#create_annotation_tasks) | **POST** /v1/annotation-projects/{id}/tasks | Create annotation tasks
 *DefaultApi* | [**create_dataset**](docs/DefaultApi.md#create_dataset) | **POST** /v1/datasets | Create dataset
 *DefaultApi* | [**create_dataset_version**](docs/DefaultApi.md#create_dataset_version) | **POST** /v1/dataset-versions | Create dataset version
 *DefaultApi* | [**create_experiment**](docs/DefaultApi.md#create_experiment) | **POST** /v1/experiments | Create experiment
@@ -102,11 +106,15 @@ Class | Method | HTTP request | Description
 *DefaultApi* | [**create_training_job**](docs/DefaultApi.md#create_training_job) | **POST** /v1/training-jobs | Create training job
 *DefaultApi* | [**create_upload_session**](docs/DefaultApi.md#create_upload_session) | **POST** /v1/upload-sessions | Create a multipart upload session
 *DefaultApi* | [**generate_dataset_version_splits**](docs/DefaultApi.md#generate_dataset_version_splits) | **POST** /v1/dataset-versions/{id}/splits | Generate deterministic train/val/test splits
+*DefaultApi* | [**get_annotation_task**](docs/DefaultApi.md#get_annotation_task) | **GET** /v1/annotation-projects/{id}/tasks/{taskId} | Get annotation task
+*DefaultApi* | [**get_asset_media_url**](docs/DefaultApi.md#get_asset_media_url) | **GET** /v1/assets/{assetId}/media-url | Get short-lived signed media URL
 *DefaultApi* | [**get_dataset**](docs/DefaultApi.md#get_dataset) | **GET** /v1/datasets/{id} | Get dataset by id
 *DefaultApi* | [**get_health**](docs/DefaultApi.md#get_health) | **GET** /healthz | Liveness probe
 *DefaultApi* | [**get_import_job**](docs/DefaultApi.md#get_import_job) | **GET** /v1/import-jobs/{id} | Get import job status
 *DefaultApi* | [**get_ready**](docs/DefaultApi.md#get_ready) | **GET** /readyz | Readiness probe
 *DefaultApi* | [**get_upload_session**](docs/DefaultApi.md#get_upload_session) | **GET** /v1/upload-sessions/{id} | Get upload session
+*DefaultApi* | [**list_annotation_tasks**](docs/DefaultApi.md#list_annotation_tasks) | **GET** /v1/annotation-projects/{id}/tasks | List annotation tasks
+*DefaultApi* | [**list_annotations**](docs/DefaultApi.md#list_annotations) | **GET** /v1/annotation-projects/{id}/tasks/{taskId}/annotations | List annotations for a task
 *DefaultApi* | [**list_datasets**](docs/DefaultApi.md#list_datasets) | **GET** /v1/datasets | List datasets for tenant
 *DefaultApi* | [**list_experiments**](docs/DefaultApi.md#list_experiments) | **GET** /v1/experiments | List experiments
 *DefaultApi* | [**list_models**](docs/DefaultApi.md#list_models) | **GET** /v1/models | List models
@@ -115,6 +123,9 @@ Class | Method | HTTP request | Description
 *DefaultApi* | [**list_training_jobs**](docs/DefaultApi.md#list_training_jobs) | **GET** /v1/training-jobs | List training jobs
 *DefaultApi* | [**list_upload_session_parts**](docs/DefaultApi.md#list_upload_session_parts) | **GET** /v1/upload-sessions/{id}/parts | List upload session parts
 *DefaultApi* | [**publish_dataset_version**](docs/DefaultApi.md#publish_dataset_version) | **POST** /v1/dataset-versions/{id}/publish | Publish a dataset version
+*DefaultApi* | [**return_annotation_task**](docs/DefaultApi.md#return_annotation_task) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/return | Return an annotation task for rework
+*DefaultApi* | [**start_annotation_task**](docs/DefaultApi.md#start_annotation_task) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/start | Start an assigned annotation task
+*DefaultApi* | [**submit_annotation_task**](docs/DefaultApi.md#submit_annotation_task) | **POST** /v1/annotation-projects/{id}/tasks/{taskId}/submit | Submit annotations for review
 *DefaultApi* | [**upload_part**](docs/DefaultApi.md#upload_part) | **POST** /v1/upload-sessions/{id}/parts/{partNumber} | Upload a part
 *DefaultApi* | [**who_am_i**](docs/DefaultApi.md#who_am_i) | **GET** /v1/whoami | Resolve authenticated principal
 
@@ -123,6 +134,9 @@ Class | Method | HTTP request | Description
 
  - [AddAssetRequest](docs/AddAssetRequest.md)
  - [AnnotationProjectResponse](docs/AnnotationProjectResponse.md)
+ - [AnnotationResponse](docs/AnnotationResponse.md)
+ - [AssignRequest](docs/AssignRequest.md)
+ - [AutosaveRequest](docs/AutosaveRequest.md)
  - [CompileRequest](docs/CompileRequest.md)
  - [CompileResponse](docs/CompileResponse.md)
  - [CreateAnnotationProjectRequest](docs/CreateAnnotationProjectRequest.md)
@@ -131,6 +145,7 @@ Class | Method | HTTP request | Description
  - [CreateExperimentRequest](docs/CreateExperimentRequest.md)
  - [CreateImportJobRequest](docs/CreateImportJobRequest.md)
  - [CreateModelRequest](docs/CreateModelRequest.md)
+ - [CreateTasksRequest](docs/CreateTasksRequest.md)
  - [CreateTrainingJobRequest](docs/CreateTrainingJobRequest.md)
  - [CreateUploadSessionRequest](docs/CreateUploadSessionRequest.md)
  - [DatasetResponse](docs/DatasetResponse.md)
@@ -139,6 +154,7 @@ Class | Method | HTTP request | Description
  - [GenerateSplitsRequest](docs/GenerateSplitsRequest.md)
  - [HealthResponse](docs/HealthResponse.md)
  - [ImportJobResponse](docs/ImportJobResponse.md)
+ - [MediaUrlResponse](docs/MediaUrlResponse.md)
  - [ModelResponse](docs/ModelResponse.md)
  - [Operation](docs/Operation.md)
  - [OutboxEvent](docs/OutboxEvent.md)
@@ -146,6 +162,7 @@ Class | Method | HTTP request | Description
  - [ProblemDetails](docs/ProblemDetails.md)
  - [ProblemDetailsViolationsInner](docs/ProblemDetailsViolationsInner.md)
  - [ReadyResponse](docs/ReadyResponse.md)
+ - [TaskResponse](docs/TaskResponse.md)
  - [TrainingJobResponse](docs/TrainingJobResponse.md)
  - [UploadPartInfo](docs/UploadPartInfo.md)
  - [UploadPartUrl](docs/UploadPartUrl.md)
