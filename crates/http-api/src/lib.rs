@@ -8,6 +8,8 @@
 pub mod control_plane;
 pub mod import;
 pub mod northbound;
+pub mod validation_worker;
 
 pub use control_plane::{app_router, spawn_outbox_dispatcher, AppState};
 pub use import::{ImportJobStore, InMemoryImportJobStore};
+pub use validation_worker::spawn_media_validation_worker;

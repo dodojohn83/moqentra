@@ -68,6 +68,8 @@ pub struct AppState {
     pub upload_sig_secret: String,
     /// Import job store.
     pub import_jobs: Arc<dyn ImportJobStore + Send + Sync>,
+    /// Media validator used before publishing a dataset version.
+    pub media_validator: Arc<dyn moqentra_object_store::MediaValidator + Send + Sync>,
     /// Optional PostgreSQL pool for audit / repository persistence.
     pub db_pool: Option<sqlx::PgPool>,
     /// Optional downstream URLs for outbox side-effects.
@@ -984,9 +986,50 @@ async fn publish_dataset_version(
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Update, Resource::DatasetVersion).await?;
     let version_id = DatasetVersionId::try_from(version_id.as_str())?;
+
+    // Gather assets without holding the registry across await points.
+    let (tenant_id, assets) = {
+        let reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
+        let v = reg.get_version(ctx.tenant_id, version_id)?;
+        (
+            v.tenant_id,
+            v.assets
+                .iter()
+                .map(|a| (a.name.clone(), a.object_key.clone(), a.media_type.clone()))
+                .collect::<Vec<_>>(),
+        )
+    };
+
+    let mut failures: Vec<(String, String)> = Vec::new();
+    for (name, key, media_type) in &assets {
+        match state.object_store.get_object(key).await {
+            Ok((bytes, _)) => {
+                if let Err(e) = state.media_validator.validate(&bytes, media_type).await {
+                    failures.push((name.clone(), e.to_string()));
+                }
+            }
+            Err(e) => failures.push((name.clone(), e.to_string())),
+        }
+    }
+
     let updated = {
         let mut reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
-        reg.publish_version(ctx.tenant_id, version_id)?
+        for (name, reason) in &failures {
+            reg.mark_asset_failed(tenant_id, version_id, name, reason)?;
+        }
+        for (name, _, _) in &assets {
+            if !failures.iter().any(|(n, _)| n == name) {
+                reg.mark_asset_valid(tenant_id, version_id, name)?;
+            }
+        }
+        if !failures.is_empty() {
+            return Err(Error::invalid_argument(format!(
+                "asset validation failed: {}",
+                failures.iter().map(|(_, r)| r.as_str()).collect::<Vec<_>>().join(", ")
+            ))
+            .into());
+        }
+        reg.publish_version(tenant_id, version_id)?
     };
     audit_write(
         &state,
@@ -1969,6 +2012,7 @@ mod tests {
             upload_sessions: Arc::new(InMemoryUploadSessionStore::new()),
             upload_sig_secret: "test-upload-secret".to_string(),
             import_jobs: Arc::new(InMemoryImportJobStore::new()),
+            media_validator: Arc::new(moqentra_object_store::DefaultMediaValidator),
             db_pool: None,
             scheduler_url: None,
             node_agent_url: None,

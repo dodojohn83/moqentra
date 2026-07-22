@@ -94,6 +94,14 @@ impl AssetRef {
     }
 }
 
+/// Per-asset validation result.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AssetValidation {
+    Pending,
+    Valid,
+    Failed(String),
+}
+
 /// An immutable dataset version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DatasetVersion {
@@ -103,6 +111,7 @@ pub struct DatasetVersion {
     pub project_id: ProjectId,
     pub state: DatasetVersionState,
     pub assets: Vec<AssetRef>,
+    pub asset_validations: BTreeMap<String, AssetValidation>,
     pub splits: Value,
     pub manifest_digest: Option<String>,
     pub created_at: UtcTimestamp,
@@ -123,6 +132,7 @@ impl DatasetVersion {
             project_id,
             state: DatasetVersionState::Draft,
             assets: Vec::new(),
+            asset_validations: BTreeMap::new(),
             splits: serde_json::Value::Null,
             manifest_digest: None,
             created_at: UtcTimestamp::now(),
@@ -150,19 +160,61 @@ impl DatasetVersion {
             ));
         }
         asset.validate()?;
+        self.asset_validations.insert(asset.name.clone(), AssetValidation::Pending);
         self.assets.push(asset);
         Ok(())
     }
 
-    pub fn set_splits(&mut self, splits: Value) -> Result<(), moqentra_types::Error> {
+    pub fn mark_asset_valid(&mut self, name: &str) -> Result<(), moqentra_types::Error> {
+        self.ensure_modifiable()?;
+        if self.assets.iter().any(|a| a.name == name) {
+            self.asset_validations.insert(name.to_string(), AssetValidation::Valid);
+            Ok(())
+        } else {
+            Err(moqentra_types::Error::not_found("asset"))
+        }
+    }
+
+    pub fn mark_asset_failed(
+        &mut self,
+        name: &str,
+        reason: impl Into<String>,
+    ) -> Result<(), moqentra_types::Error> {
+        self.ensure_modifiable()?;
+        if self.assets.iter().any(|a| a.name == name) {
+            self.asset_validations
+                .insert(name.to_string(), AssetValidation::Failed(reason.into()));
+            Ok(())
+        } else {
+            Err(moqentra_types::Error::not_found("asset"))
+        }
+    }
+
+    pub fn all_assets_valid(&self) -> bool {
+        !self.assets.is_empty()
+            && self.assets.iter().all(|a| {
+                matches!(
+                    self.asset_validations.get(&a.name),
+                    Some(AssetValidation::Valid)
+                )
+            })
+    }
+
+    fn ensure_modifiable(&self) -> Result<(), moqentra_types::Error> {
         if matches!(
             self.state,
             DatasetVersionState::Published | DatasetVersionState::Deprecated
         ) {
-            return Err(moqentra_types::Error::conflict(
+            Err(moqentra_types::Error::conflict(
                 "cannot modify a published or deprecated dataset version",
-            ));
+            ))
+        } else {
+            Ok(())
         }
+    }
+
+    pub fn set_splits(&mut self, splits: Value) -> Result<(), moqentra_types::Error> {
+        self.ensure_modifiable()?;
         self.splits = splits;
         Ok(())
     }
@@ -179,14 +231,7 @@ impl DatasetVersion {
         val: f64,
         test: f64,
     ) -> Result<(), moqentra_types::Error> {
-        if matches!(
-            self.state,
-            DatasetVersionState::Published | DatasetVersionState::Deprecated
-        ) {
-            return Err(moqentra_types::Error::conflict(
-                "cannot modify a published or deprecated dataset version",
-            ));
-        }
+        self.ensure_modifiable()?;
         if self.assets.is_empty() {
             return Err(moqentra_types::Error::invalid_argument(
                 "version has no assets to split",
@@ -240,6 +285,11 @@ impl DatasetVersion {
         if self.assets.is_empty() {
             return Err(moqentra_types::Error::invalid_argument(
                 "version has no assets",
+            ));
+        }
+        if !self.all_assets_valid() {
+            return Err(moqentra_types::Error::conflict(
+                "not all assets have passed validation",
             ));
         }
         let digest = compute_manifest_digest(self)?;
@@ -402,6 +452,7 @@ mod tests {
             .unwrap();
 
         version.set_splits(serde_json::json!({"train": 0.8, "test": 0.2})).unwrap();
+        version.mark_asset_valid("train.parquet").unwrap();
         version.publish().unwrap();
         assert!(matches!(version.state, DatasetVersionState::Published));
         assert!(version.manifest_digest.is_some());
@@ -438,6 +489,7 @@ mod tests {
                 metadata: serde_json::json!({}),
             })
             .unwrap();
+        version.mark_asset_valid("a.bin").unwrap();
         version.publish().unwrap();
         assert!(version.set_splits(serde_json::json!({})).is_err());
     }

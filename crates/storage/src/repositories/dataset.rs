@@ -9,6 +9,7 @@ use moqentra_types::{
 };
 use serde_json::Value;
 use sqlx::{FromRow, PgPool, Row};
+use std::collections::BTreeMap;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -268,6 +269,7 @@ impl DatasetRepository for PgDatasetRepository {
 
         let manifest = serde_json::json!({
             "assets": version.assets,
+            "asset_validations": version.asset_validations,
             "splits": version.splits,
             "manifest_digest": version.manifest_digest,
         });
@@ -377,6 +379,11 @@ fn version_row_to_domain(row: DatasetVersionRow) -> Result<DatasetVersion, Error
         .get("assets")
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
+    let asset_validations: BTreeMap<String, moqentra_domain::dataset::AssetValidation> = row
+        .manifest
+        .get("asset_validations")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
     let splits = row.manifest.get("splits").cloned().unwrap_or(Value::Null);
     let manifest_digest =
         row.manifest.get("manifest_digest").and_then(|v| v.as_str().map(String::from));
@@ -388,6 +395,7 @@ fn version_row_to_domain(row: DatasetVersionRow) -> Result<DatasetVersion, Error
         project_id: ProjectId::from_uuid(row.project_id),
         state: row.state.parse()?,
         assets,
+        asset_validations,
         splits,
         manifest_digest,
         created_at: UtcTimestamp::new(row.created_at),

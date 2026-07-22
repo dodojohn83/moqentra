@@ -310,6 +310,44 @@ impl InMemoryDatasetRegistry {
         Self::default()
     }
 
+    /// Return pending (tenant_id, version_id, asset_name, object_key, media_type)
+    /// tuples that need media validation.
+    pub fn pending_validations(
+        &self,
+    ) -> Vec<(
+        moqentra_types::TenantId,
+        moqentra_types::DatasetVersionId,
+        String,
+        String,
+        String,
+    )> {
+        let mut out = Vec::new();
+        for v in self.versions.values() {
+            if matches!(
+                v.state,
+                moqentra_domain::dataset::DatasetVersionState::Published
+                    | moqentra_domain::dataset::DatasetVersionState::Deprecated
+            ) {
+                continue;
+            }
+            for a in &v.assets {
+                match v.asset_validations.get(&a.name) {
+                    None | Some(moqentra_domain::dataset::AssetValidation::Pending) => {
+                        out.push((
+                            v.tenant_id,
+                            v.id,
+                            a.name.clone(),
+                            a.object_key.clone(),
+                            a.media_type.clone(),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        out
+    }
+
     /// Create a dataset, enforcing tenant isolation on later reads.
     pub fn create_dataset(
         &mut self,
@@ -424,6 +462,37 @@ impl InMemoryDatasetRegistry {
             .get_mut(&v.dataset_id)
             .ok_or_else(|| Error::internal("dataset missing for version"))?;
         dataset.set_latest_published(v.id)?;
+        Ok(v.clone())
+    }
+
+    /// Mark an asset within a draft version as successfully validated.
+    pub fn mark_asset_valid(
+        &mut self,
+        tenant_id: TenantId,
+        id: moqentra_types::DatasetVersionId,
+        asset_name: &str,
+    ) -> Result<moqentra_domain::dataset::DatasetVersion, Error> {
+        let v = self.versions.get_mut(&id).ok_or_else(|| Error::not_found("dataset version"))?;
+        if v.tenant_id != tenant_id {
+            return Err(Error::not_found("dataset version"));
+        }
+        v.mark_asset_valid(asset_name)?;
+        Ok(v.clone())
+    }
+
+    /// Mark an asset within a draft version as failed validation.
+    pub fn mark_asset_failed(
+        &mut self,
+        tenant_id: TenantId,
+        id: moqentra_types::DatasetVersionId,
+        asset_name: &str,
+        reason: impl Into<String>,
+    ) -> Result<moqentra_domain::dataset::DatasetVersion, Error> {
+        let v = self.versions.get_mut(&id).ok_or_else(|| Error::not_found("dataset version"))?;
+        if v.tenant_id != tenant_id {
+            return Err(Error::not_found("dataset version"));
+        }
+        v.mark_asset_failed(asset_name, reason)?;
         Ok(v.clone())
     }
 
