@@ -226,5 +226,12 @@ def get_device_info() -> Dict[str, Any]:
         "accelerator": None,
         "device_count": 0,
         "driver_version": None,
+        "runtime_version": "python",
+        "runtimes": ["cpu"],
+        "device_labels": ["cpu"],
+        "device_memory_bytes": 0,
+        "max_parallelism": 1,
+        "supports_gpu": False,
+        "supports_npu": False,
         "collective_backend": None,
     }

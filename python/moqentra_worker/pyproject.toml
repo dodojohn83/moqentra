@@ -15,7 +15,13 @@ build-backend = "hatchling.build"
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+exclude = ["src/moqentra"]
 
 [tool.mypy]
 python_version = "3.10"
 strict = true
+exclude = ["^src/moqentra"]
+
+[[tool.mypy.overrides]]
+module = ["grpc", "moqentra.*"]
+ignore_missing_imports = true

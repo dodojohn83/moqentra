@@ -1,5 +1,6 @@
 """Moqentra Python worker SDK."""
 
+from .grpc_client import WorkerAgentClient
 from .sdk import (
     MetricPoint,
     PyTorchAdapter,
@@ -12,6 +13,7 @@ from .sdk import (
 __all__ = [
     "MetricPoint",
     "PyTorchAdapter",
+    "WorkerAgentClient",
     "WorkerLifecycle",
     "WorkerRuntime",
     "WorkerSession",
