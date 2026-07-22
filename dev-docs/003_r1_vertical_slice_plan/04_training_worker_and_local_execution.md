@@ -2,7 +2,7 @@
 
 ## 1. Worker 协议
 
-- [ ] `R1-TRAIN-001` 扩展 `WorkerCapabilities/v1`：build/contract version、框架、硬件、驱动、runtime、模型格式、collective backend、设备内存和最大并行数。
+- [x] `R1-TRAIN-001` 扩展 `WorkerCapabilities/v1`：build/contract version、框架、硬件、驱动、runtime、模型格式、collective backend、设备内存和最大并行数。
 - [ ] `R1-TRAIN-002` 完成 `WorkerAgentService.Connect` 双向流：Hello、Heartbeat、Lease、Command、Ack、Progress、LogChunk、MetricBatch、Result 和 Drain。
 - [ ] `R1-TRAIN-003` 所有消息关联 node、job、attempt、command、sequence 和 fencing token；控制面拒绝重复、乱序、过期租约和旧 fencing 更新。
 - [ ] `R1-TRAIN-004` 实现 mTLS、协议版本协商、keepalive、最大帧、发送 credit、有界队列、指数退避和可恢复 reconnect；不兼容 Worker 保持可诊断但不接单。
