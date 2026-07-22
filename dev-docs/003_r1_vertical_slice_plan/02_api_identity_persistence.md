@@ -41,8 +41,8 @@
   - Evidence: `crates/auth/src/role_store.rs` (`RoleStore`); `crates/storage/src/pg_role_store.rs` (`PgRoleStore`); `apps/control-plane/src/main.rs` `resolve_context` resolves roles from `project_members` when `db_pool` is configured, ignoring JWT claim roles; JWT claim `tenant_ids` no longer trusted for tenant switch.
 - [x] `R1-IAM-003` 实现 tenant admin、data engineer、annotator、reviewer、algorithm engineer、operator 的 deny-by-default 权限矩阵。
   - Evidence: `crates/auth/src/rbac.rs` (`Authorizer` with `Role::{TenantAdmin,DataEngineer,Annotator,Reviewer,AlgorithmEngineer,Operator}`, deny-by-default, project/tenant isolation, tests).
-- [~] `R1-IAM-004` 每个写操作、审核、发布、下载授权和拒绝结果写入结构化审计；审计内容脱敏且不可被普通租户用户修改。
-  - Evidence: `crates/storage/migrations/0006_audit_logs.sql` (append-only, RLS, forced RLS); `crates/storage/src/pg_audit.rs` (`PgAuditLog`); `crates/auth/src/audit.rs` async `AuditLog` trait; `apps/control-plane/src/main.rs` `authorize` logs every authorization success/denial to `state.audit`. Write/publish/download audit integration pending per handler.
+- [x] `R1-IAM-004` 每个写操作、审核、发布、下载授权和拒绝结果写入结构化审计；审计内容脱敏且不可被普通租户用户修改。
+  - Evidence: `crates/storage/migrations/0006_audit_logs.sql` (append-only, RLS, forced RLS); `crates/storage/src/pg_audit.rs` (`PgAuditLog`); `crates/auth/src/audit.rs` async `AuditLog` trait with `Write`/`ModelPublish`/`DataExport` categories; `apps/control-plane/src/main.rs` `authorize` logs every authorization decision, and `audit_write` instruments all write handlers (dataset, dataset_version, experiment, training_job, model, annotation_project, compile). Download audit will be wired when artifact download routes land.
 - [x] `R1-IAM-005` 对 health 以外路由启用认证、限流、请求大小、timeout、request/correlation ID 和安全响应头 middleware。
   - Evidence: `apps/control-plane/src/main.rs` `require_auth_middleware`, `security_headers`, `DefaultBodyLimit`; `x-request-id`/`x-correlation-id`; per-tenant `check_rate_limit`. Timeout layer deferred to reverse proxy / container runtime.
 
