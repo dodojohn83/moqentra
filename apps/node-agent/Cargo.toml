@@ -23,3 +23,5 @@ tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 tonic = { workspace = true }
 tokio-stream = { workspace = true }
+time = "0.3"
+prost-types = "0.13"

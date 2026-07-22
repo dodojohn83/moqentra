@@ -25,13 +25,13 @@
 - [x] `R1-LOCAL-003` node-agent `client.rs` 为每个 attempt 自动创建 `input`（ro）、`output`/`checkpoint`（rw）受控 workspace 挂载；拒绝相对路径和 workspace 外 source；`LocalExecutor` 绑定挂载校验 canonicalize 与 path traversal。
 - [x] `R1-LOCAL-004` `LocalExecutor::allocate` 已实现 CPU/内存/设备原子分配与失败回滚；node-agent 将分配的 `device_uuids` 以 `NVIDIA_VISIBLE_DEVICES` 注入容器；`release` 回收资源。
 - [x] `R1-LOCAL-005` node-agent 在 `run_container_command` 中启动 `tokio::process::Child`，用 `BufReader::lines` 异步读取 stdout/stderr，通过有界 gRPC `LogChunk` channel 上传，背压由 bounded channel 自然限制，避免无界内存。
-- [ ] `R1-LOCAL-006` 进程重启后按 runtime labels 对账 active attempt、容器和 allocation；仅清理有本平台 ownership label 且租约过期的孤儿。
+- [x] `R1-LOCAL-006` 进程重启后按 runtime labels 对账 active attempt、容器和 allocation；仅清理有本平台 ownership label 且租约过期的孤儿。
 
 ## 4. 调度与状态收敛
 
 - [ ] `R1-TRAIN-013` scheduler 从 PostgreSQL 读取 queued job，校验冻结数据版本、镜像 digest、配额和 capability 后创建 attempt/lease。
-- [ ] `R1-TRAIN-014` 状态流固定为 `Draft → Queued → Admitted → Running → Succeeded/Failed/Cancelled`；重试创建新 attempt，不倒退已终结 attempt。
-- [ ] `R1-TRAIN-015` metrics 有名称/标签 allowlist、每批上限和下采样；日志、指标、checkpoint cursor 支持从断点继续读取。
+- [x] `R1-TRAIN-014` 状态流固定为 `Draft → Queued → Admitted → Running → Succeeded/Failed/Cancelled`；重试创建新 attempt，不倒退已终结 attempt。
+- [x] `R1-TRAIN-015` metrics 有名称/标签 allowlist、每批上限和下采样；日志、指标、checkpoint cursor 支持从断点继续读取。
 - [ ] `R1-TRAIN-016` Worker Result 只触发 Artifact validation Operation；校验成功后才原子完成训练并创建唯一 Model Version。
 
 ## 5. 完成条件与测试

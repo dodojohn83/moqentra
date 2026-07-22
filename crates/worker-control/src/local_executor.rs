@@ -1,7 +1,7 @@
 //! Local executor and node-agent resource management.
 
 use moqentra_types::{AttemptId, NodeId, UtcTimestamp};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -93,6 +93,8 @@ pub struct ContainerConfig {
     pub env: BTreeMap<String, String>,
     #[serde(default)]
     pub bind_mounts: Vec<BindMount>,
+    #[serde(default)]
+    pub labels: BTreeMap<String, String>,
     pub security: ContainerSecurityProfile,
 }
 
@@ -385,6 +387,10 @@ impl LocalExecutor {
 
         cmd.arg("--network=none").arg("--pids-limit=4096");
 
+        for (k, v) in &config.labels {
+            cmd.arg(format!("--label={}={}", k, v));
+        }
+
         for mount in &config.bind_mounts {
             let mode = if mount.read_only { "ro" } else { "rw" };
             cmd.arg(format!(
@@ -413,6 +419,77 @@ impl LocalExecutor {
             .spawn()
             .map_err(|e| moqentra_types::Error::external_failed(format!("{e}")))?;
         Ok(child)
+    }
+
+    /// Reconcile running containers with the set of active attempts.
+    ///
+    /// Queries the container runtime for containers carrying the
+    /// `moqentra.io/node-id` label equal to this node. Any container whose
+    /// `moqentra.io/attempt-id` label is missing, not in `active_attempts`, or
+    /// whose `moqentra.io/lease-deadline` has passed, is killed. Returns the
+    /// number of orphaned containers removed.
+    pub async fn reconcile_containers(
+        &self,
+        node_id: &str,
+        active_attempts: &[String],
+        now: UtcTimestamp,
+    ) -> Result<u32, moqentra_types::Error> {
+        if self.container_runtime.is_empty() || self.container_runtime == "none" {
+            return Ok(0);
+        }
+
+        let active: HashSet<_> = active_attempts.iter().cloned().collect();
+        let format =
+            "{{.ID}}|{{.Label \"moqentra.io/attempt-id\"}}|{{.Label \"moqentra.io/lease-deadline\"}}";
+        let output = tokio::process::Command::new(&self.container_runtime)
+            .arg("ps")
+            .arg("--filter")
+            .arg(format!("label=moqentra.io/node-id={}", node_id))
+            .arg("--format")
+            .arg(format)
+            .output()
+            .await
+            .map_err(|e| moqentra_types::Error::external_failed(format!("{e}")))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(moqentra_types::Error::external_failed(format!(
+                "runtime ps failed: {stderr}"
+            )));
+        }
+
+        let mut removed = 0u32;
+        let text = String::from_utf8_lossy(&output.stdout);
+        for line in text.lines() {
+            let parts: Vec<&str> = line.split('|').collect();
+            if parts.len() != 3 {
+                continue;
+            }
+            let container_id = parts[0].trim();
+            let attempt_id = parts[1].trim();
+            let deadline_str = parts[2].trim();
+            if container_id.is_empty() {
+                continue;
+            }
+
+            let expired = if deadline_str.is_empty() {
+                false
+            } else {
+                deadline_str.parse::<UtcTimestamp>().map(|d| !d.is_after(now)).unwrap_or(false)
+            };
+
+            if attempt_id.is_empty() || !active.contains(attempt_id) || expired {
+                let kill = tokio::process::Command::new(&self.container_runtime)
+                    .arg("kill")
+                    .arg(container_id)
+                    .output()
+                    .await;
+                if kill.is_ok() {
+                    removed = removed.saturating_add(1);
+                }
+            }
+        }
+        Ok(removed)
     }
 }
 
@@ -460,6 +537,7 @@ mod tests {
             entrypoint: vec!["train".to_string()],
             env: BTreeMap::new(),
             bind_mounts: vec![],
+            labels: BTreeMap::new(),
             security: ContainerSecurityProfile {
                 run_as_root: false,
                 read_only_rootfs: true,

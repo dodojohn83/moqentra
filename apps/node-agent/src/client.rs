@@ -180,6 +180,16 @@ pub async fn run_worker_stream(
     let _: Result<(), _> = tx.send(hello_request(&capabilities, env!("CARGO_PKG_VERSION"))).await;
 
     let mut inbound = client.open_stream(request).await?.into_inner();
+
+    // On startup, reconcile any containers from a previous process that have
+    // already exceeded their lease deadline.
+    let node_id = capabilities.node_id.to_string();
+    let _ = executor
+        .lock()
+        .await
+        .reconcile_containers(&node_id, &[], moqentra_types::UtcTimestamp::now())
+        .await;
+
     let mut heartbeat_seq: u64 = 0;
     let mut interval = tokio::time::interval(Duration::from_secs(10));
 
@@ -226,13 +236,23 @@ async fn handle_payload(
             command_id,
             command_type,
             payload,
+            deadline,
             ..
         }) => {
             tracing::info!(command_id = %command_id, command_type = %command_type, "received command");
             tx.send(ack_request(&command_id, AckStatus::Received)).await?;
 
             if command_type == "RUN_CONTAINER" || command_type == "run_container" {
-                run_container_command(tx, &command_id, &payload, caps, executor, children).await?;
+                run_container_command(
+                    tx,
+                    &command_id,
+                    &payload,
+                    deadline.as_ref(),
+                    caps,
+                    executor,
+                    children,
+                )
+                .await?;
             } else {
                 tx.send(progress_request(&command_id, 50, "processing")).await?;
                 tx.send(result_request(command_id, true)).await?;
@@ -261,10 +281,19 @@ async fn handle_payload(
     Ok(())
 }
 
+fn deadline_to_rfc3339(ts: &prost_types::Timestamp) -> String {
+    let dt = time::OffsetDateTime::from_unix_timestamp(ts.seconds)
+        .unwrap_or(time::OffsetDateTime::UNIX_EPOCH)
+        .checked_add(time::Duration::nanoseconds(i64::from(ts.nanos)))
+        .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
+    moqentra_types::UtcTimestamp::new(dt).to_string()
+}
+
 async fn run_container_command(
     tx: &mpsc::Sender<WorkerAgentServiceOpenStreamRequest>,
     command_id: &str,
     payload: &[u8],
+    deadline: Option<&prost_types::Timestamp>,
     caps: &NodeCapabilities,
     executor: &Arc<Mutex<LocalExecutor>>,
     children: &Arc<Mutex<ChildrenMap>>,
@@ -291,6 +320,21 @@ async fn run_container_command(
     let workspace = guard.workspace_root().to_path_buf();
     let mut container_config = cmd.container;
     let env_overrides = cmd.env;
+    container_config
+        .labels
+        .insert("moqentra.io/node-id".to_string(), caps.node_id.to_string());
+    container_config
+        .labels
+        .insert("moqentra.io/attempt-id".to_string(), cmd.attempt_id.clone());
+    container_config
+        .labels
+        .insert("moqentra.io/command-id".to_string(), command_id.to_string());
+    if let Some(ts) = deadline {
+        container_config.labels.insert(
+            "moqentra.io/lease-deadline".to_string(),
+            deadline_to_rfc3339(ts),
+        );
+    }
     drop(guard);
 
     // Prepare bind mount sources under the controlled workspace and bind target.

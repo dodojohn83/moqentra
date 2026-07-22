@@ -17,7 +17,7 @@ import signal
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Tuple, Union
 
 
 def _is_finite(value: Union[int, float]) -> bool:
@@ -85,6 +85,10 @@ class WorkerSession:
         training_job_id: str = "",
         tenant_id: str = "",
         project_id: str = "",
+        metric_allowlist: Optional[List[str]] = None,
+        metric_label_allowlist: Optional[List[str]] = None,
+        metric_batch_limit: int = 1000,
+        metric_downsample_interval: int = 0,
     ) -> None:
         self.attempt_id = attempt_id
         self.fencing_token = fencing_token
@@ -94,19 +98,40 @@ class WorkerSession:
         self.training_job_id = training_job_id
         self.tenant_id = tenant_id
         self.project_id = project_id
+        self._metric_allowlist: Optional[Set[str]] = (
+            set(metric_allowlist) if metric_allowlist else None
+        )
+        self._metric_label_allowlist: Optional[Set[str]] = (
+            set(metric_label_allowlist) if metric_label_allowlist else None
+        )
+        self._metric_batch_limit = max(1, metric_batch_limit)
+        self._metric_downsample_interval = max(0, metric_downsample_interval)
         self._metrics: List[MetricPoint] = []
         self._cancelled = False
         self._last_checkpoint_digest: Optional[str] = None
         self._artifact_id = str(uuid.uuid4())
+
+    def _check_metric(self, point: MetricPoint) -> None:
+        if self._metric_allowlist is not None and point.name not in self._metric_allowlist:
+            raise ValueError(f"metric name not in allowlist: {point.name}")
+        if self._metric_label_allowlist is not None:
+            for key in point.tags:
+                if key not in self._metric_label_allowlist:
+                    raise ValueError(f"metric label not in allowlist: {key}")
 
     def report_metric(self, point: MetricPoint) -> None:
         if self._cancelled:
             raise RuntimeError("worker has been cancelled")
         if not _is_finite(point.value):
             raise ValueError(f"metric value must be finite: {point.name}")
+        self._check_metric(point)
         self._metrics.append(point)
 
     def report_metrics(self, points: List[MetricPoint]) -> None:
+        if len(points) > self._metric_batch_limit:
+            raise ValueError(
+                f"metric batch size {len(points)} exceeds limit {self._metric_batch_limit}"
+            )
         for point in points:
             self.report_metric(point)
 
@@ -147,10 +172,17 @@ class WorkerSession:
         """Materialize a ModelArtifactManifest/v1 under output_dir and return it."""
         now = datetime.now(timezone.utc).isoformat()
         metrics: Dict[str, Any] = {}
+        by_name: Dict[str, List[MetricPoint]] = {}
         for point in self._metrics:
-            metrics.setdefault(point.name, []).append(
-                {"step": point.step, "value": point.value, "tags": point.tags}
-            )
+            by_name.setdefault(point.name, []).append(point)
+        for name, points in by_name.items():
+            points.sort(key=lambda p: p.step)
+            if self._metric_downsample_interval > 0:
+                interval = self._metric_downsample_interval
+                points = [p for i, p in enumerate(points) if i % interval == 0]
+            metrics[name] = [
+                {"step": p.step, "value": p.value, "tags": p.tags} for p in points
+            ]
         if result:
             metrics.update({k: v for k, v in result.items() if k != "metrics"})
 
@@ -259,6 +291,10 @@ class WorkerRuntime:
             training_job_id=config.get("training_job_id", ""),
             tenant_id=config.get("tenant_id", ""),
             project_id=config.get("project_id", ""),
+            metric_allowlist=config.get("metric_allowlist"),
+            metric_label_allowlist=config.get("metric_label_allowlist"),
+            metric_batch_limit=int(config.get("metric_batch_limit", 1000)),
+            metric_downsample_interval=int(config.get("metric_downsample_interval", 0)),
         )
 
         signal.signal(signal.SIGTERM, self._handle_signal)

@@ -53,7 +53,7 @@ impl InMemoryTrainingRegistry {
     }
 
     /// Create a training job bound to an existing experiment.
-    pub fn create_job(&mut self, job: TrainingJob) -> Result<TrainingJob, Error> {
+    pub fn create_job(&mut self, mut job: TrainingJob) -> Result<TrainingJob, Error> {
         let exp = self
             .experiments
             .get_mut(&job.experiment_id)
@@ -66,6 +66,9 @@ impl InMemoryTrainingRegistry {
         if self.jobs.contains_key(&job.id) {
             return Err(Error::conflict("training job already exists"));
         }
+        // Jobs are submitted to the queue at creation time; Draft is used for
+        // programmatic construction before submission.
+        job.submit()?;
         exp.add_job(job.id)?;
         self.jobs.insert(job.id, job.clone());
         Ok(job)
