@@ -167,6 +167,67 @@ impl DatasetVersion {
         Ok(())
     }
 
+    /// Generate deterministic train/val/test splits using a fixed seed.
+    ///
+    /// The fractions must sum to 1.0 within a small epsilon. Each asset is
+    /// assigned to exactly one split by a Fisher-Yates shuffle driven by a
+    /// SplitMix64 PRNG seeded with `seed`.
+    pub fn generate_splits(
+        &mut self,
+        seed: u64,
+        train: f64,
+        val: f64,
+        test: f64,
+    ) -> Result<(), moqentra_types::Error> {
+        if matches!(
+            self.state,
+            DatasetVersionState::Published | DatasetVersionState::Deprecated
+        ) {
+            return Err(moqentra_types::Error::conflict(
+                "cannot modify a published or deprecated dataset version",
+            ));
+        }
+        if self.assets.is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "version has no assets to split",
+            ));
+        }
+        let sum = train + val + test;
+        if (sum - 1.0).abs() > 1e-9 || train < 0.0 || val < 0.0 || test < 0.0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "train/val/test fractions must be non-negative and sum to 1.0",
+            ));
+        }
+
+        let mut names: Vec<String> = self.assets.iter().map(|a| a.name.clone()).collect();
+
+        // Deterministic Fisher-Yates using SplitMix64.
+        let mut rng = seed;
+        for i in (1..names.len()).rev() {
+            rng = splitmix64(rng);
+            let j = (rng % (i as u64 + 1)) as usize;
+            names.swap(i, j);
+        }
+
+        let n = names.len();
+        let train_end = ((train * n as f64).round() as usize).clamp(0, n);
+        let val_end = train_end + ((val * n as f64).round() as usize).clamp(0, n - train_end);
+
+        let (train_names, rest) = names.split_at(train_end);
+        let (val_names, test_names) = rest.split_at(val_end - train_end);
+
+        self.splits = serde_json::json!({
+            "seed": seed,
+            "train": train_names,
+            "val": val_names,
+            "test": test_names,
+            "train_fraction": train,
+            "val_fraction": val,
+            "test_fraction": test,
+        });
+        Ok(())
+    }
+
     pub fn publish(&mut self) -> Result<(), moqentra_types::Error> {
         if !matches!(
             self.state,
@@ -278,6 +339,13 @@ impl Dataset {
 ///
 /// The digest is taken over the immutable contents (ids, assets and splits) so
 /// that it remains stable when the version state or publish timestamp changes.
+fn splitmix64(state: u64) -> u64 {
+    let mut z = state.wrapping_add(0x9e3779b97f4a7c15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+    z ^ (z >> 31)
+}
+
 pub fn compute_manifest_digest(version: &DatasetVersion) -> Result<String, moqentra_types::Error> {
     use serde::Serialize;
     use sha2::{Digest, Sha256};

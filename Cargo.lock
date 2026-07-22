@@ -2063,6 +2063,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "moqentra-domain",
+ "moqentra-object-store",
  "moqentra-types",
  "serde",
  "serde_json",

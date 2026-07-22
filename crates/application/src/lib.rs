@@ -26,6 +26,7 @@ pub use training_svc::InMemoryTrainingRegistry;
 use moqentra_domain::application::{
     Application, ApplicationSpec, ApplicationVersion, ApplicationVersionState, Binding,
 };
+use moqentra_object_store::ObjectKey;
 use moqentra_types::{ApplicationId, ApplicationVersionId, Error, ProjectId, TenantId};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -364,9 +365,32 @@ impl InMemoryDatasetRegistry {
         if self.versions.contains_key(&version.id) {
             return Err(Error::conflict("dataset version already exists"));
         }
+        for asset in &version.assets {
+            ObjectKey::from_str(version.tenant_id, version.project_id, &asset.object_key)?;
+        }
         ds.add_version(version.id)?;
         self.versions.insert(version.id, version.clone());
         Ok(version)
+    }
+
+    /// Publish a dataset version after validating its assets and computing the
+    /// canonical manifest digest.
+    pub fn publish_version(
+        &mut self,
+        tenant_id: TenantId,
+        id: moqentra_types::DatasetVersionId,
+    ) -> Result<moqentra_domain::dataset::DatasetVersion, Error> {
+        let v = self.versions.get_mut(&id).ok_or_else(|| Error::not_found("dataset version"))?;
+        if v.tenant_id != tenant_id {
+            return Err(Error::not_found("dataset version"));
+        }
+        v.publish()?;
+        let dataset = self
+            .datasets
+            .get_mut(&v.dataset_id)
+            .ok_or_else(|| Error::internal("dataset missing for version"))?;
+        dataset.set_latest_published(v.id)?;
+        Ok(v.clone())
     }
 
     /// Get a version only when it belongs to `tenant_id`.
