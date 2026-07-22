@@ -22,7 +22,9 @@ pub use pg_idempotency::PgIdempotencyStore;
 pub use pg_outbox::PgOutboxStore;
 pub use pg_role_store::PgRoleStore;
 pub use pool::{ConnectionPool, ScopedConnection};
-pub use repositories::{PgAnnotationRepository, PgDatasetRepository, PgTrainingJobRepository};
+pub use repositories::{
+    PgAnnotationRepository, PgDatasetRepository, PgModelRepository, PgTrainingJobRepository,
+};
 pub use unit_of_work::{pagination_clause, Cursor, Paginated, UnitOfWork};
 
 pub mod placeholder {
