@@ -4,29 +4,102 @@ All URIs are relative to *http://localhost*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
+[**abort_upload_session**](DefaultApi.md#abort_upload_session) | **DELETE** /v1/upload-sessions/{id} | Abort an upload session
 [**activate_annotation_project**](DefaultApi.md#activate_annotation_project) | **POST** /v1/annotation-projects/{id}/activate | Activate annotation project
 [**add_dataset_version_asset**](DefaultApi.md#add_dataset_version_asset) | **POST** /v1/dataset-versions/{id}/assets | Add an asset to a draft dataset version
 [**admit_training_job**](DefaultApi.md#admit_training_job) | **POST** /v1/training-jobs/{id}/admit | Admit a training job
 [**cancel_training_job**](DefaultApi.md#cancel_training_job) | **POST** /v1/training-jobs/{id}/cancel | Cancel a training job
 [**compile_application**](DefaultApi.md#compile_application) | **POST** /v1/applications:compile | Compile an application graph
+[**complete_upload_session**](DefaultApi.md#complete_upload_session) | **POST** /v1/upload-sessions/{id}/complete | Complete an upload session
 [**create_annotation_project**](DefaultApi.md#create_annotation_project) | **POST** /v1/annotation-projects | Create annotation project
 [**create_dataset**](DefaultApi.md#create_dataset) | **POST** /v1/datasets | Create dataset
 [**create_dataset_version**](DefaultApi.md#create_dataset_version) | **POST** /v1/dataset-versions | Create dataset version
 [**create_experiment**](DefaultApi.md#create_experiment) | **POST** /v1/experiments | Create experiment
 [**create_model**](DefaultApi.md#create_model) | **POST** /v1/models | Create model family
 [**create_training_job**](DefaultApi.md#create_training_job) | **POST** /v1/training-jobs | Create training job
+[**create_upload_session**](DefaultApi.md#create_upload_session) | **POST** /v1/upload-sessions | Create a multipart upload session
 [**generate_dataset_version_splits**](DefaultApi.md#generate_dataset_version_splits) | **POST** /v1/dataset-versions/{id}/splits | Generate deterministic train/val/test splits
 [**get_dataset**](DefaultApi.md#get_dataset) | **GET** /v1/datasets/{id} | Get dataset by id
 [**get_health**](DefaultApi.md#get_health) | **GET** /healthz | Liveness probe
 [**get_ready**](DefaultApi.md#get_ready) | **GET** /readyz | Readiness probe
+[**get_upload_session**](DefaultApi.md#get_upload_session) | **GET** /v1/upload-sessions/{id} | Get upload session
 [**list_datasets**](DefaultApi.md#list_datasets) | **GET** /v1/datasets | List datasets for tenant
 [**list_experiments**](DefaultApi.md#list_experiments) | **GET** /v1/experiments | List experiments
 [**list_models**](DefaultApi.md#list_models) | **GET** /v1/models | List models
 [**list_outbox_events**](DefaultApi.md#list_outbox_events) | **GET** /v1/outbox | List outbox events
 [**list_training_jobs**](DefaultApi.md#list_training_jobs) | **GET** /v1/training-jobs | List training jobs
+[**list_upload_session_parts**](DefaultApi.md#list_upload_session_parts) | **GET** /v1/upload-sessions/{id}/parts | List upload session parts
 [**publish_dataset_version**](DefaultApi.md#publish_dataset_version) | **POST** /v1/dataset-versions/{id}/publish | Publish a dataset version
+[**upload_part**](DefaultApi.md#upload_part) | **POST** /v1/upload-sessions/{id}/parts/{partNumber} | Upload a part
 [**who_am_i**](DefaultApi.md#who_am_i) | **GET** /v1/whoami | Resolve authenticated principal
 
+
+# **abort_upload_session**
+> abort_upload_session(x_tenant_id, id, authorization=authorization)
+
+Abort an upload session
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Abort an upload session
+        api_instance.abort_upload_session(x_tenant_id, id, authorization=authorization)
+    except Exception as e:
+        print("Exception when calling DefaultApi->abort_upload_session: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+void (empty response body)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: Not defined
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**204** | Aborted |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **activate_annotation_project**
 > AnnotationProjectResponse activate_annotation_project(x_tenant_id, id, authorization=authorization)
@@ -381,6 +454,76 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 **200** | Compiled graph |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **complete_upload_session**
+> UploadSessionResponse complete_upload_session(x_tenant_id, id, authorization=authorization)
+
+Complete an upload session
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.upload_session_response import UploadSessionResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Complete an upload session
+        api_response = api_instance.complete_upload_session(x_tenant_id, id, authorization=authorization)
+        print("The response of DefaultApi->complete_upload_session:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->complete_upload_session: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**UploadSessionResponse**](UploadSessionResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Completed |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
@@ -822,6 +965,79 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **create_upload_session**
+> UploadSessionResponse create_upload_session(x_tenant_id, create_upload_session_request, authorization=authorization, idempotency_key=idempotency_key)
+
+Create a multipart upload session
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.create_upload_session_request import CreateUploadSessionRequest
+from moqentra_client.models.upload_session_response import UploadSessionResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    create_upload_session_request = moqentra_client.CreateUploadSessionRequest() # CreateUploadSessionRequest | 
+    authorization = 'authorization_example' # str |  (optional)
+    idempotency_key = 'idempotency_key_example' # str |  (optional)
+
+    try:
+        # Create a multipart upload session
+        api_response = api_instance.create_upload_session(x_tenant_id, create_upload_session_request, authorization=authorization, idempotency_key=idempotency_key)
+        print("The response of DefaultApi->create_upload_session:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->create_upload_session: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **create_upload_session_request** | [**CreateUploadSessionRequest**](CreateUploadSessionRequest.md)|  | 
+ **authorization** | **str**|  | [optional] 
+ **idempotency_key** | **str**|  | [optional] 
+
+### Return type
+
+[**UploadSessionResponse**](UploadSessionResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**201** | Created |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **generate_dataset_version_splits**
 > DatasetVersionResponse generate_dataset_version_splits(x_tenant_id, id, generate_splits_request, authorization=authorization)
 
@@ -1087,6 +1303,76 @@ No authorization required
 |-------------|-------------|------------------|
 **200** | Ready |  -  |
 **503** | Not ready |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **get_upload_session**
+> UploadSessionResponse get_upload_session(x_tenant_id, id, authorization=authorization)
+
+Get upload session
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.upload_session_response import UploadSessionResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Get upload session
+        api_response = api_instance.get_upload_session(x_tenant_id, id, authorization=authorization)
+        print("The response of DefaultApi->get_upload_session:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->get_upload_session: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**UploadSessionResponse**](UploadSessionResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Session |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
@@ -1450,6 +1736,76 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **list_upload_session_parts**
+> UploadSessionResponse list_upload_session_parts(x_tenant_id, id, authorization=authorization)
+
+List upload session parts
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.upload_session_response import UploadSessionResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # List upload session parts
+        api_response = api_instance.list_upload_session_parts(x_tenant_id, id, authorization=authorization)
+        print("The response of DefaultApi->list_upload_session_parts:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->list_upload_session_parts: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**UploadSessionResponse**](UploadSessionResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Session |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **publish_dataset_version**
 > DatasetVersionResponse publish_dataset_version(x_tenant_id, id, authorization=authorization)
 
@@ -1517,6 +1873,77 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 **200** | Version published |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **upload_part**
+> upload_part(x_tenant_id, id, part_number, body, authorization=authorization)
+
+Upload a part
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    part_number = 56 # int | 
+    body = None # bytes | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Upload a part
+        api_instance.upload_part(x_tenant_id, id, part_number, body, authorization=authorization)
+    except Exception as e:
+        print("Exception when calling DefaultApi->upload_part: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **part_number** | **int**|  | 
+ **body** | **bytes**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+void (empty response body)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: application/octet-stream
+ - **Accept**: Not defined
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**204** | Part uploaded |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 

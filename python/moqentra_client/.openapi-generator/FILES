@@ -14,6 +14,7 @@ docs/CreateDatasetVersionRequest.md
 docs/CreateExperimentRequest.md
 docs/CreateModelRequest.md
 docs/CreateTrainingJobRequest.md
+docs/CreateUploadSessionRequest.md
 docs/DatasetResponse.md
 docs/DatasetVersionResponse.md
 docs/DefaultApi.md
@@ -28,6 +29,8 @@ docs/ProblemDetails.md
 docs/ProblemDetailsViolationsInner.md
 docs/ReadyResponse.md
 docs/TrainingJobResponse.md
+docs/UploadPartInfo.md
+docs/UploadSessionResponse.md
 docs/WhoAmIResponse.md
 git_push.sh
 moqentra_client/__init__.py
@@ -48,6 +51,7 @@ moqentra_client/models/create_dataset_version_request.py
 moqentra_client/models/create_experiment_request.py
 moqentra_client/models/create_model_request.py
 moqentra_client/models/create_training_job_request.py
+moqentra_client/models/create_upload_session_request.py
 moqentra_client/models/dataset_response.py
 moqentra_client/models/dataset_version_response.py
 moqentra_client/models/experiment_response.py
@@ -61,6 +65,8 @@ moqentra_client/models/problem_details.py
 moqentra_client/models/problem_details_violations_inner.py
 moqentra_client/models/ready_response.py
 moqentra_client/models/training_job_response.py
+moqentra_client/models/upload_part_info.py
+moqentra_client/models/upload_session_response.py
 moqentra_client/models/who_am_i_response.py
 moqentra_client/py.typed
 moqentra_client/rest.py
@@ -80,6 +86,7 @@ test/test_create_dataset_version_request.py
 test/test_create_experiment_request.py
 test/test_create_model_request.py
 test/test_create_training_job_request.py
+test/test_create_upload_session_request.py
 test/test_dataset_response.py
 test/test_dataset_version_response.py
 test/test_default_api.py
@@ -94,5 +101,7 @@ test/test_problem_details.py
 test/test_problem_details_violations_inner.py
 test/test_ready_response.py
 test/test_training_job_response.py
+test/test_upload_part_info.py
+test/test_upload_session_response.py
 test/test_who_am_i_response.py
 tox.ini

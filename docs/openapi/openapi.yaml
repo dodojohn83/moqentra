@@ -340,6 +340,130 @@ paths:
               schema:
                 $ref: '#/components/schemas/DatasetVersionResponse'
 
+  /v1/upload-sessions:
+    post:
+      operationId: createUploadSession
+      summary: Create a multipart upload session
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUploadSessionRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadSessionResponse'
+
+  /v1/upload-sessions/{id}:
+    get:
+      operationId: getUploadSession
+      summary: Get upload session
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadSessionResponse'
+    delete:
+      operationId: abortUploadSession
+      summary: Abort an upload session
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Aborted
+
+  /v1/upload-sessions/{id}/parts:
+    get:
+      operationId: listUploadSessionParts
+      summary: List upload session parts
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadSessionResponse'
+
+  /v1/upload-sessions/{id}/parts/{partNumber}:
+    post:
+      operationId: uploadPart
+      summary: Upload a part
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: partNumber
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '204':
+          description: Part uploaded
+
+  /v1/upload-sessions/{id}/complete:
+    post:
+      operationId: completeUploadSession
+      summary: Complete an upload session
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadSessionResponse'
+
   /v1/models:
     get:
       operationId: listModels
@@ -658,6 +782,67 @@ components:
         manifest_digest:
           type: string
           nullable: true
+
+    CreateUploadSessionRequest:
+      type: object
+      required: [resource_type, resource_id, version_id, name, media_type, part_size, total_size]
+      properties:
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+        version_id:
+          type: string
+        name:
+          type: string
+        media_type:
+          type: string
+        part_size:
+          type: integer
+          format: int64
+        total_size:
+          type: integer
+          format: int64
+        ttl_seconds:
+          type: integer
+          format: int64
+
+    UploadSessionResponse:
+      type: object
+      required: [id, target_key, media_type, part_size, total_size, parts, state, expires_at]
+      properties:
+        id:
+          type: string
+        target_key:
+          type: string
+        media_type:
+          type: string
+        part_size:
+          type: integer
+          format: int64
+        total_size:
+          type: integer
+          format: int64
+        parts:
+          type: array
+          items:
+            $ref: '#/components/schemas/UploadPartInfo'
+        state:
+          type: string
+        expires_at:
+          type: string
+
+    UploadPartInfo:
+      type: object
+      required: [part_number, size, completed]
+      properties:
+        part_number:
+          type: integer
+        size:
+          type: integer
+          format: int64
+        completed:
+          type: boolean
 
     CreateModelRequest:
       type: object

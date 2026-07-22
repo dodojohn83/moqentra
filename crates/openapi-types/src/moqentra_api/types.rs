@@ -9,6 +9,23 @@
 #![allow(unreachable_patterns)]
 use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct UploadSessionResponse {
+    pub expires_at: String,
+    pub id: String,
+    pub media_type: String,
+    pub part_size: i64,
+    pub parts: Vec<UploadPartInfo>,
+    pub state: String,
+    pub target_key: String,
+    pub total_size: i64,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct UploadPartInfo {
+    pub completed: bool,
+    pub part_number: i64,
+    pub size: i64,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Page {
     pub items: Vec<PageItemsItem>,
     pub limit: i64,
@@ -201,6 +218,101 @@ pub struct CreateTrainingJobRequest {
     pub experiment_id: String,
     pub image_digest: String,
     pub project_id: String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CreateUploadSessionRequest {
+    pub media_type: String,
+    pub name: String,
+    pub part_size: i64,
+    pub resource_id: String,
+    pub resource_type: String,
+    pub total_size: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttl_seconds: Option<i64>,
+    pub version_id: String,
+}
+impl CreateUploadSessionRequest {
+    /// Construct this request with every required wire field.
+    pub fn new(
+        media_type: String,
+        name: String,
+        part_size: i64,
+        resource_id: String,
+        resource_type: String,
+        total_size: i64,
+        version_id: String,
+    ) -> Self {
+        Self {
+            media_type,
+            name,
+            part_size,
+            resource_id,
+            resource_type,
+            total_size,
+            version_id,
+            ttl_seconds: None,
+        }
+    }
+    /// Start a dependency-free builder with every required wire field.
+    pub fn builder(
+        media_type: String,
+        name: String,
+        part_size: i64,
+        resource_id: String,
+        resource_type: String,
+        total_size: i64,
+        version_id: String,
+    ) -> CreateUploadSessionRequestBuilder {
+        CreateUploadSessionRequestBuilder::new(
+            media_type,
+            name,
+            part_size,
+            resource_id,
+            resource_type,
+            total_size,
+            version_id,
+        )
+    }
+}
+/// Dependency-free builder for [`#struct_name`].
+#[derive(Debug, Clone)]
+#[must_use]
+pub struct CreateUploadSessionRequestBuilder {
+    value: CreateUploadSessionRequest,
+}
+impl CreateUploadSessionRequestBuilder {
+    /// Start a builder with every required wire field.
+    pub fn new(
+        media_type: String,
+        name: String,
+        part_size: i64,
+        resource_id: String,
+        resource_type: String,
+        total_size: i64,
+        version_id: String,
+    ) -> Self {
+        Self {
+            value: CreateUploadSessionRequest::new(
+                media_type,
+                name,
+                part_size,
+                resource_id,
+                resource_type,
+                total_size,
+                version_id,
+            ),
+        }
+    }
+    #[doc = concat!("Set the optional `", "ttl_seconds", "` request field.")]
+    #[must_use]
+    pub fn ttl_seconds(mut self, ttl_seconds: i64) -> Self {
+        self.value.ttl_seconds = Some(ttl_seconds);
+        self
+    }
+    /// Finish building the request model.
+    pub fn build(self) -> CreateUploadSessionRequest {
+        self.value
+    }
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DatasetResponse {

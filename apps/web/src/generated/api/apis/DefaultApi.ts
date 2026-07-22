@@ -64,6 +64,11 @@ import {
     CreateTrainingJobRequestToJSON,
 } from '../models/CreateTrainingJobRequest';
 import {
+    type CreateUploadSessionRequest,
+    CreateUploadSessionRequestFromJSON,
+    CreateUploadSessionRequestToJSON,
+} from '../models/CreateUploadSessionRequest';
+import {
     type DatasetResponse,
     DatasetResponseFromJSON,
     DatasetResponseToJSON,
@@ -109,10 +114,21 @@ import {
     TrainingJobResponseToJSON,
 } from '../models/TrainingJobResponse';
 import {
+    type UploadSessionResponse,
+    UploadSessionResponseFromJSON,
+    UploadSessionResponseToJSON,
+} from '../models/UploadSessionResponse';
+import {
     type WhoAmIResponse,
     WhoAmIResponseFromJSON,
     WhoAmIResponseToJSON,
 } from '../models/WhoAmIResponse';
+
+export interface AbortUploadSessionRequest {
+    xTenantId: string;
+    id: string;
+    authorization?: string;
+}
 
 export interface ActivateAnnotationProjectRequest {
     xTenantId: string;
@@ -143,6 +159,12 @@ export interface CancelTrainingJobRequest {
 export interface CompileApplicationRequest {
     xTenantId: string;
     compileRequest: CompileRequest;
+    authorization?: string;
+}
+
+export interface CompleteUploadSessionRequest {
+    xTenantId: string;
+    id: string;
     authorization?: string;
 }
 
@@ -188,6 +210,13 @@ export interface CreateTrainingJobOperationRequest {
     idempotencyKey?: string;
 }
 
+export interface CreateUploadSessionOperationRequest {
+    xTenantId: string;
+    createUploadSessionRequest: CreateUploadSessionRequest;
+    authorization?: string;
+    idempotencyKey?: string;
+}
+
 export interface GenerateDatasetVersionSplitsRequest {
     xTenantId: string;
     id: string;
@@ -196,6 +225,12 @@ export interface GenerateDatasetVersionSplitsRequest {
 }
 
 export interface GetDatasetRequest {
+    xTenantId: string;
+    id: string;
+    authorization?: string;
+}
+
+export interface GetUploadSessionRequest {
     xTenantId: string;
     id: string;
     authorization?: string;
@@ -236,9 +271,23 @@ export interface ListTrainingJobsRequest {
     offset?: number;
 }
 
+export interface ListUploadSessionPartsRequest {
+    xTenantId: string;
+    id: string;
+    authorization?: string;
+}
+
 export interface PublishDatasetVersionRequest {
     xTenantId: string;
     id: string;
+    authorization?: string;
+}
+
+export interface UploadPartRequest {
+    xTenantId: string;
+    id: string;
+    partNumber: number;
+    body: Blob;
     authorization?: string;
 }
 
@@ -251,6 +300,65 @@ export interface WhoAmIRequest {
  * 
  */
 export class DefaultApi extends runtime.BaseAPI {
+
+    /**
+     * Creates request options for abortUploadSession without sending the request
+     */
+    async abortUploadSessionRequestOpts(requestParameters: AbortUploadSessionRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling abortUploadSession().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling abortUploadSession().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/upload-sessions/{id}`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Abort an upload session
+     */
+    async abortUploadSessionRaw(requestParameters: AbortUploadSessionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.abortUploadSessionRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Abort an upload session
+     */
+    async abortUploadSession(requestParameters: AbortUploadSessionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.abortUploadSessionRaw(requestParameters, initOverrides);
+    }
 
     /**
      * Creates request options for activateAnnotationProject without sending the request
@@ -565,6 +673,66 @@ export class DefaultApi extends runtime.BaseAPI {
      */
     async compileApplication(requestParameters: CompileApplicationRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CompileResponse> {
         const response = await this.compileApplicationRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for completeUploadSession without sending the request
+     */
+    async completeUploadSessionRequestOpts(requestParameters: CompleteUploadSessionRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling completeUploadSession().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling completeUploadSession().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/upload-sessions/{id}/complete`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Complete an upload session
+     */
+    async completeUploadSessionRaw(requestParameters: CompleteUploadSessionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<UploadSessionResponse>> {
+        const requestOptions = await this.completeUploadSessionRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => UploadSessionResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Complete an upload session
+     */
+    async completeUploadSession(requestParameters: CompleteUploadSessionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UploadSessionResponse> {
+        const response = await this.completeUploadSessionRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -965,6 +1133,72 @@ export class DefaultApi extends runtime.BaseAPI {
     }
 
     /**
+     * Creates request options for createUploadSession without sending the request
+     */
+    async createUploadSessionRequestOpts(requestParameters: CreateUploadSessionOperationRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling createUploadSession().'
+            );
+        }
+
+        if (requestParameters['createUploadSessionRequest'] == null) {
+            throw new runtime.RequiredError(
+                'createUploadSessionRequest',
+                'Required parameter "createUploadSessionRequest" was null or undefined when calling createUploadSession().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+        if (requestParameters['idempotencyKey'] != null) {
+            headerParameters['Idempotency-Key'] = String(requestParameters['idempotencyKey']);
+        }
+
+
+        let urlPath = `/v1/upload-sessions`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: CreateUploadSessionRequestToJSON(requestParameters['createUploadSessionRequest']),
+        };
+    }
+
+    /**
+     * Create a multipart upload session
+     */
+    async createUploadSessionRaw(requestParameters: CreateUploadSessionOperationRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<UploadSessionResponse>> {
+        const requestOptions = await this.createUploadSessionRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => UploadSessionResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Create a multipart upload session
+     */
+    async createUploadSession(requestParameters: CreateUploadSessionOperationRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UploadSessionResponse> {
+        const response = await this.createUploadSessionRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for generateDatasetVersionSplits without sending the request
      */
     async generateDatasetVersionSplitsRequestOpts(requestParameters: GenerateDatasetVersionSplitsRequest): Promise<runtime.RequestOpts> {
@@ -1165,6 +1399,66 @@ export class DefaultApi extends runtime.BaseAPI {
      */
     async getReady(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ReadyResponse> {
         const response = await this.getReadyRaw(initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getUploadSession without sending the request
+     */
+    async getUploadSessionRequestOpts(requestParameters: GetUploadSessionRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling getUploadSession().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling getUploadSession().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/upload-sessions/{id}`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Get upload session
+     */
+    async getUploadSessionRaw(requestParameters: GetUploadSessionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<UploadSessionResponse>> {
+        const requestOptions = await this.getUploadSessionRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => UploadSessionResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Get upload session
+     */
+    async getUploadSession(requestParameters: GetUploadSessionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UploadSessionResponse> {
+        const response = await this.getUploadSessionRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -1469,6 +1763,66 @@ export class DefaultApi extends runtime.BaseAPI {
     }
 
     /**
+     * Creates request options for listUploadSessionParts without sending the request
+     */
+    async listUploadSessionPartsRequestOpts(requestParameters: ListUploadSessionPartsRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling listUploadSessionParts().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling listUploadSessionParts().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/upload-sessions/{id}/parts`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * List upload session parts
+     */
+    async listUploadSessionPartsRaw(requestParameters: ListUploadSessionPartsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<UploadSessionResponse>> {
+        const requestOptions = await this.listUploadSessionPartsRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => UploadSessionResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * List upload session parts
+     */
+    async listUploadSessionParts(requestParameters: ListUploadSessionPartsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<UploadSessionResponse> {
+        const response = await this.listUploadSessionPartsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for publishDatasetVersion without sending the request
      */
     async publishDatasetVersionRequestOpts(requestParameters: PublishDatasetVersionRequest): Promise<runtime.RequestOpts> {
@@ -1526,6 +1880,83 @@ export class DefaultApi extends runtime.BaseAPI {
     async publishDatasetVersion(requestParameters: PublishDatasetVersionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DatasetVersionResponse> {
         const response = await this.publishDatasetVersionRaw(requestParameters, initOverrides);
         return await response.value();
+    }
+
+    /**
+     * Creates request options for uploadPart without sending the request
+     */
+    async uploadPartRequestOpts(requestParameters: UploadPartRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling uploadPart().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling uploadPart().'
+            );
+        }
+
+        if (requestParameters['partNumber'] == null) {
+            throw new runtime.RequiredError(
+                'partNumber',
+                'Required parameter "partNumber" was null or undefined when calling uploadPart().'
+            );
+        }
+
+        if (requestParameters['body'] == null) {
+            throw new runtime.RequiredError(
+                'body',
+                'Required parameter "body" was null or undefined when calling uploadPart().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/octet-stream';
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/upload-sessions/{id}/parts/{partNumber}`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+        urlPath = urlPath.replace('{partNumber}', encodeURIComponent(String(requestParameters['partNumber'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: requestParameters['body'] as any,
+        };
+    }
+
+    /**
+     * Upload a part
+     */
+    async uploadPartRaw(requestParameters: UploadPartRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.uploadPartRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Upload a part
+     */
+    async uploadPart(requestParameters: UploadPartRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.uploadPartRaw(requestParameters, initOverrides);
     }
 
     /**

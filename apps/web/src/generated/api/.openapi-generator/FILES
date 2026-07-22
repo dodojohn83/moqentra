@@ -11,6 +11,7 @@ docs/CreateDatasetVersionRequest.md
 docs/CreateExperimentRequest.md
 docs/CreateModelRequest.md
 docs/CreateTrainingJobRequest.md
+docs/CreateUploadSessionRequest.md
 docs/DatasetResponse.md
 docs/DatasetVersionResponse.md
 docs/DefaultApi.md
@@ -25,6 +26,8 @@ docs/ProblemDetails.md
 docs/ProblemDetailsViolationsInner.md
 docs/ReadyResponse.md
 docs/TrainingJobResponse.md
+docs/UploadPartInfo.md
+docs/UploadSessionResponse.md
 docs/WhoAmIResponse.md
 index.ts
 models/AddAssetRequest.ts
@@ -37,6 +40,7 @@ models/CreateDatasetVersionRequest.ts
 models/CreateExperimentRequest.ts
 models/CreateModelRequest.ts
 models/CreateTrainingJobRequest.ts
+models/CreateUploadSessionRequest.ts
 models/DatasetResponse.ts
 models/DatasetVersionResponse.ts
 models/ExperimentResponse.ts
@@ -50,6 +54,8 @@ models/ProblemDetails.ts
 models/ProblemDetailsViolationsInner.ts
 models/ReadyResponse.ts
 models/TrainingJobResponse.ts
+models/UploadPartInfo.ts
+models/UploadSessionResponse.ts
 models/WhoAmIResponse.ts
 models/index.ts
 runtime.ts

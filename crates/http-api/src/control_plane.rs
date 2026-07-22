@@ -27,6 +27,9 @@ use moqentra_domain::model_registry::Model;
 use moqentra_domain::training::{
     DistributedConfig, Experiment, ParameterSchema, ResourceRequest, TrainingJob, TrainingJobSpec,
 };
+use moqentra_object_store::{
+    upload_session::part_digest, ObjectKey, ObjectStorage, UploadSession, UploadSessionStore,
+};
 use moqentra_storage::{InMemoryOutbox, OutboxEvent, OutboxStatus, OutboxStore, PgRoleStore};
 use moqentra_types::{
     AnnotationProjectId, DatasetId, DatasetVersionId, Error, ExperimentId, ModelId, Page,
@@ -55,6 +58,10 @@ pub struct AppState {
     pub annotations: Arc<Mutex<InMemoryAnnotationRegistry>>,
     pub outbox: Arc<InMemoryOutbox>,
     pub audit: Arc<dyn AuditLog + Send + Sync>,
+    /// Object storage backend for artifacts.
+    pub object_store: Arc<dyn ObjectStorage + Send + Sync>,
+    /// Upload session state.
+    pub upload_sessions: Arc<dyn UploadSessionStore + Send + Sync>,
     /// Optional PostgreSQL pool for audit / repository persistence.
     pub db_pool: Option<sqlx::PgPool>,
     /// Optional downstream URLs for outbox side-effects.
@@ -996,6 +1003,281 @@ async fn publish_dataset_version(
     ))
 }
 
+#[derive(Deserialize)]
+struct CreateUploadSessionRequest {
+    resource_type: String,
+    resource_id: String,
+    version_id: String,
+    name: String,
+    media_type: String,
+    part_size: u64,
+    total_size: u64,
+    ttl_seconds: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct UploadPartInfo {
+    part_number: i32,
+    size: u64,
+    completed: bool,
+}
+
+#[derive(Serialize)]
+struct UploadSessionResponse {
+    id: String,
+    target_key: String,
+    media_type: String,
+    part_size: u64,
+    total_size: u64,
+    parts: Vec<UploadPartInfo>,
+    state: String,
+    expires_at: String,
+}
+
+impl From<&UploadSession> for UploadSessionResponse {
+    fn from(s: &UploadSession) -> Self {
+        Self {
+            id: s.id.clone(),
+            target_key: s.target_key.as_str().to_string(),
+            media_type: s.media_type.clone(),
+            part_size: s.part_size,
+            total_size: s.total_size,
+            parts: s
+                .parts
+                .values()
+                .map(|p| UploadPartInfo {
+                    part_number: p.part_number,
+                    size: p.size,
+                    completed: p.completed,
+                })
+                .collect(),
+            state: format!("{:?}", s.state),
+            expires_at: s.expires_at.to_string(),
+        }
+    }
+}
+
+async fn create_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<CreateUploadSessionRequest>,
+) -> Result<(StatusCode, Json<UploadSessionResponse>), ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Create, Resource::DatasetVersion).await?;
+    let project_id = ctx.project_id.ok_or_else(|| {
+        Error::invalid_argument("X-Project-Id is required when creating an upload session")
+    })?;
+    let ttl = req.ttl_seconds.unwrap_or(3600).clamp(60, 86400);
+    let target_key = ObjectKey::asset(
+        ctx.tenant_id,
+        project_id,
+        &req.resource_type,
+        &req.resource_id,
+        &req.version_id,
+        &req.name,
+    )?;
+    let session_id = Uuid::new_v4().to_string();
+    let backend_upload_id = state
+        .object_store
+        .start_multipart(target_key.as_str(), Some(&req.media_type))
+        .await?;
+    let session = UploadSession::new(
+        session_id,
+        ctx.tenant_id,
+        project_id,
+        target_key,
+        req.media_type,
+        req.part_size,
+        req.total_size,
+        ttl,
+    )?;
+    let mut session = session;
+    session.backend_upload_id = Some(backend_upload_id);
+    state.upload_sessions.save(&session).await?;
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "upload_session.create",
+        Resource::DatasetVersion,
+        Some(&session.id),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok((
+        StatusCode::CREATED,
+        Json(UploadSessionResponse::from(&session)),
+    ))
+}
+
+async fn get_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> Result<Json<UploadSessionResponse>, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Read, Resource::DatasetVersion).await?;
+    let session = state
+        .upload_sessions
+        .get(&session_id)
+        .await?
+        .ok_or_else(|| Error::not_found("upload session"))?;
+    if session.tenant_id != ctx.tenant_id {
+        return Err(Error::not_found("upload session").into());
+    }
+    Ok(Json(UploadSessionResponse::from(&session)))
+}
+
+async fn list_upload_session_parts(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> Result<Json<UploadSessionResponse>, ApiError> {
+    get_upload_session(State(state), headers, axum::extract::Path(session_id)).await
+}
+
+async fn upload_part(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path((session_id, part_number)): axum::extract::Path<(String, i32)>,
+    body: axum::body::Bytes,
+) -> Result<StatusCode, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Update, Resource::DatasetVersion).await?;
+    let mut session = state
+        .upload_sessions
+        .get(&session_id)
+        .await?
+        .ok_or_else(|| Error::not_found("upload session"))?;
+    if session.tenant_id != ctx.tenant_id {
+        return Err(Error::not_found("upload session").into());
+    }
+    let expected_size = session
+        .parts
+        .get(&part_number)
+        .map(|p| p.size)
+        .ok_or_else(|| Error::invalid_argument("invalid part number"))?;
+    let actual_size = body.len() as u64;
+    if actual_size != expected_size {
+        return Err(Error::invalid_argument(format!(
+            "part {} size mismatch: expected {}, got {}",
+            part_number, expected_size, actual_size
+        ))
+        .into());
+    }
+    let backend_upload_id = session
+        .backend_upload_id
+        .clone()
+        .ok_or_else(|| Error::internal("upload session has no backend id"))?;
+    let etag = state
+        .object_store
+        .upload_part(
+            session.target_key.as_str(),
+            &backend_upload_id,
+            part_number,
+            body.clone(),
+        )
+        .await?;
+    let digest = part_digest(&body);
+    session.mark_part_uploaded(part_number, etag, digest)?;
+    state.upload_sessions.save(&session).await?;
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "upload_session.upload_part",
+        Resource::DatasetVersion,
+        Some(&session.id),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn complete_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> Result<Json<UploadSessionResponse>, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Update, Resource::DatasetVersion).await?;
+    let mut session = state
+        .upload_sessions
+        .get(&session_id)
+        .await?
+        .ok_or_else(|| Error::not_found("upload session"))?;
+    if session.tenant_id != ctx.tenant_id {
+        return Err(Error::not_found("upload session").into());
+    }
+    session.validate_for_completion()?;
+    let backend_upload_id = session
+        .backend_upload_id
+        .clone()
+        .ok_or_else(|| Error::internal("upload session has no backend id"))?;
+    let parts: Vec<(i32, String)> = session
+        .parts
+        .values()
+        .map(|p| (p.part_number, p.etag.clone().unwrap_or_default()))
+        .collect();
+    let _meta = state
+        .object_store
+        .complete_multipart(session.target_key.as_str(), &backend_upload_id, parts)
+        .await?;
+    session.state = moqentra_object_store::upload_session::UploadSessionState::Completed;
+    state.upload_sessions.save(&session).await?;
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "upload_session.complete",
+        Resource::DatasetVersion,
+        Some(&session.id),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok(Json(UploadSessionResponse::from(&session)))
+}
+
+async fn abort_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Delete, Resource::DatasetVersion).await?;
+    let session = state
+        .upload_sessions
+        .get(&session_id)
+        .await?
+        .ok_or_else(|| Error::not_found("upload session"))?;
+    if session.tenant_id != ctx.tenant_id {
+        return Err(Error::not_found("upload session").into());
+    }
+    if let Some(backend_upload_id) = session.backend_upload_id {
+        let _ = state
+            .object_store
+            .abort_multipart(session.target_key.as_str(), &backend_upload_id)
+            .await;
+    }
+    state.upload_sessions.delete(&session_id).await?;
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "upload_session.abort",
+        Resource::DatasetVersion,
+        Some(&session_id),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn create_model(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1242,6 +1524,23 @@ pub fn app_router(state: AppState) -> Router {
             "/v1/dataset-versions/{id}/publish",
             post(publish_dataset_version),
         )
+        .route("/v1/upload-sessions", post(create_upload_session))
+        .route(
+            "/v1/upload-sessions/{id}",
+            get(get_upload_session).delete(abort_upload_session),
+        )
+        .route(
+            "/v1/upload-sessions/{id}/parts",
+            get(list_upload_session_parts),
+        )
+        .route(
+            "/v1/upload-sessions/{id}/parts/{partNumber}",
+            post(upload_part),
+        )
+        .route(
+            "/v1/upload-sessions/{id}/complete",
+            post(complete_upload_session),
+        )
         .route("/v1/models", post(create_model).get(list_models))
         .route("/v1/annotation-projects", post(create_annotation_project))
         .route(
@@ -1391,6 +1690,7 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use moqentra_auth::{HmacValidator, InMemoryAuditLog, ServiceAccountValidator};
     use moqentra_domain::application::{ApplicationNode, Port};
+    use moqentra_object_store::{InMemoryObjectStore, InMemoryUploadSessionStore};
     use moqentra_types::UserId;
     use std::collections::BTreeMap;
     use tower::ServiceExt;
@@ -1413,6 +1713,8 @@ mod tests {
             annotations: Arc::new(Mutex::new(InMemoryAnnotationRegistry::new())),
             outbox: Arc::new(InMemoryOutbox::new()),
             audit: Arc::new(InMemoryAuditLog::new()),
+            object_store: Arc::new(InMemoryObjectStore::new()),
+            upload_sessions: Arc::new(InMemoryUploadSessionStore::new()),
             db_pool: None,
             scheduler_url: None,
             node_agent_url: None,

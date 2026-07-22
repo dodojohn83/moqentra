@@ -26,6 +26,13 @@ class TestDefaultApi(unittest.TestCase):
     def tearDown(self) -> None:
         pass
 
+    def test_abort_upload_session(self) -> None:
+        """Test case for abort_upload_session
+
+        Abort an upload session
+        """
+        pass
+
     def test_activate_annotation_project(self) -> None:
         """Test case for activate_annotation_project
 
@@ -58,6 +65,13 @@ class TestDefaultApi(unittest.TestCase):
         """Test case for compile_application
 
         Compile an application graph
+        """
+        pass
+
+    def test_complete_upload_session(self) -> None:
+        """Test case for complete_upload_session
+
+        Complete an upload session
         """
         pass
 
@@ -103,6 +117,13 @@ class TestDefaultApi(unittest.TestCase):
         """
         pass
 
+    def test_create_upload_session(self) -> None:
+        """Test case for create_upload_session
+
+        Create a multipart upload session
+        """
+        pass
+
     def test_generate_dataset_version_splits(self) -> None:
         """Test case for generate_dataset_version_splits
 
@@ -128,6 +149,13 @@ class TestDefaultApi(unittest.TestCase):
         """Test case for get_ready
 
         Readiness probe
+        """
+        pass
+
+    def test_get_upload_session(self) -> None:
+        """Test case for get_upload_session
+
+        Get upload session
         """
         pass
 
@@ -166,10 +194,24 @@ class TestDefaultApi(unittest.TestCase):
         """
         pass
 
+    def test_list_upload_session_parts(self) -> None:
+        """Test case for list_upload_session_parts
+
+        List upload session parts
+        """
+        pass
+
     def test_publish_dataset_version(self) -> None:
         """Test case for publish_dataset_version
 
         Publish a dataset version
+        """
+        pass
+
+    def test_upload_part(self) -> None:
+        """Test case for upload_part
+
+        Upload a part
         """
         pass
 

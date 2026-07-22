@@ -23,6 +23,7 @@ from moqentra_client.models.create_dataset_version_request import CreateDatasetV
 from moqentra_client.models.create_experiment_request import CreateExperimentRequest
 from moqentra_client.models.create_model_request import CreateModelRequest
 from moqentra_client.models.create_training_job_request import CreateTrainingJobRequest
+from moqentra_client.models.create_upload_session_request import CreateUploadSessionRequest
 from moqentra_client.models.dataset_response import DatasetResponse
 from moqentra_client.models.dataset_version_response import DatasetVersionResponse
 from moqentra_client.models.experiment_response import ExperimentResponse
@@ -36,5 +37,7 @@ from moqentra_client.models.problem_details import ProblemDetails
 from moqentra_client.models.problem_details_violations_inner import ProblemDetailsViolationsInner
 from moqentra_client.models.ready_response import ReadyResponse
 from moqentra_client.models.training_job_response import TrainingJobResponse
+from moqentra_client.models.upload_part_info import UploadPartInfo
+from moqentra_client.models.upload_session_response import UploadSessionResponse
 from moqentra_client.models.who_am_i_response import WhoAmIResponse
 

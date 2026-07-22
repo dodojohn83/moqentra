@@ -4,29 +4,106 @@ All URIs are relative to *http://localhost*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
+| [**abortUploadSession**](DefaultApi.md#abortuploadsession) | **DELETE** /v1/upload-sessions/{id} | Abort an upload session |
 | [**activateAnnotationProject**](DefaultApi.md#activateannotationproject) | **POST** /v1/annotation-projects/{id}/activate | Activate annotation project |
 | [**addDatasetVersionAsset**](DefaultApi.md#adddatasetversionasset) | **POST** /v1/dataset-versions/{id}/assets | Add an asset to a draft dataset version |
 | [**admitTrainingJob**](DefaultApi.md#admittrainingjob) | **POST** /v1/training-jobs/{id}/admit | Admit a training job |
 | [**cancelTrainingJob**](DefaultApi.md#canceltrainingjob) | **POST** /v1/training-jobs/{id}/cancel | Cancel a training job |
 | [**compileApplication**](DefaultApi.md#compileapplication) | **POST** /v1/applications:compile | Compile an application graph |
+| [**completeUploadSession**](DefaultApi.md#completeuploadsession) | **POST** /v1/upload-sessions/{id}/complete | Complete an upload session |
 | [**createAnnotationProject**](DefaultApi.md#createannotationprojectoperation) | **POST** /v1/annotation-projects | Create annotation project |
 | [**createDataset**](DefaultApi.md#createdatasetoperation) | **POST** /v1/datasets | Create dataset |
 | [**createDatasetVersion**](DefaultApi.md#createdatasetversionoperation) | **POST** /v1/dataset-versions | Create dataset version |
 | [**createExperiment**](DefaultApi.md#createexperimentoperation) | **POST** /v1/experiments | Create experiment |
 | [**createModel**](DefaultApi.md#createmodeloperation) | **POST** /v1/models | Create model family |
 | [**createTrainingJob**](DefaultApi.md#createtrainingjoboperation) | **POST** /v1/training-jobs | Create training job |
+| [**createUploadSession**](DefaultApi.md#createuploadsessionoperation) | **POST** /v1/upload-sessions | Create a multipart upload session |
 | [**generateDatasetVersionSplits**](DefaultApi.md#generatedatasetversionsplits) | **POST** /v1/dataset-versions/{id}/splits | Generate deterministic train/val/test splits |
 | [**getDataset**](DefaultApi.md#getdataset) | **GET** /v1/datasets/{id} | Get dataset by id |
 | [**getHealth**](DefaultApi.md#gethealth) | **GET** /healthz | Liveness probe |
 | [**getReady**](DefaultApi.md#getready) | **GET** /readyz | Readiness probe |
+| [**getUploadSession**](DefaultApi.md#getuploadsession) | **GET** /v1/upload-sessions/{id} | Get upload session |
 | [**listDatasets**](DefaultApi.md#listdatasets) | **GET** /v1/datasets | List datasets for tenant |
 | [**listExperiments**](DefaultApi.md#listexperiments) | **GET** /v1/experiments | List experiments |
 | [**listModels**](DefaultApi.md#listmodels) | **GET** /v1/models | List models |
 | [**listOutboxEvents**](DefaultApi.md#listoutboxevents) | **GET** /v1/outbox | List outbox events |
 | [**listTrainingJobs**](DefaultApi.md#listtrainingjobs) | **GET** /v1/training-jobs | List training jobs |
+| [**listUploadSessionParts**](DefaultApi.md#listuploadsessionparts) | **GET** /v1/upload-sessions/{id}/parts | List upload session parts |
 | [**publishDatasetVersion**](DefaultApi.md#publishdatasetversion) | **POST** /v1/dataset-versions/{id}/publish | Publish a dataset version |
+| [**uploadPart**](DefaultApi.md#uploadpart) | **POST** /v1/upload-sessions/{id}/parts/{partNumber} | Upload a part |
 | [**whoAmI**](DefaultApi.md#whoami) | **GET** /v1/whoami | Resolve authenticated principal |
 
+
+
+## abortUploadSession
+
+> abortUploadSession(xTenantId, id, authorization)
+
+Abort an upload session
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { AbortUploadSessionRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies AbortUploadSessionRequest;
+
+  try {
+    const data = await api.abortUploadSession(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+`void` (Empty response body)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: Not defined
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **204** | Aborted |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
 ## activateAnnotationProject
@@ -386,6 +463,77 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Compiled graph |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## completeUploadSession
+
+> UploadSessionResponse completeUploadSession(xTenantId, id, authorization)
+
+Complete an upload session
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { CompleteUploadSessionRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies CompleteUploadSessionRequest;
+
+  try {
+    const data = await api.completeUploadSession(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**UploadSessionResponse**](UploadSessionResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Completed |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
@@ -834,6 +982,80 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## createUploadSession
+
+> UploadSessionResponse createUploadSession(xTenantId, createUploadSessionRequest, authorization, idempotencyKey)
+
+Create a multipart upload session
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { CreateUploadSessionOperationRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // CreateUploadSessionRequest
+    createUploadSessionRequest: ...,
+    // string (optional)
+    authorization: authorization_example,
+    // string (optional)
+    idempotencyKey: idempotencyKey_example,
+  } satisfies CreateUploadSessionOperationRequest;
+
+  try {
+    const data = await api.createUploadSession(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **createUploadSessionRequest** | [CreateUploadSessionRequest](CreateUploadSessionRequest.md) |  | |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+| **idempotencyKey** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**UploadSessionResponse**](UploadSessionResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **201** | Created |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## generateDatasetVersionSplits
 
 > DatasetVersionResponse generateDatasetVersionSplits(xTenantId, id, generateSplitsRequest, authorization)
@@ -1090,6 +1312,77 @@ No authorization required
 |-------------|-------------|------------------|
 | **200** | Ready |  -  |
 | **503** | Not ready |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## getUploadSession
+
+> UploadSessionResponse getUploadSession(xTenantId, id, authorization)
+
+Get upload session
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetUploadSessionRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies GetUploadSessionRequest;
+
+  try {
+    const data = await api.getUploadSession(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**UploadSessionResponse**](UploadSessionResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Session |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
@@ -1464,6 +1757,77 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## listUploadSessionParts
+
+> UploadSessionResponse listUploadSessionParts(xTenantId, id, authorization)
+
+List upload session parts
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ListUploadSessionPartsRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies ListUploadSessionPartsRequest;
+
+  try {
+    const data = await api.listUploadSessionParts(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**UploadSessionResponse**](UploadSessionResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Session |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## publishDatasetVersion
 
 > DatasetVersionResponse publishDatasetVersion(xTenantId, id, authorization)
@@ -1531,6 +1895,83 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Version published |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## uploadPart
+
+> uploadPart(xTenantId, id, partNumber, body, authorization)
+
+Upload a part
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { UploadPartRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // number
+    partNumber: 56,
+    // Blob
+    body: BINARY_DATA_HERE,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies UploadPartRequest;
+
+  try {
+    const data = await api.uploadPart(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **partNumber** | `number` |  | [Defaults to `undefined`] |
+| **body** | `Blob` |  | |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+`void` (Empty response body)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/octet-stream`
+- **Accept**: Not defined
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **204** | Part uploaded |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 

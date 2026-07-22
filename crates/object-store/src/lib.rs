@@ -5,10 +5,12 @@
 pub mod key;
 pub mod memory;
 pub mod s3;
+pub mod upload_session;
 
 pub use key::ObjectKey;
 pub use memory::InMemoryObjectStore;
 pub use s3::S3ObjectStore;
+pub use upload_session::{InMemoryUploadSessionStore, UploadSession, UploadSessionStore};
 
 use bytes::Bytes;
 use moqentra_types::Error;
