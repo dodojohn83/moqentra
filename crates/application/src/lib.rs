@@ -52,6 +52,10 @@ pub struct CompileResult {
     pub node_count: usize,
     /// Capability requirements unioned from all nodes.
     pub capabilities: Vec<String>,
+    /// Runtime profiles required by the selected components.
+    pub runtime_profiles: Vec<String>,
+    /// Resolved model/resource bindings keyed by `node_id:slot`.
+    pub artifact_bindings: BTreeMap<String, moqentra_domain::application::ResourceRef>,
 }
 
 /// Structured diff between two application specs.
@@ -156,13 +160,31 @@ impl ApplicationCompiler {
         )?
         .digest;
 
-        // Capabilities are derived from the canonical catalog, not from client
-        // supplied node metadata, so clients cannot inflate requirements.
+        // Capabilities and runtime profiles are derived from the canonical
+        // catalog, not from client supplied node metadata, so clients cannot
+        // inflate requirements.
         let mut capabilities: BTreeSet<String> = BTreeSet::new();
-        for node in spec.nodes.values() {
+        let mut runtime_profiles: BTreeSet<String> = BTreeSet::new();
+        let mut artifact_bindings = BTreeMap::new();
+        for (node_id, node) in &spec.nodes {
             if let Some(component) = self.catalog.get(&node.node_type, &node.version) {
                 for cap in &component.capabilities {
                     capabilities.insert(cap.clone());
+                }
+                runtime_profiles.insert(component.runtime_profile.clone());
+            }
+            for (slot, resource) in &node.bindings {
+                if matches!(
+                    resource,
+                    moqentra_domain::application::ResourceRef::Model(_)
+                ) || matches!(
+                    resource,
+                    moqentra_domain::application::ResourceRef::Dataset(_)
+                ) || matches!(
+                    resource,
+                    moqentra_domain::application::ResourceRef::Secret { .. }
+                ) {
+                    artifact_bindings.insert(format!("{node_id}:{slot}"), resource.clone());
                 }
             }
         }
@@ -172,6 +194,8 @@ impl ApplicationCompiler {
             edge_count: spec.edges.len(),
             node_count: spec.nodes.len(),
             capabilities: capabilities.into_iter().collect(),
+            runtime_profiles: runtime_profiles.into_iter().collect(),
+            artifact_bindings,
         })
     }
 
@@ -668,6 +692,8 @@ mod tests {
         assert_eq!(compiled.edge_count, 1);
         assert!(compiled.digest.starts_with("sha256:"));
         assert_eq!(compiled.capabilities, vec!["gpu".to_string()]);
+        assert_eq!(compiled.runtime_profiles, vec!["native".to_string()]);
+        assert!(compiled.artifact_bindings.is_empty());
 
         let mut to = from.clone();
         to.nodes.insert("c".to_string(), node("c"));
@@ -718,6 +744,18 @@ mod tests {
         }];
         let resolved = registry.resolve_bindings(version_id, &bindings).unwrap();
         assert_eq!(resolved.len(), 1);
+
+        // Compile an equivalent spec with the binding inline; artifact_bindings
+        // captures the resolved model resource keyed by node_id:slot.
+        let mut spec_with_binding = linear_spec();
+        spec_with_binding.nodes.get_mut("a").unwrap().bindings.insert(
+            "model".to_string(),
+            moqentra_domain::application::ResourceRef::Model(
+                moqentra_types::ModelVersionId::new_v7(&RandomIdGenerator),
+            ),
+        );
+        let compiled = compiler.compile(spec_with_binding).unwrap();
+        assert!(compiled.artifact_bindings.contains_key("a:model"));
 
         // Unknown node rejected.
         let bad = vec![Binding {

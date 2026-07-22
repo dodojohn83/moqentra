@@ -4,8 +4,8 @@
 
 - [x] `R1-APP-001` 持久化 Application、不可变 ApplicationVersion、ComponentCatalog、Binding、Deployment 和状态历史。
 - [x] `R1-APP-002` 建立版本化组件目录，首批包含 RTSP source、decode、preprocess、inference、postprocess、tracker、OSD、encode 和 RTMP sink；端口、参数、能力和资源 schema 明确。
-- [~] `R1-APP-003` 编译前校验 DAG、端口类型、参数、deprecated component、ModelRef 状态、Artifact runtime、StreamRef 和 SecretRef 权限。
-- [ ] `R1-APP-004` 编译期解析具体模型 Artifact、后处理、runtime profile 和目标 agent capability；解析结果进入不可变 binding snapshot。
+- [x] `R1-APP-003` 编译前校验 DAG、端口类型、参数、deprecated component、ModelRef 状态、Artifact runtime、StreamRef 和 SecretRef 权限。
+- [~] `R1-APP-004` 编译期解析具体模型 Artifact、后处理、runtime profile 和目标 agent capability；解析结果进入不可变 binding snapshot。
 - [ ] `R1-APP-005` 生成完整 canonical `dg/v1 Graph`，排序 map/节点/边、规范化数字与默认值；同一 spec、catalog 和 binding 必须得到相同摘要。
 - [ ] `R1-APP-006` `DyunGraphBundle/v1` 包含 GraphSpec、application/catalog/binding digest、Artifact、资源限制、兼容 dg 版本和签名；替换仅记录 runtime profile 字符串的占位实现。
 
