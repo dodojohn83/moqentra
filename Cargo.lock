@@ -2485,6 +2485,7 @@ name = "moqentra-control-plane"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "jsonwebtoken",
  "moqentra-application",
@@ -2498,6 +2499,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "sqlx",
  "tokio",
  "tonic",
@@ -2730,9 +2732,11 @@ name = "moqentra-worker-control"
 version = "0.1.0"
 dependencies = [
  "async-stream",
+ "async-trait",
  "moqentra-contracts",
  "moqentra-types",
  "serde",
+ "serde_json",
  "tokio",
  "tokio-stream",
  "tonic",

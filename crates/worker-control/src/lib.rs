@@ -10,7 +10,7 @@ pub use moqentra_contracts::moqentra::worker::v1::{
     worker_agent_service_server::WorkerAgentServiceServer, WorkerAgentServiceOpenStreamRequest,
     WorkerAgentServiceOpenStreamResponse,
 };
-pub use session::{AgentSession, SessionManager, WorkerControlService};
+pub use session::{AgentSession, ArtifactValidator, SessionManager, WorkerControlService};
 
 /// Build a [`WorkerAgentServiceServer`] for the control plane.
 pub fn worker_service_server(

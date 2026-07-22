@@ -1,7 +1,7 @@
 //! Training experiment and job application services.
 
 use moqentra_domain::training::{Experiment, TrainingJob, TrainingJobSpec, TrainingJobState};
-use moqentra_types::{Error, ExperimentId, ProjectId, TenantId, TrainingJobId};
+use moqentra_types::{AttemptId, Error, ExperimentId, ProjectId, TenantId, TrainingJobId};
 use std::collections::BTreeMap;
 
 /// In-memory training registry for single-process control plane.
@@ -131,6 +131,13 @@ impl InMemoryTrainingRegistry {
             .filter(|j| j.tenant_id == tenant_id && matches!(j.state, TrainingJobState::Queued))
             .min_by_key(|j| j.created_at)
             .map(|j| j.id)
+    }
+
+    /// Find a mutable training job by its current attempt id.
+    pub fn find_by_attempt_id_mut(&mut self, attempt_id: AttemptId) -> Option<&mut TrainingJob> {
+        self.jobs
+            .values_mut()
+            .find(|j| j.current_attempt.as_ref().map(|a| a.id) == Some(attempt_id))
     }
 
     /// Helper to build a job from a validated spec.

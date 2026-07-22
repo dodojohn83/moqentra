@@ -10,8 +10,10 @@ repository.workspace = true
 moqentra-types = { path = "../types" }
 moqentra-contracts = { path = "../contracts" }
 serde = { workspace = true }
+serde_json = "1.0"
 tokio = { workspace = true }
 tonic = { workspace = true }
+async-trait = "0.1"
 tokio-stream = { workspace = true }
 async-stream = { workspace = true }
 tracing = { workspace = true }

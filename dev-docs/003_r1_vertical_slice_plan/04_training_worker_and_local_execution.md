@@ -32,7 +32,7 @@
 - [x] `R1-TRAIN-013` scheduler 从 PostgreSQL 读取 queued job，校验冻结数据版本、镜像 digest、配额和 capability 后创建 attempt/lease。
 - [x] `R1-TRAIN-014` 状态流固定为 `Draft → Queued → Admitted → Running → Succeeded/Failed/Cancelled`；重试创建新 attempt，不倒退已终结 attempt。
 - [x] `R1-TRAIN-015` metrics 有名称/标签 allowlist、每批上限和下采样；日志、指标、checkpoint cursor 支持从断点继续读取。
-- [ ] `R1-TRAIN-016` Worker Result 只触发 Artifact validation Operation；校验成功后才原子完成训练并创建唯一 Model Version。
+- [x] `R1-TRAIN-016` Worker Result 只触发 Artifact validation Operation；校验成功后才原子完成训练并创建唯一 Model Version。
 
 ## 5. 完成条件与测试
 

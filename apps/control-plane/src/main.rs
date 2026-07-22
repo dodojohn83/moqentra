@@ -5,6 +5,8 @@
 //! `moqentra-http-api`.
 
 use axum::serve;
+mod artifact_validator;
+use artifact_validator::AppArtifactValidator;
 use moqentra_application::{
     InMemoryAnnotationRegistry, InMemoryDatasetRegistry, InMemoryModelRegistry,
     InMemoryTrainingRegistry,
@@ -173,7 +175,11 @@ async fn main() -> anyhow::Result<()> {
     moqentra_http_api::validation_worker::spawn_media_validation_worker(state.clone());
     moqentra_http_api::gc_worker::spawn_gc_worker(state.clone());
 
-    let worker_manager = moqentra_worker_control::SessionManager::new();
+    let validator = Arc::new(AppArtifactValidator {
+        training: state.training.clone(),
+        models: state.models.clone(),
+    });
+    let worker_manager = moqentra_worker_control::SessionManager::new_with_validator(validator);
     let worker_service = moqentra_worker_control::WorkerControlService::new(worker_manager);
     let worker_listen =
         std::env::var("MOQENTRA_WORKER_GRPC_ADDR").unwrap_or_else(|_| "0.0.0.0:9090".to_string());

@@ -4,6 +4,7 @@
 //! numbers, fencing tokens, duplicate/late results, and routes outbound
 //! commands/leasing/drain frames per node.
 
+use async_trait::async_trait;
 use moqentra_contracts::moqentra::worker::v1::{
     worker_agent_service_open_stream_request::Payload as InPayload,
     worker_agent_service_open_stream_response::Payload as OutPayload, AckStatus, Command, Drain,
@@ -17,6 +18,15 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, Streaming};
+
+/// Asynchronous callback to validate a worker Result payload (e.g. model
+/// artifact manifest) and, on success, finalize the training job and create a
+/// unique model version.
+#[async_trait]
+pub trait ArtifactValidator: Send + Sync {
+    async fn validate(&self, command_id: &str, payload: &[u8])
+        -> Result<(), moqentra_types::Error>;
+}
 
 /// Default inactivity timeout before a session can be replaced.
 const SESSION_TIMEOUT: Duration = Duration::from_secs(120);
@@ -52,6 +62,7 @@ pub struct AgentSession {
     draining: bool,
     #[allow(dead_code)]
     outbound: mpsc::Sender<Result<WorkerAgentServiceOpenStreamResponse, Status>>,
+    validator: Option<Arc<dyn ArtifactValidator>>,
 }
 
 impl AgentSession {
@@ -60,6 +71,7 @@ impl AgentSession {
         fencing_token: u64,
         capabilities: Option<WorkerCapabilities>,
         outbound: mpsc::Sender<Result<WorkerAgentServiceOpenStreamResponse, Status>>,
+        validator: Option<Arc<dyn ArtifactValidator>>,
     ) -> Self {
         Self {
             node_id,
@@ -74,6 +86,7 @@ impl AgentSession {
             cancelled: HashSet::new(),
             draining: false,
             outbound,
+            validator,
         }
     }
 
@@ -289,6 +302,20 @@ impl AgentSession {
         self.cancelled.remove(&result.command_id);
         self.touch();
 
+        if result.success {
+            if let Some(validator) = self.validator.clone() {
+                let command_id = result.command_id.clone();
+                let payload = result.payload.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = validator.validate(&command_id, &payload).await {
+                        tracing::warn!(command_id = %command_id, error = %e, "artifact validation failed");
+                    }
+                });
+            }
+        } else {
+            tracing::info!(command_id = %result.command_id, "worker reported failure; skipping artifact validation");
+        }
+
         if self.draining {
             self.send_drain(true, "").await;
         }
@@ -388,11 +415,20 @@ impl AgentSession {
 pub struct SessionManager {
     counter: AtomicU64,
     sessions: Mutex<HashMap<String, Arc<Mutex<AgentSession>>>>,
+    validator: Option<Arc<dyn ArtifactValidator>>,
 }
 
 impl SessionManager {
     pub fn new() -> Arc<Self> {
         Arc::new(Self::default())
+    }
+
+    pub fn new_with_validator(validator: Arc<dyn ArtifactValidator>) -> Arc<Self> {
+        Arc::new(Self {
+            counter: AtomicU64::new(0),
+            sessions: Mutex::new(HashMap::new()),
+            validator: Some(validator),
+        })
     }
 
     /// Register a new agent connection. The first inbound frame on the stream
@@ -431,6 +467,7 @@ impl SessionManager {
             fencing_token,
             capabilities,
             tx,
+            self.validator.clone(),
         )));
         sessions.insert(node_id.clone(), session.clone());
 
