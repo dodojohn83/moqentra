@@ -171,6 +171,7 @@ async fn main() -> anyhow::Result<()> {
     spawn_outbox_dispatcher(state.clone());
     moqentra_http_api::import::spawn_import_worker(state.clone());
     moqentra_http_api::validation_worker::spawn_media_validation_worker(state.clone());
+    moqentra_http_api::gc_worker::spawn_gc_worker(state.clone());
     let app = app_router(state);
     tracing::info!(%addr, "moqentra-control-plane listening");
     let listener = tokio::net::TcpListener::bind(addr).await?;

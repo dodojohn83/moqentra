@@ -310,6 +310,17 @@ impl InMemoryDatasetRegistry {
         Self::default()
     }
 
+    /// Return all object keys referenced by dataset version assets.
+    pub fn referenced_object_keys(&self) -> std::collections::BTreeSet<String> {
+        let mut keys = std::collections::BTreeSet::new();
+        for v in self.versions.values() {
+            for a in &v.assets {
+                keys.insert(a.object_key.clone());
+            }
+        }
+        keys
+    }
+
     /// Return pending (tenant_id, version_id, asset_name, object_key, media_type)
     /// tuples that need media validation.
     pub fn pending_validations(

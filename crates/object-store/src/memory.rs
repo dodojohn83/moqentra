@@ -4,9 +4,9 @@ use crate::{ObjectMetadata, ObjectStorage};
 use bytes::Bytes;
 use moqentra_types::Error;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Default)]
 struct Object {
@@ -27,6 +27,8 @@ struct MultipartUpload {
 #[derive(Debug, Clone, Default)]
 pub struct InMemoryObjectStore {
     objects: Arc<Mutex<HashMap<String, Object>>>,
+    created_at: Arc<Mutex<HashMap<String, Instant>>>,
+    legal_holds: Arc<Mutex<BTreeSet<String>>>,
     multipart: Arc<Mutex<HashMap<String, MultipartUpload>>>,
     counter: Arc<Mutex<u64>>,
 }
@@ -34,6 +36,53 @@ pub struct InMemoryObjectStore {
 impl InMemoryObjectStore {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Place or remove a legal hold on an object key.
+    pub fn set_legal_hold(&self, key: &str, hold: bool) {
+        let mut holds = self.legal_holds.lock().unwrap_or_else(|e| e.into_inner());
+        if hold {
+            holds.insert(key.to_string());
+        } else {
+            holds.remove(key);
+        }
+    }
+
+    /// Perform a bounded garbage collection pass over this store.
+    ///
+    /// Objects are eligible for deletion when they are not in `referenced`, are
+    /// not under legal hold, and are older than `min_age`. At most `max_delete`
+    /// objects are removed in one pass.
+    pub fn gc(
+        &self,
+        referenced: &std::collections::BTreeSet<String>,
+        min_age: Duration,
+        max_delete: usize,
+    ) -> usize {
+        let now = Instant::now();
+        let mut objects = self.objects.lock().unwrap_or_else(|e| e.into_inner());
+        let mut created_at = self.created_at.lock().unwrap_or_else(|e| e.into_inner());
+        let holds = self.legal_holds.lock().unwrap_or_else(|e| e.into_inner());
+        let mut removed = 0;
+        let mut keys: Vec<String> = objects.keys().cloned().collect();
+        keys.sort();
+        for key in keys {
+            if removed >= max_delete {
+                break;
+            }
+            if referenced.contains(&key) || holds.contains(&key) {
+                continue;
+            }
+            let Some(instant) = created_at.get(&key) else {
+                continue;
+            };
+            if now.duration_since(*instant) >= min_age {
+                objects.remove(&key);
+                created_at.remove(&key);
+                removed += 1;
+            }
+        }
+        removed
     }
 }
 
@@ -68,10 +117,12 @@ impl ObjectStorage for InMemoryObjectStore {
             etag: Some(etag),
             digest: Some(object.digest.clone()),
         };
-        self.objects
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(key.to_string(), object);
+        {
+            let mut objects = self.objects.lock().unwrap_or_else(|e| e.into_inner());
+            let mut created_at = self.created_at.lock().unwrap_or_else(|e| e.into_inner());
+            objects.insert(key.to_string(), object);
+            created_at.insert(key.to_string(), Instant::now());
+        }
         Ok(meta)
     }
 
@@ -212,16 +263,22 @@ impl ObjectStorage for InMemoryObjectStore {
             etag: Some(etag),
             digest: Some(object.digest.clone()),
         };
-        self.objects
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(key.to_string(), object);
+        {
+            let mut objects = self.objects.lock().unwrap_or_else(|e| e.into_inner());
+            let mut created_at = self.created_at.lock().unwrap_or_else(|e| e.into_inner());
+            objects.insert(key.to_string(), object);
+            created_at.insert(key.to_string(), Instant::now());
+        }
         Ok(meta)
     }
 
     async fn abort_multipart(&self, _key: &str, upload_id: &str) -> Result<(), Error> {
         self.multipart.lock().unwrap_or_else(|e| e.into_inner()).remove(upload_id);
         Ok(())
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

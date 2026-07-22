@@ -70,6 +70,10 @@ pub trait ObjectStorage: Send + Sync {
 
     /// Abort a multipart upload.
     async fn abort_multipart(&self, key: &str, upload_id: &str) -> Result<(), Error>;
+
+    /// Allow downcasting to a concrete backend for backend-specific operations
+    /// such as bounded garbage collection.
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 pub mod placeholder {

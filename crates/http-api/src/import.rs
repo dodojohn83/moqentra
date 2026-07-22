@@ -21,6 +21,8 @@ pub trait ImportJobStore: Send + Sync {
     async fn get(&self, id: &str) -> Result<Option<ImportJob>, moqentra_types::Error>;
     /// List ids of jobs that are not in a terminal state.
     async fn pending_ids(&self) -> Result<Vec<String>, moqentra_types::Error>;
+    /// List all jobs.
+    async fn list(&self) -> Result<Vec<ImportJob>, moqentra_types::Error>;
 }
 
 /// In-memory import job store for single-process deployments.
@@ -60,6 +62,11 @@ impl ImportJobStore for InMemoryImportJobStore {
             })
             .map(|j| j.id.clone())
             .collect())
+    }
+
+    async fn list(&self) -> Result<Vec<ImportJob>, moqentra_types::Error> {
+        let jobs = self.jobs.lock().unwrap_or_else(|e| e.into_inner());
+        Ok(jobs.values().cloned().collect())
     }
 }
 

@@ -209,6 +209,9 @@ pub trait UploadSessionStore: Send + Sync {
         &self,
         before: UtcTimestamp,
     ) -> Result<Vec<String>, moqentra_types::Error>;
+
+    /// List all upload sessions.
+    async fn list(&self) -> Result<Vec<UploadSession>, moqentra_types::Error>;
 }
 
 /// In-memory upload session store for tests and single-process deployments.
@@ -252,6 +255,11 @@ impl UploadSessionStore for InMemoryUploadSessionStore {
             .filter(|s| s.expires_at < before)
             .map(|s| s.id.clone())
             .collect())
+    }
+
+    async fn list(&self) -> Result<Vec<UploadSession>, moqentra_types::Error> {
+        let sessions = self.sessions.lock().unwrap_or_else(|e| e.into_inner());
+        Ok(sessions.values().cloned().collect())
     }
 }
 
