@@ -34,6 +34,7 @@ pub use training_svc::InMemoryTrainingRegistry;
 
 use moqentra_domain::application::{
     Application, ApplicationSpec, ApplicationVersion, ApplicationVersionState, Binding,
+    ComponentCatalog,
 };
 use moqentra_object_store::ObjectKey;
 use moqentra_types::{ApplicationId, ApplicationVersionId, Error, ProjectId, TenantId};
@@ -80,13 +81,28 @@ impl SpecDiff {
 }
 
 /// Application graph compiler service (server-side authority).
-#[derive(Debug, Default, Clone)]
-pub struct ApplicationCompiler;
+#[derive(Debug, Clone)]
+pub struct ApplicationCompiler {
+    catalog: ComponentCatalog,
+}
+
+impl Default for ApplicationCompiler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ApplicationCompiler {
-    /// Create a new compiler instance.
+    /// Create a new compiler instance with the R1 baseline component catalog.
     pub fn new() -> Self {
-        Self
+        Self {
+            catalog: ComponentCatalog::baseline(),
+        }
+    }
+
+    /// Create a compiler with a custom catalog (useful for testing).
+    pub fn with_catalog(catalog: ComponentCatalog) -> Self {
+        Self { catalog }
     }
 
     /// Validate, canonicalize, and produce a digest for `spec`.
@@ -102,11 +118,25 @@ impl ApplicationCompiler {
             if node.node_type.trim().is_empty() {
                 return Err(Error::invalid_argument("node_type must be non-empty"));
             }
-            if node.deprecated {
+            let component = self.catalog.get(&node.node_type, &node.version).ok_or_else(|| {
+                Error::invalid_argument(format!(
+                    "unknown component '{}/{}' for node '{}'",
+                    node.node_type, node.version, node.id
+                ))
+            })?;
+            if component.deprecated || node.deprecated {
                 return Err(Error::invalid_argument(format!(
                     "node '{}' uses a deprecated type/version",
                     node.id
                 )));
+            }
+            for required in &component.required_parameters {
+                if !node.parameters.contains_key(required) {
+                    return Err(Error::invalid_argument(format!(
+                        "node '{}' missing required parameter '{}'",
+                        node.id, required
+                    )));
+                }
             }
             for binding in node.bindings.values() {
                 validate_resource_ref_name(binding)?;
@@ -126,10 +156,14 @@ impl ApplicationCompiler {
         )?
         .digest;
 
+        // Capabilities are derived from the canonical catalog, not from client
+        // supplied node metadata, so clients cannot inflate requirements.
         let mut capabilities: BTreeSet<String> = BTreeSet::new();
         for node in spec.nodes.values() {
-            for cap in &node.capabilities {
-                capabilities.insert(cap.clone());
+            if let Some(component) = self.catalog.get(&node.node_type, &node.version) {
+                for cap in &component.capabilities {
+                    capabilities.insert(cap.clone());
+                }
             }
         }
 

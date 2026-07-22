@@ -48,6 +48,269 @@ pub struct ApplicationSpec {
     pub edges: Vec<(String, String, String, String)>,
 }
 
+/// A component in the versioned component catalog.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Component {
+    pub node_type: String,
+    pub version: String,
+    pub deprecated: bool,
+    pub inputs: Vec<Port>,
+    pub outputs: Vec<Port>,
+    /// Parameter names with JSON schema default values.
+    pub parameters: BTreeMap<String, serde_json::Value>,
+    /// Required parameter names.
+    pub required_parameters: BTreeSet<String>,
+    pub capabilities: Vec<String>,
+    pub runtime_profile: String,
+}
+
+/// Versioned component catalog used by the application compiler.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ComponentCatalog {
+    pub components: BTreeMap<String, Component>,
+}
+
+impl ComponentCatalog {
+    /// Catalog key used to lookup a component by `node_type` and `version`.
+    fn key(node_type: &str, version: &str) -> String {
+        format!("{}/{}", node_type, version)
+    }
+
+    /// Lookup a component by type and version.
+    pub fn get(&self, node_type: &str, version: &str) -> Option<&Component> {
+        self.components.get(&Self::key(node_type, version))
+    }
+
+    /// Baseline R1 component catalog. Each component declares its ports,
+    /// required/default parameters, capabilities and runtime profile.
+    pub fn baseline() -> Self {
+        use serde_json::json;
+        let mut components = BTreeMap::new();
+        components.insert(
+            Self::key("rtsp-source", "1"),
+            Component {
+                node_type: "rtsp-source".to_string(),
+                version: "1".to_string(),
+                deprecated: false,
+                inputs: vec![],
+                outputs: vec![Port {
+                    name: "video".to_string(),
+                    port_type: "stream".to_string(),
+                    schema: "h264".to_string(),
+                }],
+                parameters: BTreeMap::new(),
+                required_parameters: ["url".to_string()].iter().cloned().collect(),
+                capabilities: vec!["network".to_string()],
+                runtime_profile: "gstreamer".to_string(),
+            },
+        );
+        components.insert(
+            Self::key("decode", "1"),
+            Component {
+                node_type: "decode".to_string(),
+                version: "1".to_string(),
+                deprecated: false,
+                inputs: vec![Port {
+                    name: "video".to_string(),
+                    port_type: "stream".to_string(),
+                    schema: "h264".to_string(),
+                }],
+                outputs: vec![Port {
+                    name: "frames".to_string(),
+                    port_type: "image".to_string(),
+                    schema: "raw".to_string(),
+                }],
+                parameters: BTreeMap::new(),
+                required_parameters: BTreeSet::new(),
+                capabilities: vec!["decode".to_string()],
+                runtime_profile: "ffmpeg".to_string(),
+            },
+        );
+        components.insert(
+            Self::key("preprocess", "1"),
+            Component {
+                node_type: "preprocess".to_string(),
+                version: "1".to_string(),
+                deprecated: false,
+                inputs: vec![Port {
+                    name: "frames".to_string(),
+                    port_type: "image".to_string(),
+                    schema: "raw".to_string(),
+                }],
+                outputs: vec![Port {
+                    name: "tensors".to_string(),
+                    port_type: "tensor".to_string(),
+                    schema: "float32".to_string(),
+                }],
+                parameters: BTreeMap::from([
+                    ("resize".to_string(), json!([224, 224])),
+                    ("mean".to_string(), json!([0.485, 0.456, 0.406])),
+                    ("std".to_string(), json!([0.229, 0.224, 0.225])),
+                ]),
+                required_parameters: BTreeSet::new(),
+                capabilities: vec!["preprocess".to_string()],
+                runtime_profile: "native".to_string(),
+            },
+        );
+        components.insert(
+            Self::key("inference", "1"),
+            Component {
+                node_type: "inference".to_string(),
+                version: "1".to_string(),
+                deprecated: false,
+                inputs: vec![Port {
+                    name: "tensors".to_string(),
+                    port_type: "tensor".to_string(),
+                    schema: "float32".to_string(),
+                }],
+                outputs: vec![Port {
+                    name: "features".to_string(),
+                    port_type: "tensor".to_string(),
+                    schema: "float32".to_string(),
+                }],
+                parameters: BTreeMap::new(),
+                required_parameters: ["model_version_id".to_string()].iter().cloned().collect(),
+                capabilities: vec!["onnxruntime".to_string()],
+                runtime_profile: "onnxruntime".to_string(),
+            },
+        );
+        components.insert(
+            Self::key("postprocess", "1"),
+            Component {
+                node_type: "postprocess".to_string(),
+                version: "1".to_string(),
+                deprecated: false,
+                inputs: vec![Port {
+                    name: "features".to_string(),
+                    port_type: "tensor".to_string(),
+                    schema: "float32".to_string(),
+                }],
+                outputs: vec![Port {
+                    name: "boxes".to_string(),
+                    port_type: "detection".to_string(),
+                    schema: "coco".to_string(),
+                }],
+                parameters: BTreeMap::from([
+                    ("confidence".to_string(), json!(0.5)),
+                    ("nms_threshold".to_string(), json!(0.5)),
+                ]),
+                required_parameters: BTreeSet::new(),
+                capabilities: vec!["nms".to_string()],
+                runtime_profile: "native".to_string(),
+            },
+        );
+        components.insert(
+            Self::key("tracker", "1"),
+            Component {
+                node_type: "tracker".to_string(),
+                version: "1".to_string(),
+                deprecated: false,
+                inputs: vec![Port {
+                    name: "boxes".to_string(),
+                    port_type: "detection".to_string(),
+                    schema: "coco".to_string(),
+                }],
+                outputs: vec![Port {
+                    name: "tracks".to_string(),
+                    port_type: "track".to_string(),
+                    schema: "id".to_string(),
+                }],
+                parameters: BTreeMap::new(),
+                required_parameters: BTreeSet::new(),
+                capabilities: vec!["track".to_string()],
+                runtime_profile: "native".to_string(),
+            },
+        );
+        components.insert(
+            Self::key("osd", "1"),
+            Component {
+                node_type: "osd".to_string(),
+                version: "1".to_string(),
+                deprecated: false,
+                inputs: vec![Port {
+                    name: "tracks".to_string(),
+                    port_type: "track".to_string(),
+                    schema: "id".to_string(),
+                }],
+                outputs: vec![Port {
+                    name: "annotated".to_string(),
+                    port_type: "image".to_string(),
+                    schema: "raw".to_string(),
+                }],
+                parameters: BTreeMap::new(),
+                required_parameters: BTreeSet::new(),
+                capabilities: vec!["draw".to_string()],
+                runtime_profile: "native".to_string(),
+            },
+        );
+        components.insert(
+            Self::key("encode", "1"),
+            Component {
+                node_type: "encode".to_string(),
+                version: "1".to_string(),
+                deprecated: false,
+                inputs: vec![Port {
+                    name: "annotated".to_string(),
+                    port_type: "image".to_string(),
+                    schema: "raw".to_string(),
+                }],
+                outputs: vec![Port {
+                    name: "encoded".to_string(),
+                    port_type: "stream".to_string(),
+                    schema: "h264".to_string(),
+                }],
+                parameters: BTreeMap::new(),
+                required_parameters: BTreeSet::new(),
+                capabilities: vec!["encode".to_string()],
+                runtime_profile: "ffmpeg".to_string(),
+            },
+        );
+        components.insert(
+            Self::key("rtmp-sink", "1"),
+            Component {
+                node_type: "rtmp-sink".to_string(),
+                version: "1".to_string(),
+                deprecated: false,
+                inputs: vec![Port {
+                    name: "encoded".to_string(),
+                    port_type: "stream".to_string(),
+                    schema: "h264".to_string(),
+                }],
+                outputs: vec![],
+                parameters: BTreeMap::new(),
+                required_parameters: ["endpoint".to_string()].iter().cloned().collect(),
+                capabilities: vec!["network".to_string()],
+                runtime_profile: "gstreamer".to_string(),
+            },
+        );
+        // Generic `infer` alias retained for test graphs; production graphs
+        // should prefer the typed `inference` component.
+        components.insert(
+            Self::key("infer", "1"),
+            Component {
+                node_type: "infer".to_string(),
+                version: "1".to_string(),
+                deprecated: false,
+                inputs: vec![Port {
+                    name: "in".to_string(),
+                    port_type: "image".to_string(),
+                    schema: "any".to_string(),
+                }],
+                outputs: vec![Port {
+                    name: "out".to_string(),
+                    port_type: "image".to_string(),
+                    schema: "any".to_string(),
+                }],
+                parameters: BTreeMap::new(),
+                required_parameters: BTreeSet::new(),
+                capabilities: vec!["gpu".to_string()],
+                runtime_profile: "native".to_string(),
+            },
+        );
+        Self { components }
+    }
+}
+
 impl ApplicationSpec {
     pub fn validate(&self) -> Result<(), moqentra_types::Error> {
         let mut visited = BTreeSet::new();
