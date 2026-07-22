@@ -40,6 +40,11 @@ impl UtcTimestamp {
         self.0 < other.0
     }
 
+    /// Milliseconds since the Unix epoch.
+    pub fn unix_millis(&self) -> i64 {
+        (self.0.unix_timestamp_nanos() / 1_000_000).try_into().unwrap_or(i64::MAX)
+    }
+
     pub fn is_after(&self, other: UtcTimestamp) -> bool {
         self.0 > other.0
     }

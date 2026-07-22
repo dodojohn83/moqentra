@@ -71,6 +71,7 @@ pub struct Replica {
     pub errors: Vec<String>,
     pub created_at: UtcTimestamp,
     pub updated_at: UtcTimestamp,
+    pub drain_deadline: Option<UtcTimestamp>,
 }
 
 impl Replica {
@@ -99,6 +100,7 @@ impl Replica {
             errors: Vec::new(),
             created_at: now,
             updated_at: now,
+            drain_deadline: None,
         }
     }
 
@@ -195,10 +197,33 @@ impl Replica {
         Ok(())
     }
 
-    pub fn drain(&mut self) {
+    pub fn drain(&mut self, timeout: std::time::Duration) {
         self.desired_state = ReplicaState::Stopped;
         self.state = ReplicaState::Draining;
+        self.drain_deadline = UtcTimestamp::now().add_std_duration(timeout);
         self.updated_at = UtcTimestamp::now();
+    }
+
+    pub fn reconcile(&mut self, now: UtcTimestamp, heartbeat_timeout: std::time::Duration) {
+        if self.state == ReplicaState::Draining {
+            if let Some(deadline) = self.drain_deadline {
+                if now >= deadline {
+                    self.state = ReplicaState::Stopped;
+                    self.updated_at = now;
+                }
+            }
+        }
+        if matches!(self.state, ReplicaState::Running | ReplicaState::Starting) {
+            if let Some(last) = self.last_heartbeat {
+                if now.unix_millis().saturating_sub(last.unix_millis())
+                    > heartbeat_timeout.as_millis() as i64
+                {
+                    self.state = ReplicaState::Failed;
+                    self.errors.push("heartbeat timed out".to_string());
+                    self.updated_at = now;
+                }
+            }
+        }
     }
 }
 

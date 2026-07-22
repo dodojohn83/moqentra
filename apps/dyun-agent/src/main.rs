@@ -175,6 +175,10 @@ async fn transition_replica(
             Json(serde_json::json!({"error": "invalid state"})),
         )
     })?;
+    let drain_timeout = std::env::var("MOQENTRA_DYUN_DRAIN_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(30);
     let mut replicas = state.replicas.lock().unwrap_or_else(|e| e.into_inner());
     let replica = replicas.get_mut(&replica_id).ok_or_else(|| {
         (
@@ -182,12 +186,16 @@ async fn transition_replica(
             Json(serde_json::json!({"error": "replica not found"})),
         )
     })?;
-    replica.transition(req.generation, req.fencing_token, target).map_err(|e| {
-        (
-            StatusCode::CONFLICT,
-            Json(serde_json::json!({"error": e.to_string()})),
-        )
-    })?;
+    if target == ReplicaState::Draining {
+        replica.drain(std::time::Duration::from_secs(drain_timeout));
+    } else {
+        replica.transition(req.generation, req.fencing_token, target).map_err(|e| {
+            (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        })?;
+    }
     Ok(Json(serde_json::json!({
         "id": replica.id.to_string(),
         "state": format!("{:?}", replica.state),
@@ -295,11 +303,32 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/replicas", get(list_replicas).post(create_replica))
         .route("/v1/replicas/{id}/transition", post(transition_replica))
         .route("/v1/replicas/{id}/heartbeat", post(heartbeat_replica))
-        .with_state(state);
+        .with_state(state.clone());
+
+    let heartbeat_timeout = std::env::var("MOQENTRA_DYUN_HEARTBEAT_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(60);
+    tokio::spawn(reconcile_replicas(
+        state,
+        std::time::Duration::from_secs(heartbeat_timeout),
+    ));
 
     tracing::info!(%addr, "moqentra-dyun-agent listening");
     let _ = UtcTimestamp::now();
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+async fn reconcile_replicas(state: AgentState, heartbeat_timeout: std::time::Duration) {
+    let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+    loop {
+        interval.tick().await;
+        let mut replicas = state.replicas.lock().unwrap_or_else(|e| e.into_inner());
+        let now = UtcTimestamp::now();
+        for replica in replicas.values_mut() {
+            replica.reconcile(now, heartbeat_timeout);
+        }
+    }
 }
