@@ -2168,15 +2168,28 @@ dependencies = [
 name = "moqentra-http-api"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
  "hex",
  "hmac 0.12.1",
+ "jsonwebtoken",
  "moqentra-application",
+ "moqentra-auth",
  "moqentra-domain",
+ "moqentra-storage",
  "moqentra-types",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tower",
+ "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]

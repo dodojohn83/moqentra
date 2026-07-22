@@ -10,7 +10,8 @@
 
 ## 2. Application ports 与事务边界
 
-- [ ] `R1-API-001` 把 control-plane 中的 handler DTO 和路由移入 `moqentra-http-api`，由 app 入口只负责配置、依赖注入、middleware 和生命周期。
+- [x] `R1-API-001` 把 control-plane 中的 handler DTO 和路由移入 `moqentra-http-api`，由 app 入口只负责配置、依赖注入、middleware 和生命周期。
+  - Evidence: `crates/http-api/src/control_plane.rs` (`AppState`, DTOs, handlers, `app_router`, `security_headers`, `require_auth_middleware`, `spawn_outbox_dispatcher`, `apply_dispatch`, tests); `apps/control-plane/src/main.rs` now only contains `build_state_from_env` and `main`.
 - [x] `R1-API-002` 在 application 层定义 dataset、annotation、training、model、application、deployment repositories；所有方法显式携带 `RequestContext`（operation/audit/outbox/idempotency ports 在后续 storage adapter 中补齐）。
   - Evidence: `crates/application/src/ports.rs` (`DatasetRepository`, `AnnotationRepository`, `TrainingJobRepository`, `ModelRepository`, `ApplicationRepository`, `DeploymentRepository`), `Versioned<T>` with `Revision`/`ETag`.
 - [ ] `R1-API-003` 定义 `UnitOfWork`：聚合变更、Operation、outbox、audit 和 idempotency response 必须在同一 PostgreSQL 事务提交。
