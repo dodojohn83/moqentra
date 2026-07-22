@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 moqentra-types = { path = "../../crates/types" }
 moqentra-scheduler = { path = "../../crates/scheduler" }
+moqentra-application = { path = "../../crates/application" }
 moqentra-domain = { path = "../../crates/domain" }
 moqentra-storage = { path = "../../crates/storage" }
 tokio = { workspace = true }

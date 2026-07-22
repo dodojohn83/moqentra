@@ -2665,6 +2665,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "moqentra-application",
  "moqentra-domain",
  "moqentra-scheduler",
  "moqentra-storage",

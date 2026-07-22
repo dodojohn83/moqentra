@@ -8,12 +8,15 @@ use axum::{Json, Router};
 use moqentra_scheduler::{LeaderElection, QueueEntry, Reconciler, SchedulingQueue};
 use moqentra_types::{RandomIdGenerator, TenantId, UtcTimestamp};
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tracing_subscriber::EnvFilter;
+
+mod pg;
 
 #[derive(Clone)]
 struct SchedulerState {
@@ -23,9 +26,13 @@ struct SchedulerState {
     term: Arc<AtomicU64>,
     cycles: Arc<AtomicU64>,
     admitted: Arc<AtomicU64>,
+    fencing_counter: Arc<AtomicU64>,
     election: Arc<Mutex<LeaderElection>>,
     reconciler: Arc<Reconciler>,
     queue: Arc<Mutex<SchedulingQueue>>,
+    db_pool: Option<PgPool>,
+    http: reqwest::Client,
+    node_url: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -139,9 +146,7 @@ async fn list_queue(State(state): State<SchedulerState>) -> Json<Vec<serde_json:
 
 fn spawn_control_loop(state: SchedulerState) {
     let control_plane_url = std::env::var("MOQENTRA_CONTROL_PLANE_URL").ok();
-    let node_agent_url = std::env::var("MOQENTRA_NODE_AGENT_URL").ok();
     let service_token = std::env::var("MOQENTRA_SERVICE_TOKEN").ok();
-    let http = reqwest::Client::new();
 
     tokio::spawn(async move {
         let mut term = 1u64;
@@ -156,72 +161,21 @@ fn spawn_control_loop(state: SchedulerState) {
             }
 
             if state.is_leader.load(Ordering::Relaxed) {
-                let popped = {
-                    let mut queue = state.queue.lock().unwrap_or_else(|e| e.into_inner());
-                    queue.pop()
-                };
-                if let Some(entry) = popped {
-                    state.admitted.fetch_add(1, Ordering::Relaxed);
-                    tracing::info!(job_id = %entry.job_id, tenant = %entry.tenant_id, "popped job from queue");
-
-                    // Notify control-plane to admit the job (optional).
-                    if let Some(base) = &control_plane_url {
-                        let url = format!(
-                            "{}/v1/training-jobs/{}/admit",
-                            base.trim_end_matches('/'),
-                            entry.job_id
-                        );
-                        let mut req = http.post(&url).header("x-tenant-id", &entry.tenant_id);
-                        if let Some(tok) = &service_token {
-                            req = req.header("authorization", format!("Bearer {tok}"));
-                        }
-                        if !entry.project_id.is_empty() {
-                            req = req.header("x-project-id", &entry.project_id);
-                        }
-                        match req.send().await {
-                            Ok(resp) if resp.status().is_success() => {
-                                tracing::info!(job_id = %entry.job_id, "control-plane admit ok");
-                            }
-                            Ok(resp) => {
-                                tracing::warn!(
-                                    job_id = %entry.job_id,
-                                    status = %resp.status(),
-                                    "control-plane admit failed"
-                                );
-                            }
-                            Err(e) => {
-                                tracing::warn!(error = %e, "control-plane admit request error")
-                            }
-                        }
-                    }
-
-                    // Allocate on node-agent (optional).
-                    if let Some(base) = &node_agent_url {
-                        let url = format!("{}/v1/allocations", base.trim_end_matches('/'));
-                        let body = serde_json::json!({
-                            "attempt_id": entry.job_id,
-                            "cpu_cores": 2,
-                            "memory_mib": 4096,
-                            "device_count": 0,
-                            "fencing_token": 1
-                        });
-                        match http.post(&url).json(&body).send().await {
-                            Ok(resp) if resp.status().is_success() => {
-                                tracing::info!(job_id = %entry.job_id, "node-agent allocate ok");
-                            }
-                            Ok(resp) => {
-                                tracing::warn!(
-                                    job_id = %entry.job_id,
-                                    status = %resp.status(),
-                                    "node-agent allocate failed"
-                                );
-                            }
-                            Err(e) => {
-                                tracing::warn!(error = %e, "node-agent allocate request error")
-                            }
-                        }
-                    }
+                if let Some(pool) = state.db_pool.clone() {
+                    // PostgreSQL-backed scheduling: poll, validate, and create attempts/leases.
+                    let pg = pg::PgScheduler::new(
+                        pool,
+                        state.http.clone(),
+                        state.node_url.clone(),
+                        state.fencing_counter.clone(),
+                    );
+                    let processed = pg.poll(16).await;
+                    state.admitted.fetch_add(processed as u64, Ordering::Relaxed);
+                } else {
+                    // In-memory fallback for local-only demos.
+                    process_in_memory_job(&state, &control_plane_url, &service_token).await;
                 }
+
                 let mut resources: BTreeMap<String, moqentra_scheduler::DesiredObserved<String>> =
                     BTreeMap::new();
                 let processed = state.reconciler.run_cycle(&mut resources, |_| None);
@@ -235,6 +189,77 @@ fn spawn_control_loop(state: SchedulerState) {
     });
 }
 
+async fn process_in_memory_job(
+    state: &SchedulerState,
+    control_plane_url: &Option<String>,
+    service_token: &Option<String>,
+) {
+    let popped = {
+        let mut queue = state.queue.lock().unwrap_or_else(|e| e.into_inner());
+        queue.pop()
+    };
+    if let Some(entry) = popped {
+        state.admitted.fetch_add(1, Ordering::Relaxed);
+        tracing::info!(job_id = %entry.job_id, tenant = %entry.tenant_id, "popped job from queue");
+
+        if let Some(base) = control_plane_url {
+            let url = format!(
+                "{}/v1/training-jobs/{}/admit",
+                base.trim_end_matches('/'),
+                entry.job_id
+            );
+            let mut req = state.http.post(&url).header("x-tenant-id", &entry.tenant_id);
+            if let Some(tok) = service_token {
+                req = req.header("authorization", format!("Bearer {tok}"));
+            }
+            if !entry.project_id.is_empty() {
+                req = req.header("x-project-id", &entry.project_id);
+            }
+            match req.send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    tracing::info!(job_id = %entry.job_id, "control-plane admit ok");
+                }
+                Ok(resp) => {
+                    tracing::warn!(
+                        job_id = %entry.job_id,
+                        status = %resp.status(),
+                        "control-plane admit failed"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "control-plane admit request error")
+                }
+            }
+        }
+
+        if let Some(base) = &state.node_url {
+            let url = format!("{}/v1/allocations", base.trim_end_matches('/'));
+            let body = serde_json::json!({
+                "attempt_id": entry.job_id,
+                "cpu_cores": 2,
+                "memory_mib": 4096,
+                "device_count": 0,
+                "fencing_token": 1
+            });
+            match state.http.post(&url).json(&body).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    tracing::info!(job_id = %entry.job_id, "node-agent allocate ok");
+                }
+                Ok(resp) => {
+                    tracing::warn!(
+                        job_id = %entry.job_id,
+                        status = %resp.status(),
+                        "node-agent allocate failed"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "node-agent allocate request error")
+                }
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
@@ -244,6 +269,16 @@ async fn main() -> anyhow::Result<()> {
     let gen = RandomIdGenerator;
     let tenant = TenantId::new_v7(&gen);
 
+    let db_pool = if let Ok(dsn) = std::env::var("MOQENTRA_DATABASE_DSN") {
+        if dsn.is_empty() {
+            None
+        } else {
+            PgPool::connect(&dsn).await.ok()
+        }
+    } else {
+        None
+    };
+
     let state = SchedulerState {
         instance_id: instance_id.clone(),
         ready: Arc::new(AtomicBool::new(false)),
@@ -251,11 +286,15 @@ async fn main() -> anyhow::Result<()> {
         term: Arc::new(AtomicU64::new(0)),
         cycles: Arc::new(AtomicU64::new(0)),
         admitted: Arc::new(AtomicU64::new(0)),
+        fencing_counter: Arc::new(AtomicU64::new(1)),
         election: Arc::new(Mutex::new(LeaderElection::new(instance_id.clone()))),
         reconciler: Arc::new(Reconciler::new(instance_id, 32)),
         queue: Arc::new(Mutex::new(SchedulingQueue::new(
             "default", tenant, 1024, 256,
         ))),
+        db_pool,
+        http: reqwest::Client::new(),
+        node_url: std::env::var("MOQENTRA_NODE_AGENT_URL").ok().filter(|s| !s.is_empty()),
     };
 
     spawn_control_loop(state.clone());
