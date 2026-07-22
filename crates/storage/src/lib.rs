@@ -23,7 +23,8 @@ pub use pg_outbox::PgOutboxStore;
 pub use pg_role_store::PgRoleStore;
 pub use pool::{ConnectionPool, ScopedConnection};
 pub use repositories::{
-    PgAnnotationRepository, PgDatasetRepository, PgModelRepository, PgTrainingJobRepository,
+    PgAnnotationRepository, PgApplicationRepository, PgDatasetRepository, PgDeploymentRepository,
+    PgModelRepository, PgTrainingJobRepository,
 };
 pub use unit_of_work::{pagination_clause, Cursor, Paginated, UnitOfWork};
 
