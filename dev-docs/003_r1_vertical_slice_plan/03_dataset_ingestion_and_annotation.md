@@ -3,8 +3,8 @@
 ## 1. 对象和上传
 
 - [x] `R1-DATA-001` 定义租户/项目/资源/版本分层的对象 key builder，调用者不能传任意 bucket key；数据库只保存受控 key 与摘要。
-- [ ] `R1-DATA-002` 实现 multipart upload session API：创建、签名分片、列出已传分片、完成、取消和过期；校验 part 数、ETag、总大小、MIME 与内容摘要。
-- [ ] `R1-DATA-003` 实现浏览器断点续传和取消；签名 URL 只允许一个对象、一个方法和短 TTL，响应不得暴露长期 S3 凭据。
+- [x] `R1-DATA-002` 实现 multipart upload session API：创建、签名分片、列出已传分片、完成、取消和过期；校验 part 数、ETag、总大小、MIME 与内容摘要。
+- [x] `R1-DATA-003` 实现浏览器断点续传和取消；签名 URL 只允许一个对象、一个方法和短 TTL，响应不得暴露长期 S3 凭据。
 - [ ] `R1-DATA-004` 实现 S3/MinIO 导入 Operation，使用服务端 copy/stream、deadline、并发上限、重试和幂等对象去重。
 - [ ] `R1-DATA-005` 由隔离 Worker 执行媒体探测、图片解码验证、视频元数据提取和恶意文件扫描；失败资产不可进入数据版本。
 - [ ] `R1-DATA-006` 实现临时对象引用、legal hold 和有界 GC；正在上传、被版本或模型引用的对象不得删除。
