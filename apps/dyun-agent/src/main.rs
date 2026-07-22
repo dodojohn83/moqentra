@@ -19,7 +19,8 @@ struct AgentState {
     capabilities: Arc<AgentCapabilities>,
     replicas: Arc<Mutex<HashMap<ReplicaId, Replica>>>,
     sandbox_root: String,
-    trusted_keys: Arc<Vec<String>>,
+    production_keys: Arc<Vec<String>>,
+    dev_keys: Arc<Vec<String>>,
 }
 
 #[derive(Serialize)]
@@ -117,7 +118,7 @@ async fn create_replica(
         bundle,
         state.capabilities.node_id,
     );
-    replica.verify_bundle(&state.trusted_keys).map_err(|e| {
+    replica.verify_bundle(&state.production_keys, &state.dev_keys).map_err(|e| {
         (
             StatusCode::FORBIDDEN,
             Json(serde_json::json!({"error": e.to_string()})),
@@ -221,14 +222,34 @@ async fn heartbeat_replica(
     })))
 }
 
+fn comma_list(env_var: &str) -> Vec<String> {
+    std::env::var(env_var)
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
 fn discover_capabilities() -> AgentCapabilities {
     let gen = RandomIdGenerator;
+    // Capabilities are determined at startup from the dg build environment,
+    // not hard-coded. If no probe data is provided, the agent advertises no
+    // accelerators, forcing explicit configuration.
     AgentCapabilities {
         node_id: NodeId::new_v7(&gen),
-        dg_versions: vec!["dg-1.0".to_string()],
-        codecs: vec!["h264".to_string(), "hevc".to_string()],
-        accelerators: vec!["cpu".to_string()],
-        max_replicas: 8,
+        agent_version: std::env::var("MOQENTRA_DYUN_AGENT_VERSION")
+            .unwrap_or_else(|_| "0.1.0".to_string()),
+        dg_versions: comma_list("MOQENTRA_DG_VERSIONS"),
+        codecs: comma_list("MOQENTRA_DG_CODECS"),
+        accelerators: comma_list("MOQENTRA_DG_ACCELERATORS"),
+        element_schemas: comma_list("MOQENTRA_DG_ELEMENT_SCHEMAS"),
+        backends: comma_list("MOQENTRA_DG_BACKENDS"),
+        build_features: comma_list("MOQENTRA_DG_BUILD_FEATURES"),
+        max_replicas: std::env::var("MOQENTRA_DYUN_MAX_REPLICAS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(8),
     }
 }
 
@@ -240,7 +261,13 @@ async fn main() -> anyhow::Result<()> {
     let sandbox_root =
         std::env::var("MOQENTRA_DYUN_SANDBOX").unwrap_or_else(|_| "/tmp/moqentra-dyun".to_string());
     std::fs::create_dir_all(&sandbox_root)?;
-    let trusted = std::env::var("MOQENTRA_DYUN_TRUSTED_KEYS")
+    let production_keys = std::env::var("MOQENTRA_DYUN_PRODUCTION_KEYS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>();
+    let dev_keys = std::env::var("MOQENTRA_DYUN_DEV_KEYS")
         .unwrap_or_else(|_| "trusted:".to_string())
         .split(',')
         .map(|s| s.trim().to_string())
@@ -251,7 +278,8 @@ async fn main() -> anyhow::Result<()> {
         capabilities: Arc::new(caps),
         replicas: Arc::new(Mutex::new(HashMap::new())),
         sandbox_root,
-        trusted_keys: Arc::new(trusted),
+        production_keys: Arc::new(production_keys),
+        dev_keys: Arc::new(dev_keys),
     };
 
     let listen =

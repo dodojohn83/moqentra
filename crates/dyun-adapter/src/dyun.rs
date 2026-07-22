@@ -29,9 +29,13 @@ pub struct ResourceLimits {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentCapabilities {
     pub node_id: NodeId,
+    pub agent_version: String,
     pub dg_versions: Vec<String>,
     pub codecs: Vec<String>,
     pub accelerators: Vec<String>,
+    pub element_schemas: Vec<String>,
+    pub backends: Vec<String>,
+    pub build_features: Vec<String>,
     pub max_replicas: u32,
 }
 
@@ -90,15 +94,30 @@ impl Replica {
         }
     }
 
-    pub fn verify_bundle(&self, trusted_keys: &[String]) -> Result<(), moqentra_types::Error> {
-        let valid_keys: Vec<&String> = trusted_keys.iter().filter(|k| !k.is_empty()).collect();
-        let trusted = valid_keys.iter().any(|k| {
-            self.bundle.signature == k.as_str()
-                || (k.ends_with(':')
-                    && self.bundle.signature.starts_with(k.as_str())
-                    && self.bundle.signature.len() > k.len())
+    pub fn verify_bundle(
+        &self,
+        production_keys: &[String],
+        dev_keys: &[String],
+    ) -> Result<(), moqentra_types::Error> {
+        let prod: Vec<&String> = production_keys.iter().filter(|k| !k.is_empty()).collect();
+        let dev: Vec<&String> = dev_keys.iter().filter(|k| !k.is_empty()).collect();
+
+        // Production signatures must match a trusted key exactly.
+        let prod_trusted = prod.iter().any(|k| self.bundle.signature == k.as_str());
+        // Development signatures may use a namespace prefix (e.g. "trusted:") but
+        // only when a development key explicitly allows that namespace.
+        let dev_trusted = dev.iter().any(|k| {
+            k.ends_with(':')
+                && self.bundle.signature.starts_with(k.as_str())
+                && self.bundle.signature.len() > k.len()
         });
-        if valid_keys.is_empty() || !trusted {
+
+        if prod.is_empty() && dev.is_empty() {
+            return Err(moqentra_types::Error::permission_denied(
+                "no trusted keys configured",
+            ));
+        }
+        if !prod_trusted && !dev_trusted {
             return Err(moqentra_types::Error::permission_denied(
                 "bundle signature not trusted",
             ));
@@ -267,8 +286,10 @@ mod tests {
             bundle,
             NodeId::new_v7(&gen),
         );
-        assert!(replica.verify_bundle(&["other".to_string()]).is_err());
-        assert!(replica.verify_bundle(&["trusted:".to_string()]).is_ok());
+        assert!(replica.verify_bundle(&["other".to_string()], &[]).is_err());
+        assert!(replica.verify_bundle(&[], &["trusted:".to_string()]).is_ok());
+        // Production keys require an exact signature match.
+        assert!(replica.verify_bundle(&["trusted:abc".to_string()], &[]).is_ok());
     }
 
     #[test]
