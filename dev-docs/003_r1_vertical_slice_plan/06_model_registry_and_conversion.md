@@ -7,7 +7,7 @@
 - [ ] `R1-MODEL-003` 强制记录 dataset version/manifest digest、training job/attempt、template/version、代码和镜像 digest、framework、参数、指标、checkpoint 与硬件环境。
 - [x] `R1-MODEL-004` Worker 重试或 Result 重放使用 `(tenant, attempt, artifact manifest digest)` 去重，不产生重复 ModelVersion。
 - [x] `R1-MODEL-005` 实现 draft → validating → ready → approved/published → deprecated 状态；发布需要算法工程师申请和有权限审批人确认并审计。
-- [ ] `R1-MODEL-006` 被 ApplicationVersion 或 Deployment 引用的 Artifact 受引用保护；弃用不删除内容，GC 只处理无引用临时对象。
+- [x] `R1-MODEL-006` 被 ApplicationVersion 或 Deployment 引用的 Artifact 受引用保护；弃用不删除内容，GC 只处理无引用临时对象。
 
 ## 2. ONNX 与评估
 
@@ -15,8 +15,8 @@
 - [x] `R1-CONVERT-002` 三个基线模板导出 ONNX，记录 opset、dynamic axes、输入输出 TensorSpec、预处理、类别映射和依赖版本。
 - [x] `R1-CONVERT-003` 使用 ONNX Runtime 加载、shape 校验和固定 fixture 推理；比较 PyTorch 与 ONNX 输出，阈值按模板版本固定并写入评估报告。
 - [x] `R1-CONVERT-004` 检测模型保存后处理契约：置信度、NMS、box 坐标和类别映射；dyun compiler 不猜测缺失参数。
-- [ ] `R1-CONVERT-005` TensorRT/OpenVINO 只有真实转换、加载和 fixture 推理通过后才标记 `preview`；否则支持矩阵保持 compile-only/unsupported。
-- [ ] `R1-CONVERT-006` 发布策略检查扫描状态、必需指标、评估结果、许可证 attachment、审批和目标 runtime compatibility。
+- [x] `R1-CONVERT-005` TensorRT/OpenVINO 只有真实转换、加载和 fixture 推理通过后才标记 `preview`；否则支持矩阵保持 compile-only/unsupported。
+- [x] `R1-CONVERT-006` 发布策略检查扫描状态、必需指标、评估结果、许可证 attachment、审批和目标 runtime compatibility。
 
 ## 3. API 行为
 

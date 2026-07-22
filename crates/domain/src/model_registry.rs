@@ -16,6 +16,10 @@ pub struct Artifact {
     pub size_bytes: u64,
     pub media_type: String,
     pub scan_status: String,
+    /// Object-store key where the artifact bytes are persisted. None for
+    /// in-memory or ephemeral manifests that are not directly GC-managed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_key: Option<String>,
 }
 
 impl Artifact {
@@ -231,6 +235,26 @@ impl ModelVersion {
         if !matches!(self.state, ModelVersionState::Ready) {
             return Err(moqentra_types::Error::conflict("model version not ready"));
         }
+        if self.artifacts.iter().any(|a| a.scan_status != "clean") {
+            return Err(moqentra_types::Error::invalid_argument(
+                "all artifacts must be clean before approval",
+            ));
+        }
+        if self.metrics.is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "release requires at least one metric",
+            ));
+        }
+        if !self.attachments.iter().any(|a| a.kind.eq_ignore_ascii_case("license")) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "release requires a license attachment",
+            ));
+        }
+        if self.signature.inputs.is_empty() || self.signature.outputs.is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "release requires a valid input/output signature",
+            ));
+        }
         self.approved_by = Some(user_id);
         self.state = ModelVersionState::Approved;
         self.updated_at = UtcTimestamp::now();
@@ -379,6 +403,29 @@ mod tests {
             size_bytes: 1024,
             media_type: "application/octet-stream".to_string(),
             scan_status: "clean".to_string(),
+            object_key: None,
+        });
+        mv.signature = ModelSignature {
+            inputs: vec![TensorSpec {
+                name: "input".to_string(),
+                dtype: "float32".to_string(),
+                shape: vec![
+                    "1".to_string(),
+                    "3".to_string(),
+                    "224".to_string(),
+                    "224".to_string(),
+                ],
+            }],
+            outputs: vec![TensorSpec {
+                name: "output".to_string(),
+                dtype: "float32".to_string(),
+                shape: vec!["1".to_string(), "1000".to_string()],
+            }],
+        };
+        mv.metrics.insert("accuracy".to_string(), 0.95);
+        mv.attachments.push(Attachment {
+            kind: "license".to_string(),
+            asset_id: AssetId::new_v7(&gen),
         });
         mv.validate().unwrap();
         mv.mark_ready().unwrap();
@@ -406,6 +453,7 @@ mod tests {
             size_bytes: 1,
             media_type: "application/octet-stream".to_string(),
             scan_status: "infected".to_string(),
+            object_key: None,
         });
         assert!(mv.validate().is_err());
     }

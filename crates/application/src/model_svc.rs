@@ -156,6 +156,20 @@ impl InMemoryModelRegistry {
         }
         f(v)
     }
+
+    /// Return all object keys referenced by model version artifacts. GC uses
+    /// this set to protect live artifacts from deletion.
+    pub fn referenced_object_keys(&self) -> std::collections::BTreeSet<String> {
+        let mut keys = std::collections::BTreeSet::new();
+        for v in self.versions.values() {
+            for a in &v.artifacts {
+                if let Some(k) = &a.object_key {
+                    keys.insert(k.clone());
+                }
+            }
+        }
+        keys
+    }
 }
 
 #[cfg(test)]
@@ -246,6 +260,7 @@ mod tests {
             size_bytes: 123,
             media_type: "application/octet-stream".to_string(),
             scan_status: "infected".to_string(),
+            object_key: None,
         });
         assert!(ArtifactReconciler::reconcile(&mut version).is_err());
 

@@ -145,6 +145,7 @@ fn conversion_row_to_domain(row: &ConversionJobRow) -> Result<ConversionJob, Err
         parameters,
         state,
         output_artifacts,
+        preview: false,
         cache_key: row.cache_key.clone(),
         log_digest: row.log_digest.clone(),
         created_at: moqentra_types::UtcTimestamp::new(row.created_at),

@@ -547,6 +547,7 @@ mod tests {
             size_bytes: 1024,
             media_type: "application/octet-stream".into(),
             scan_status: "clean".into(),
+            object_key: None,
         });
         version.signature = ModelSignature {
             inputs: vec![TensorSpec {
@@ -564,6 +565,7 @@ mod tests {
             kind: "license".into(),
             asset_id: AssetId::new_v7(&gen),
         });
+        version.metrics.insert("accuracy".into(), 0.95);
         version.validate().unwrap();
         version.mark_ready().unwrap();
         version.approve(UserId::new_v7(&gen)).unwrap();

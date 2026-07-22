@@ -52,6 +52,33 @@ impl FromStr for ConversionTarget {
     }
 }
 
+/// Support tier for a conversion target.
+///
+/// * `Verified`   - real export, runtime load and fixture inference are
+///   implemented; a successful conversion can be marked as `preview`.
+/// * `CompileOnly` - a toolchain can compile the model, but runtime
+///   verification is not yet available in this worker.
+/// * `Unsupported` - no conversion path is implemented.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConversionSupportTier {
+    Verified,
+    CompileOnly,
+    Unsupported,
+}
+
+impl ConversionTarget {
+    /// The conversion support matrix for this release. TensorRT/OpenVINO
+    /// are compile-only until real fixture inference passes; Rknn/Sophon/
+    /// AscendOM are unsupported.
+    pub fn support_tier(&self) -> ConversionSupportTier {
+        match self {
+            Self::Onnx => ConversionSupportTier::Verified,
+            Self::TensorRT | Self::OpenVINO => ConversionSupportTier::CompileOnly,
+            Self::Rknn | Self::Sophon | Self::AscendOM => ConversionSupportTier::Unsupported,
+        }
+    }
+}
+
 /// Post-processing contract required by the conversion target runtime.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PostprocessContract {
@@ -125,6 +152,10 @@ pub struct ConversionJob {
     pub parameters: BTreeMap<String, String>,
     pub state: ConversionJobState,
     pub output_artifacts: Vec<Artifact>,
+    /// `true` only when real export, runtime load and fixture inference passed.
+    /// `preview` is never persisted to PostgreSQL in this release; it is kept in
+    /// memory for workers/agents that can verify the converted model.
+    pub preview: bool,
     pub cache_key: String,
     pub log_digest: Option<String>,
     pub created_at: UtcTimestamp,
@@ -166,6 +197,7 @@ impl ConversionJob {
             parameters,
             state: ConversionJobState::Pending,
             output_artifacts: Vec::new(),
+            preview: false,
             cache_key,
             log_digest: None,
             created_at: now,
@@ -224,6 +256,7 @@ impl ConversionJob {
         &mut self,
         artifacts: Vec<Artifact>,
         log_digest: String,
+        verified: bool,
     ) -> Result<(), moqentra_types::Error> {
         if !matches!(self.state, ConversionJobState::Running) {
             return Err(moqentra_types::Error::conflict("conversion not running"));
@@ -246,6 +279,25 @@ impl ConversionJob {
                 ));
             }
         }
+
+        match self.target.support_tier() {
+            ConversionSupportTier::Unsupported => {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "conversion target is unsupported in this release",
+                ));
+            }
+            ConversionSupportTier::CompileOnly if verified => {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "compile-only target cannot claim runtime verification (preview)",
+                ));
+            }
+            _ => {}
+        }
+
+        self.preview = matches!(
+            (self.target.support_tier(), verified),
+            (ConversionSupportTier::Verified, true)
+        );
         self.output_artifacts = artifacts;
         self.log_digest = Some(log_digest);
         self.state = ConversionJobState::Succeeded;
@@ -516,11 +568,14 @@ mod tests {
                 size_bytes: 100,
                 media_type: "application/octet-stream".to_string(),
                 scan_status: "clean".to_string(),
+                object_key: None,
             }],
             "sha256:836ff184e7b41b1e13cb5fd89fa1de98dbbab99e9d2918913ff43b86a5c7c213".to_string(),
+            true,
         )
         .unwrap();
         assert!(matches!(job.state, ConversionJobState::Succeeded));
+        assert!(job.preview);
     }
 
     #[test]
@@ -538,9 +593,11 @@ mod tests {
                     size_bytes: 1,
                     media_type: "application/octet-stream".to_string(),
                     scan_status: "infected".to_string(),
+                    object_key: None,
                 }],
                 "sha256:836ff184e7b41b1e13cb5fd89fa1de98dbbab99e9d2918913ff43b86a5c7c213"
                     .to_string(),
+                true,
             )
             .is_err());
     }

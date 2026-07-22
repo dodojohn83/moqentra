@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use moqentra_application::{InMemoryModelRegistry, InMemoryTrainingRegistry};
 use moqentra_domain::model_registry::{Artifact, Model, ModelLineage, ModelVersion};
 use moqentra_domain::training::{OutputManifest, TrainingJobState};
+use moqentra_object_store::ObjectKey;
 use moqentra_types::{AssetId, AttemptId, ModelId, ModelVersionId, RandomIdGenerator};
 use moqentra_worker_control::ArtifactValidator;
 use sha2::Digest;
@@ -183,13 +184,24 @@ impl ArtifactValidator for AppArtifactValidator {
         }
         version.metrics = metrics;
 
-        // Add the validated artifact.
+        // Add the validated artifact. Record the controlled object key so the
+        // artifact is protected from GC while the ModelVersion exists.
+        let asset_id = AssetId::new_v7(&gen);
+        let object_key = ObjectKey::asset(
+            tenant_id,
+            project_id,
+            "models",
+            &model_id.to_string(),
+            &version_id.to_string(),
+            &format!("artifact-{asset_id}.json"),
+        )?;
         version.artifacts.push(Artifact {
-            asset_id: AssetId::new_v7(&gen),
+            asset_id,
             digest: model_artifact_digest,
             size_bytes: manifest_json.len() as u64,
             media_type: "application/json".to_string(),
             scan_status: "clean".to_string(),
+            object_key: Some(object_key.to_string()),
         });
 
         // Run the ModelVersion validation state machine.
