@@ -62,12 +62,11 @@ impl PgIdempotencyStore {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
-}
 
-#[async_trait::async_trait]
-impl IdempotencyStore for PgIdempotencyStore {
-    async fn begin(
+    /// Begin an idempotency scope on an existing connection/transaction.
+    pub async fn begin_with_conn(
         &self,
+        conn: &mut sqlx::PgConnection,
         scope: IdempotencyScope,
         ttl: std::time::Duration,
     ) -> Result<IdempotencyResult, Error> {
@@ -77,16 +76,10 @@ impl IdempotencyStore for PgIdempotencyStore {
         let key = &scope.key;
         let fingerprint = &scope.fingerprint;
 
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| Error::internal(format!("idempotency begin failed: {e}")))?;
-
         // Set tenant for RLS and avoid cross-tenant leakage.
         sqlx::query("SELECT set_config('app.current_tenant', $1, true)")
             .bind(&tenant_str)
-            .execute(&mut *tx)
+            .execute(&mut *conn)
             .await
             .map_err(|e| Error::internal(format!("failed to set tenant context: {e}")))?;
 
@@ -97,7 +90,7 @@ impl IdempotencyStore for PgIdempotencyStore {
         .bind(tenant_id.as_uuid())
         .bind(operation_type)
         .bind(key)
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut *conn)
         .await
         .map_err(|e| Error::internal(format!("idempotency lookup failed: {e}")))?;
 
@@ -127,7 +120,7 @@ impl IdempotencyStore for PgIdempotencyStore {
             .bind(tenant_id.as_uuid())
             .bind(operation_type)
             .bind(key)
-            .execute(&mut *tx)
+            .execute(&mut *conn)
             .await
             .map_err(|e| Error::internal(format!("idempotency delete failed: {e}")))?;
         }
@@ -145,13 +138,9 @@ impl IdempotencyStore for PgIdempotencyStore {
         .bind(expires_at.as_offset())
         .bind(now.as_offset())
         .bind(id)
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await
         .map_err(|e| Error::internal(format!("idempotency insert failed: {e}")))?;
-
-        tx.commit()
-            .await
-            .map_err(|e| Error::internal(format!("idempotency commit failed: {e}")))?;
 
         let entry = IdempotencyEntry {
             id,
@@ -164,13 +153,15 @@ impl IdempotencyStore for PgIdempotencyStore {
         Ok(IdempotencyResult::New(entry))
     }
 
-    async fn complete(&self, tenant_id: TenantId, id: Uuid, response: Value) -> Result<(), Error> {
+    /// Complete an in-progress idempotency entry on an existing connection/transaction.
+    pub async fn complete_with_conn(
+        &self,
+        conn: &mut sqlx::PgConnection,
+        tenant_id: TenantId,
+        id: Uuid,
+        response: Value,
+    ) -> Result<(), Error> {
         let tenant_str = tenant_id.to_string();
-        let mut conn = self
-            .pool
-            .acquire()
-            .await
-            .map_err(|e| Error::internal(format!("idempotency acquire failed: {e}")))?;
         let _ = sqlx::query("SELECT set_config('app.current_tenant', $1, true)")
             .bind(&tenant_str)
             .execute(&mut *conn)
@@ -190,6 +181,35 @@ impl IdempotencyStore for PgIdempotencyStore {
             return Err(Error::not_found("idempotency entry"));
         }
         Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl IdempotencyStore for PgIdempotencyStore {
+    async fn begin(
+        &self,
+        scope: IdempotencyScope,
+        ttl: std::time::Duration,
+    ) -> Result<IdempotencyResult, Error> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| Error::internal(format!("idempotency begin failed: {e}")))?;
+        let result = self.begin_with_conn(&mut *tx, scope, ttl).await?;
+        tx.commit()
+            .await
+            .map_err(|e| Error::internal(format!("idempotency commit failed: {e}")))?;
+        Ok(result)
+    }
+
+    async fn complete(&self, tenant_id: TenantId, id: Uuid, response: Value) -> Result<(), Error> {
+        let mut conn = self
+            .pool
+            .acquire()
+            .await
+            .map_err(|e| Error::internal(format!("idempotency acquire failed: {e}")))?;
+        self.complete_with_conn(&mut *conn, tenant_id, id, response).await
     }
 
     async fn cleanup(&self, before: UtcTimestamp) -> Result<u64, Error> {

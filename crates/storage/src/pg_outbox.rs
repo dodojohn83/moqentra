@@ -81,11 +81,13 @@ impl PgOutboxStore {
             owner: owner.into(),
         }
     }
-}
 
-#[async_trait::async_trait]
-impl OutboxStore for PgOutboxStore {
-    async fn append(&self, event: OutboxEvent) -> Result<OutboxEvent, Error> {
+    /// Append an outbox event using an existing connection/transaction.
+    pub async fn append_with_conn(
+        &self,
+        conn: &mut sqlx::PgConnection,
+        event: OutboxEvent,
+    ) -> Result<OutboxEvent, Error> {
         if event.tenant_id != self.tenant_id {
             return Err(Error::invalid_argument(
                 "event tenant does not match outbox store tenant",
@@ -97,11 +99,6 @@ impl OutboxStore for PgOutboxStore {
         let created_at = event.created_at.as_offset();
         let payload = event.payload.clone();
 
-        let mut conn = self
-            .pool
-            .acquire()
-            .await
-            .map_err(|e| Error::internal(format!("outbox acquire failed: {e}")))?;
         let _ = sqlx::query("SELECT set_config('app.current_tenant', $1, true)")
             .bind(&tenant_str)
             .execute(&mut *conn)
@@ -130,6 +127,18 @@ impl OutboxStore for PgOutboxStore {
         .await
         .map_err(|e| Error::internal(format!("outbox append failed: {e}")))?;
         Ok(event)
+    }
+}
+
+#[async_trait::async_trait]
+impl OutboxStore for PgOutboxStore {
+    async fn append(&self, event: OutboxEvent) -> Result<OutboxEvent, Error> {
+        let mut conn = self
+            .pool
+            .acquire()
+            .await
+            .map_err(|e| Error::internal(format!("outbox acquire failed: {e}")))?;
+        self.append_with_conn(&mut *conn, event).await
     }
 
     async fn poll_pending(&self, limit: u32) -> Result<Vec<OutboxEvent>, Error> {

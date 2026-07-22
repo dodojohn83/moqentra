@@ -1,6 +1,7 @@
 //! Moqentra PostgreSQL storage adapter.
 
 #![allow(missing_docs)]
+#![allow(clippy::explicit_auto_deref)]
 
 pub mod idempotency;
 pub mod outbox;

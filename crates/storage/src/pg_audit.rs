@@ -22,20 +22,25 @@ impl PgAuditLog {
             "resource": event.resource,
         })
     }
-}
 
-#[async_trait::async_trait]
-impl AuditLog for PgAuditLog {
-    async fn record(&self, event: AuditEvent) -> Result<(), Error> {
+    /// Write an audit event using an existing connection/transaction.
+    pub async fn record_with_conn(
+        &self,
+        conn: &mut sqlx::PgConnection,
+        event: AuditEvent,
+    ) -> Result<(), Error> {
         let tenant_id = TenantId::try_from(event.tenant_id.to_string().as_str())?;
-        sqlx::query(
-            "SELECT set_config('app.current_tenant', $1, true); \
-             INSERT INTO audit_logs \
+        let _ = sqlx::query("SELECT set_config('app.current_tenant', $1, true)")
+            .bind(tenant_id.to_string())
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| Error::internal(format!("failed to set tenant context: {e}")))?;
+        let _ = sqlx::query(
+            "INSERT INTO audit_logs \
              (event_id, category, actor_type, actor_id, tenant_id, project_id, \
               action, resource_type, resource_id, outcome, reason, details, correlation_id, occurred_at) \
-             VALUES ($2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
         )
-        .bind(tenant_id.to_string())
         .bind(&event.event_id)
         .bind(event.category.as_str())
         .bind(event.actor.actor_type())
@@ -50,10 +55,22 @@ impl AuditLog for PgAuditLog {
         .bind(PgAuditLog::details(&event))
         .bind(&event.correlation_id)
         .bind(event.occurred_at.as_offset())
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await
         .map_err(|e| Error::internal(format!("failed to write audit log: {e}")))?;
         Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl AuditLog for PgAuditLog {
+    async fn record(&self, event: AuditEvent) -> Result<(), Error> {
+        let mut conn = self
+            .pool
+            .acquire()
+            .await
+            .map_err(|e| Error::internal(format!("audit acquire failed: {e}")))?;
+        self.record_with_conn(&mut *conn, event).await
     }
 }
 
