@@ -15,7 +15,7 @@ use moqentra_application::{
 };
 use moqentra_auth::{
     Action, AuditCategory, AuditEvent, AuditLog, AuditOutcome, Authorizer, CompositeTokenValidator,
-    HmacValidator, InMemoryAuditLog, JwkSetValidator, OidcConfig, Resource, Role, Scope,
+    HmacValidator, InMemoryAuditLog, JwkSetValidator, OidcConfig, Resource, Role, RoleStore, Scope,
     ServiceAccountValidator,
 };
 use moqentra_domain::annotation::{AnnotationProject, Ontology, TaskType};
@@ -26,7 +26,9 @@ use moqentra_domain::training::{
     DistributedConfig, Experiment, ParameterSchema, ResourceRequest, TrainingJob, TrainingJobSpec,
 };
 use moqentra_http_api::northbound::{ProblemDetails, TokenBucketLimiter};
-use moqentra_storage::{InMemoryOutbox, OutboxEvent, OutboxStatus, OutboxStore, PgAuditLog};
+use moqentra_storage::{
+    InMemoryOutbox, OutboxEvent, OutboxStatus, OutboxStore, PgAuditLog, PgRoleStore,
+};
 use moqentra_types::{
     AnnotationProjectId, DatasetId, DatasetVersionId, Error, ExperimentId, ModelId, Principal,
     ProjectId, RandomIdGenerator, RequestContext, TenantId, TrainingJobId, UtcTimestamp,
@@ -143,20 +145,30 @@ async fn resolve_context(state: &AppState, headers: &HeaderMap) -> Result<Reques
         .ok_or_else(|| Error::invalid_argument("X-Tenant-Id header is required"))?;
     let tenant_id = TenantId::try_from(tenant_raw.as_str())?;
 
+    let project_header =
+        header_str(headers, "x-project-id").and_then(|p| ProjectId::try_from(p.as_str()).ok());
+
     let principal = if let Some(token) = bearer_token(headers) {
         let session = state.tokens.validate_session(&token).await?;
-        // Seed JWT claim roles into the authorizer (deny-by-default still applies
-        // until roles are present for this user/tenant).
         if let Principal::User { id } = session.principal {
+            // Resolve roles from DB membership when available; JWT claim roles are ignored in
+            // production to enforce re-auth on tenant/project switch.
+            let roles = if let Some(pool) = &state.db_pool {
+                let store = PgRoleStore::new(pool.clone());
+                match project_header {
+                    Some(pid) => store.project_roles(id, tenant_id, pid).await?,
+                    None => store.tenant_roles(id, tenant_id).await?,
+                }
+            } else {
+                session.roles
+            };
             let mut authz = state.authorizer.lock().unwrap_or_else(|e| e.into_inner());
-            for role in session.roles {
+            for role in roles {
                 authz.assign_role(id, tenant_id, role);
             }
             // Optional project membership bootstrap for development.
-            if let Some(project) = header_str(headers, "x-project-id") {
-                if let Ok(project_id) = ProjectId::try_from(project.as_str()) {
-                    authz.add_project_member(id, tenant_id, project_id);
-                }
+            if let Some(project_id) = project_header {
+                authz.add_project_member(id, tenant_id, project_id);
             }
         }
         if let Principal::Service { name } = &session.principal {
@@ -175,8 +187,7 @@ async fn resolve_context(state: &AppState, headers: &HeaderMap) -> Result<Reques
     };
 
     let mut ctx = RequestContext::new(tenant_id, principal, request_id);
-    if let Some(project) = header_str(headers, "x-project-id") {
-        let project_id = ProjectId::try_from(project.as_str())?;
+    if let Some(project_id) = project_header {
         ctx = ctx.with_project(project_id);
     }
     Ok(ctx)
