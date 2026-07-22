@@ -7,6 +7,7 @@ use moqentra_types::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
+use std::str::FromStr;
 
 /// Supported annotation task types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,6 +19,25 @@ pub enum TaskType {
     KeyPoint,
     ObjectTracking,
     Relation,
+}
+
+impl FromStr for TaskType {
+    type Err = moqentra_types::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "ImageClassification" => Ok(Self::ImageClassification),
+            "VideoClassification" => Ok(Self::VideoClassification),
+            "BoundingBox" => Ok(Self::BoundingBox),
+            "Polygon" => Ok(Self::Polygon),
+            "KeyPoint" => Ok(Self::KeyPoint),
+            "ObjectTracking" => Ok(Self::ObjectTracking),
+            "Relation" => Ok(Self::Relation),
+            _ => Err(moqentra_types::Error::invalid_argument(format!(
+                "unknown task type: {s}"
+            ))),
+        }
+    }
 }
 
 /// A label entry in the ontology.
@@ -58,8 +78,23 @@ pub enum AnnotationProjectState {
     Archived,
 }
 
+impl FromStr for AnnotationProjectState {
+    type Err = moqentra_types::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Draft" => Ok(Self::Draft),
+            "Active" => Ok(Self::Active),
+            "Archived" => Ok(Self::Archived),
+            _ => Err(moqentra_types::Error::invalid_argument(format!(
+                "unknown annotation project state: {s}"
+            ))),
+        }
+    }
+}
+
 /// An annotation project.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnnotationProject {
     pub id: AnnotationProjectId,
     pub tenant_id: TenantId,
@@ -142,8 +177,27 @@ pub enum AnnotationTaskState {
     Approved,
 }
 
+impl FromStr for AnnotationTaskState {
+    type Err = moqentra_types::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Pending" => Ok(Self::Pending),
+            "Assigned" => Ok(Self::Assigned),
+            "InProgress" => Ok(Self::InProgress),
+            "Submitted" => Ok(Self::Submitted),
+            "Reviewing" => Ok(Self::Reviewing),
+            "Returned" => Ok(Self::Returned),
+            "Approved" => Ok(Self::Approved),
+            _ => Err(moqentra_types::Error::invalid_argument(format!(
+                "unknown annotation task state: {s}"
+            ))),
+        }
+    }
+}
+
 /// A task lease with fencing token.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskLease {
     pub annotation_task_id: AnnotationTaskId,
     pub assignee_id: UserId,
@@ -184,7 +238,7 @@ impl TaskLease {
 }
 
 /// An annotation task.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnnotationTask {
     pub id: AnnotationTaskId,
     pub project_id: AnnotationProjectId,

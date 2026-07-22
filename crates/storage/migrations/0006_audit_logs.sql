@@ -24,6 +24,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_correlation ON audit_logs(correlation_
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs FORCE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS tenant_isolation ON audit_logs;
 CREATE POLICY tenant_isolation ON audit_logs
     FOR ALL
     USING (tenant_matches(tenant_id) OR current_admin());

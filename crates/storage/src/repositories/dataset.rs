@@ -79,7 +79,7 @@ impl DatasetRepository for PgDatasetRepository {
         sqlx::query(
             "INSERT INTO datasets (id, tenant_id, project_id, name, state, revision, metadata, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-             ON CONFLICT (id, tenant_id) DO NOTHING",
+             ON CONFLICT (id) DO NOTHING",
         )
         .bind(dataset.id.as_uuid())
         .bind(dataset.tenant_id.as_uuid())
@@ -294,7 +294,7 @@ impl DatasetRepository for PgDatasetRepository {
             "INSERT INTO dataset_versions
              (id, tenant_id, project_id, dataset_id, version_number, manifest, state, published_at, created_by, created_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-             ON CONFLICT (id, tenant_id) DO NOTHING",
+             ON CONFLICT (id) DO NOTHING",
         )
         .bind(version.id.as_uuid())
         .bind(version.tenant_id.as_uuid())
@@ -409,16 +409,17 @@ struct DatasetRow {
 }
 
 #[derive(Debug, FromRow)]
+#[allow(dead_code)]
 struct DatasetVersionRow {
     id: Uuid,
     tenant_id: Uuid,
     project_id: Uuid,
     dataset_id: Uuid,
-    _version_number: i64,
+    version_number: i64,
     manifest: Value,
     state: String,
     published_at: Option<OffsetDateTime>,
-    _created_by: Uuid,
+    created_by: Uuid,
     created_at: OffsetDateTime,
 }
 

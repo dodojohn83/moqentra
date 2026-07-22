@@ -55,14 +55,15 @@ struct TrainingJobMetadata {
 }
 
 #[derive(Debug, FromRow)]
+#[allow(dead_code)]
 struct TrainingJobRow {
     id: Uuid,
     tenant_id: Uuid,
     project_id: Uuid,
-    _experiment_id: Option<Uuid>,
-    _dataset_version_id: Option<Uuid>,
-    _model_id: Option<Uuid>,
-    _name: String,
+    experiment_id: Option<Uuid>,
+    dataset_version_id: Option<Uuid>,
+    model_id: Option<Uuid>,
+    name: String,
     spec: Value,
     state: String,
     revision: i64,
@@ -133,7 +134,7 @@ impl TrainingJobRepository for PgTrainingJobRepository {
             "INSERT INTO training_jobs
              (id, tenant_id, project_id, experiment_id, dataset_version_id, model_id, name, spec, state, revision, metadata, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-             ON CONFLICT (id, tenant_id) DO NOTHING",
+             ON CONFLICT (id) DO NOTHING",
         )
         .bind(job.id.as_uuid())
         .bind(job.tenant_id.as_uuid())
