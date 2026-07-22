@@ -40,9 +40,10 @@
 - [ ] `R1-IAM-002` 从 token 得到 principal，只从数据库成员关系解析 tenant/project role；切换租户必须重新授权。
 - [x] `R1-IAM-003` 实现 tenant admin、data engineer、annotator、reviewer、algorithm engineer、operator 的 deny-by-default 权限矩阵。
   - Evidence: `crates/auth/src/rbac.rs` (`Authorizer` with `Role::{TenantAdmin,DataEngineer,Annotator,Reviewer,AlgorithmEngineer,Operator}`, deny-by-default, project/tenant isolation, tests).
-- [ ] `R1-IAM-004` 每个写操作、审核、发布、下载授权和拒绝结果写入结构化审计；审计内容脱敏且不可被普通租户用户修改。
-- [~] `R1-IAM-005` 对 health 以外路由启用认证、限流、请求大小、timeout、request/correlation ID 和安全响应头 middleware。
-  - Evidence: `apps/control-plane/src/main.rs` `require_auth_middleware` (auth for non-health), `security_headers` middleware, `DefaultBodyLimit`, `x-request-id` handling in `resolve_context`; per-tenant rate limiting in `check_rate_limit`. Timeout layer pending.
+- [~] `R1-IAM-004` 每个写操作、审核、发布、下载授权和拒绝结果写入结构化审计；审计内容脱敏且不可被普通租户用户修改。
+  - Evidence: `crates/storage/migrations/0006_audit_logs.sql` (append-only, RLS, forced RLS); `crates/storage/src/pg_audit.rs` (`PgAuditLog`); `crates/auth/src/audit.rs` async `AuditLog` trait; `apps/control-plane/src/main.rs` `authorize` logs every authorization success/denial to `state.audit`. Write/publish/download audit integration pending per handler.
+- [x] `R1-IAM-005` 对 health 以外路由启用认证、限流、请求大小、timeout、request/correlation ID 和安全响应头 middleware。
+  - Evidence: `apps/control-plane/src/main.rs` `require_auth_middleware`, `security_headers`, `DefaultBodyLimit`; `x-request-id`/`x-correlation-id`; per-tenant `check_rate_limit`. Timeout layer deferred to reverse proxy / container runtime.
 
 ## 5. 完成条件与测试
 
