@@ -10,7 +10,7 @@
 
 ## 2. Python runtime 与模板
 
-- [ ] `R1-TRAIN-006` 从 Proto 生成 Python client/stubs，SDK 建立连接、注册 capability、续租并持续上报；不得直接访问控制面数据库。
+- [x] `R1-TRAIN-006` 生成 Python gRPC stubs（`moqentra.worker.v1`、`moqentra.common.v1`）并添加 `moqentra_worker.grpc_client.WorkerAgentClient`：建立 insecure channel、发送 Hello/Capabilities、10s 心跳续活、分发 Command 到 handler 并回 Ack/Result、处理 Drain；不访问控制面数据库。
 - [ ] `R1-TRAIN-007` 实现 Worker 输入物化与输出提交：输入只读、输出临时写入、checkpoint/content digest 校验、成功后生成 `ModelArtifactManifest/v1`。
 - [ ] `R1-TRAIN-008` 用真实 PyTorch 实现 ResNet18 分类模板，固定 seed、数据预处理、参数 schema、指标、checkpoint、ONNX export 和环境 manifest。
 - [ ] `R1-TRAIN-009` 实现 SSDlite320 MobileNetV3 检测模板，输出 mAP 所需预测、最佳 checkpoint 和 ONNX；作为 R1 黄金训练/推理模型。
