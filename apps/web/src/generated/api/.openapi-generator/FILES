@@ -27,6 +27,7 @@ docs/ProblemDetailsViolationsInner.md
 docs/ReadyResponse.md
 docs/TrainingJobResponse.md
 docs/UploadPartInfo.md
+docs/UploadPartUrl.md
 docs/UploadSessionResponse.md
 docs/WhoAmIResponse.md
 index.ts
@@ -55,6 +56,7 @@ models/ProblemDetailsViolationsInner.ts
 models/ReadyResponse.ts
 models/TrainingJobResponse.ts
 models/UploadPartInfo.ts
+models/UploadPartUrl.ts
 models/UploadSessionResponse.ts
 models/WhoAmIResponse.ts
 models/index.ts

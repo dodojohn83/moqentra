@@ -38,6 +38,7 @@ from moqentra_client.models.problem_details_violations_inner import ProblemDetai
 from moqentra_client.models.ready_response import ReadyResponse
 from moqentra_client.models.training_job_response import TrainingJobResponse
 from moqentra_client.models.upload_part_info import UploadPartInfo
+from moqentra_client.models.upload_part_url import UploadPartUrl
 from moqentra_client.models.upload_session_response import UploadSessionResponse
 from moqentra_client.models.who_am_i_response import WhoAmIResponse
 

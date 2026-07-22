@@ -25,5 +25,6 @@ export * from './ProblemDetailsViolationsInner';
 export * from './ReadyResponse';
 export * from './TrainingJobResponse';
 export * from './UploadPartInfo';
+export * from './UploadPartUrl';
 export * from './UploadSessionResponse';
 export * from './WhoAmIResponse';

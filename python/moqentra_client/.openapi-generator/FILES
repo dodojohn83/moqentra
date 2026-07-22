@@ -30,6 +30,7 @@ docs/ProblemDetailsViolationsInner.md
 docs/ReadyResponse.md
 docs/TrainingJobResponse.md
 docs/UploadPartInfo.md
+docs/UploadPartUrl.md
 docs/UploadSessionResponse.md
 docs/WhoAmIResponse.md
 git_push.sh
@@ -66,6 +67,7 @@ moqentra_client/models/problem_details_violations_inner.py
 moqentra_client/models/ready_response.py
 moqentra_client/models/training_job_response.py
 moqentra_client/models/upload_part_info.py
+moqentra_client/models/upload_part_url.py
 moqentra_client/models/upload_session_response.py
 moqentra_client/models/who_am_i_response.py
 moqentra_client/py.typed
@@ -102,6 +104,7 @@ test/test_problem_details_violations_inner.py
 test/test_ready_response.py
 test/test_training_job_response.py
 test/test_upload_part_info.py
+test/test_upload_part_url.py
 test/test_upload_session_response.py
 test/test_who_am_i_response.py
 tox.ini

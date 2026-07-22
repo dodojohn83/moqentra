@@ -108,6 +108,7 @@ Class | Method | HTTP request | Description
 *DefaultApi* | [**list_experiments**](docs/DefaultApi.md#list_experiments) | **GET** /v1/experiments | List experiments
 *DefaultApi* | [**list_models**](docs/DefaultApi.md#list_models) | **GET** /v1/models | List models
 *DefaultApi* | [**list_outbox_events**](docs/DefaultApi.md#list_outbox_events) | **GET** /v1/outbox | List outbox events
+*DefaultApi* | [**list_part_upload_urls**](docs/DefaultApi.md#list_part_upload_urls) | **GET** /v1/upload-sessions/{id}/part-urls | List signed URLs for uploading parts
 *DefaultApi* | [**list_training_jobs**](docs/DefaultApi.md#list_training_jobs) | **GET** /v1/training-jobs | List training jobs
 *DefaultApi* | [**list_upload_session_parts**](docs/DefaultApi.md#list_upload_session_parts) | **GET** /v1/upload-sessions/{id}/parts | List upload session parts
 *DefaultApi* | [**publish_dataset_version**](docs/DefaultApi.md#publish_dataset_version) | **POST** /v1/dataset-versions/{id}/publish | Publish a dataset version
@@ -142,6 +143,7 @@ Class | Method | HTTP request | Description
  - [ReadyResponse](docs/ReadyResponse.md)
  - [TrainingJobResponse](docs/TrainingJobResponse.md)
  - [UploadPartInfo](docs/UploadPartInfo.md)
+ - [UploadPartUrl](docs/UploadPartUrl.md)
  - [UploadSessionResponse](docs/UploadSessionResponse.md)
  - [WhoAmIResponse](docs/WhoAmIResponse.md)
 

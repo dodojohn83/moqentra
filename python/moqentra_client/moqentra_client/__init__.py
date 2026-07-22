@@ -53,6 +53,7 @@ __all__ = [
     "ReadyResponse",
     "TrainingJobResponse",
     "UploadPartInfo",
+    "UploadPartUrl",
     "UploadSessionResponse",
     "WhoAmIResponse",
 ]
@@ -97,6 +98,7 @@ from moqentra_client.models.problem_details_violations_inner import ProblemDetai
 from moqentra_client.models.ready_response import ReadyResponse as ReadyResponse
 from moqentra_client.models.training_job_response import TrainingJobResponse as TrainingJobResponse
 from moqentra_client.models.upload_part_info import UploadPartInfo as UploadPartInfo
+from moqentra_client.models.upload_part_url import UploadPartUrl as UploadPartUrl
 from moqentra_client.models.upload_session_response import UploadSessionResponse as UploadSessionResponse
 from moqentra_client.models.who_am_i_response import WhoAmIResponse as WhoAmIResponse
 

@@ -114,6 +114,11 @@ import {
     TrainingJobResponseToJSON,
 } from '../models/TrainingJobResponse';
 import {
+    type UploadPartUrl,
+    UploadPartUrlFromJSON,
+    UploadPartUrlToJSON,
+} from '../models/UploadPartUrl';
+import {
     type UploadSessionResponse,
     UploadSessionResponseFromJSON,
     UploadSessionResponseToJSON,
@@ -264,6 +269,12 @@ export interface ListOutboxEventsRequest {
     offset?: number;
 }
 
+export interface ListPartUploadUrlsRequest {
+    xTenantId: string;
+    id: string;
+    authorization?: string;
+}
+
 export interface ListTrainingJobsRequest {
     xTenantId: string;
     authorization?: string;
@@ -289,6 +300,8 @@ export interface UploadPartRequest {
     partNumber: number;
     body: Blob;
     authorization?: string;
+    sig?: string;
+    expires?: number;
 }
 
 export interface WhoAmIRequest {
@@ -1703,6 +1716,66 @@ export class DefaultApi extends runtime.BaseAPI {
     }
 
     /**
+     * Creates request options for listPartUploadUrls without sending the request
+     */
+    async listPartUploadUrlsRequestOpts(requestParameters: ListPartUploadUrlsRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling listPartUploadUrls().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling listPartUploadUrls().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/upload-sessions/{id}/part-urls`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * List signed URLs for uploading parts
+     */
+    async listPartUploadUrlsRaw(requestParameters: ListPartUploadUrlsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<UploadPartUrl>>> {
+        const requestOptions = await this.listPartUploadUrlsRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(UploadPartUrlFromJSON));
+    }
+
+    /**
+     * List signed URLs for uploading parts
+     */
+    async listPartUploadUrls(requestParameters: ListPartUploadUrlsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<UploadPartUrl>> {
+        const response = await this.listPartUploadUrlsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for listTrainingJobs without sending the request
      */
     async listTrainingJobsRequestOpts(requestParameters: ListTrainingJobsRequest): Promise<runtime.RequestOpts> {
@@ -1915,6 +1988,14 @@ export class DefaultApi extends runtime.BaseAPI {
         }
 
         const queryParameters: any = {};
+
+        if (requestParameters['sig'] != null) {
+            queryParameters['sig'] = requestParameters['sig'];
+        }
+
+        if (requestParameters['expires'] != null) {
+            queryParameters['expires'] = requestParameters['expires'];
+        }
 
         const headerParameters: runtime.HTTPHeaders = {};
 

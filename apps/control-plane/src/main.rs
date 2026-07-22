@@ -133,6 +133,8 @@ fn build_state_from_env() -> AppState {
         audit,
         object_store,
         upload_sessions: Arc::new(InMemoryUploadSessionStore::new()),
+        upload_sig_secret: std::env::var("MOQENTRA_UPLOAD_SIG_SECRET")
+            .unwrap_or_else(|_| "moqentra-upload-sig-secret".to_string()),
         db_pool,
         scheduler_url: std::env::var("MOQENTRA_SCHEDULER_URL").ok().filter(|s| !s.is_empty()),
         node_agent_url: std::env::var("MOQENTRA_NODE_AGENT_URL").ok().filter(|s| !s.is_empty()),

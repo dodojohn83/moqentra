@@ -27,6 +27,7 @@ Method | HTTP request | Description
 [**list_experiments**](DefaultApi.md#list_experiments) | **GET** /v1/experiments | List experiments
 [**list_models**](DefaultApi.md#list_models) | **GET** /v1/models | List models
 [**list_outbox_events**](DefaultApi.md#list_outbox_events) | **GET** /v1/outbox | List outbox events
+[**list_part_upload_urls**](DefaultApi.md#list_part_upload_urls) | **GET** /v1/upload-sessions/{id}/part-urls | List signed URLs for uploading parts
 [**list_training_jobs**](DefaultApi.md#list_training_jobs) | **GET** /v1/training-jobs | List training jobs
 [**list_upload_session_parts**](DefaultApi.md#list_upload_session_parts) | **GET** /v1/upload-sessions/{id}/parts | List upload session parts
 [**publish_dataset_version**](DefaultApi.md#publish_dataset_version) | **POST** /v1/dataset-versions/{id}/publish | Publish a dataset version
@@ -1664,6 +1665,76 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **list_part_upload_urls**
+> List[UploadPartUrl] list_part_upload_urls(x_tenant_id, id, authorization=authorization)
+
+List signed URLs for uploading parts
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.upload_part_url import UploadPartUrl
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # List signed URLs for uploading parts
+        api_response = api_instance.list_part_upload_urls(x_tenant_id, id, authorization=authorization)
+        print("The response of DefaultApi->list_part_upload_urls:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->list_part_upload_urls: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**List[UploadPartUrl]**](UploadPartUrl.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Signed part upload URLs |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **list_training_jobs**
 > Page list_training_jobs(x_tenant_id, authorization=authorization, limit=limit, offset=offset)
 
@@ -1877,7 +1948,7 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **upload_part**
-> upload_part(x_tenant_id, id, part_number, body, authorization=authorization)
+> upload_part(x_tenant_id, id, part_number, body, authorization=authorization, sig=sig, expires=expires)
 
 Upload a part
 
@@ -1905,10 +1976,12 @@ with moqentra_client.ApiClient(configuration) as api_client:
     part_number = 56 # int | 
     body = None # bytes | 
     authorization = 'authorization_example' # str |  (optional)
+    sig = 'sig_example' # str |  (optional)
+    expires = 56 # int |  (optional)
 
     try:
         # Upload a part
-        api_instance.upload_part(x_tenant_id, id, part_number, body, authorization=authorization)
+        api_instance.upload_part(x_tenant_id, id, part_number, body, authorization=authorization, sig=sig, expires=expires)
     except Exception as e:
         print("Exception when calling DefaultApi->upload_part: %s\n" % e)
 ```
@@ -1925,6 +1998,8 @@ Name | Type | Description  | Notes
  **part_number** | **int**|  | 
  **body** | **bytes**|  | 
  **authorization** | **str**|  | [optional] 
+ **sig** | **str**|  | [optional] 
+ **expires** | **int**|  | [optional] 
 
 ### Return type
 

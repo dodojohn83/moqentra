@@ -27,6 +27,7 @@ All URIs are relative to *http://localhost*
 | [**listExperiments**](DefaultApi.md#listexperiments) | **GET** /v1/experiments | List experiments |
 | [**listModels**](DefaultApi.md#listmodels) | **GET** /v1/models | List models |
 | [**listOutboxEvents**](DefaultApi.md#listoutboxevents) | **GET** /v1/outbox | List outbox events |
+| [**listPartUploadUrls**](DefaultApi.md#listpartuploadurls) | **GET** /v1/upload-sessions/{id}/part-urls | List signed URLs for uploading parts |
 | [**listTrainingJobs**](DefaultApi.md#listtrainingjobs) | **GET** /v1/training-jobs | List training jobs |
 | [**listUploadSessionParts**](DefaultApi.md#listuploadsessionparts) | **GET** /v1/upload-sessions/{id}/parts | List upload session parts |
 | [**publishDatasetVersion**](DefaultApi.md#publishdatasetversion) | **POST** /v1/dataset-versions/{id}/publish | Publish a dataset version |
@@ -1683,6 +1684,77 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## listPartUploadUrls
+
+> Array&lt;UploadPartUrl&gt; listPartUploadUrls(xTenantId, id, authorization)
+
+List signed URLs for uploading parts
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ListPartUploadUrlsRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies ListPartUploadUrlsRequest;
+
+  try {
+    const data = await api.listPartUploadUrls(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**Array&lt;UploadPartUrl&gt;**](UploadPartUrl.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Signed part upload URLs |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## listTrainingJobs
 
 > Page listTrainingJobs(xTenantId, authorization, limit, offset)
@@ -1901,7 +1973,7 @@ No authorization required
 
 ## uploadPart
 
-> uploadPart(xTenantId, id, partNumber, body, authorization)
+> uploadPart(xTenantId, id, partNumber, body, authorization, sig, expires)
 
 Upload a part
 
@@ -1929,6 +2001,10 @@ async function example() {
     body: BINARY_DATA_HERE,
     // string (optional)
     authorization: authorization_example,
+    // string (optional)
+    sig: sig_example,
+    // number (optional)
+    expires: 789,
   } satisfies UploadPartRequest;
 
   try {
@@ -1953,6 +2029,8 @@ example().catch(console.error);
 | **partNumber** | `number` |  | [Defaults to `undefined`] |
 | **body** | `Blob` |  | |
 | **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+| **sig** | `string` |  | [Optional] [Defaults to `undefined`] |
+| **expires** | `number` |  | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 

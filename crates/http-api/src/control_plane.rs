@@ -62,6 +62,8 @@ pub struct AppState {
     pub object_store: Arc<dyn ObjectStorage + Send + Sync>,
     /// Upload session state.
     pub upload_sessions: Arc<dyn UploadSessionStore + Send + Sync>,
+    /// HMAC secret used to sign part upload URLs.
+    pub upload_sig_secret: String,
     /// Optional PostgreSQL pool for audit / repository persistence.
     pub db_pool: Option<sqlx::PgPool>,
     /// Optional downstream URLs for outbox side-effects.
@@ -1057,6 +1059,50 @@ impl From<&UploadSession> for UploadSessionResponse {
     }
 }
 
+#[derive(Deserialize)]
+struct UploadPartQuery {
+    sig: Option<String>,
+    expires: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct PartUploadUrl {
+    part_number: i32,
+    upload_url: String,
+    expires_at: String,
+}
+
+type HmacSha256 = hmac::Hmac<sha2::Sha256>;
+
+fn sign_part_upload(secret: &str, session_id: &str, part_number: i32, expires_at: u64) -> String {
+    use hmac::Mac;
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take a key of any size");
+    mac.update(format!("{}:{}:{}", session_id, part_number, expires_at).as_bytes());
+    hex::encode(mac.finalize().into_bytes())
+}
+
+fn verify_part_upload(
+    secret: &str,
+    session_id: &str,
+    part_number: i32,
+    expires_at: u64,
+    sig_hex: &str,
+) -> Result<(), Error> {
+    use hmac::Mac;
+    let tag = hex::decode(sig_hex)
+        .map_err(|_| Error::unauthenticated("invalid part upload signature"))?;
+    let now = UtcTimestamp::now().as_offset().unix_timestamp() as u64;
+    if now > expires_at {
+        return Err(Error::unauthenticated("signed upload URL has expired"));
+    }
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take a key of any size");
+    mac.update(format!("{}:{}:{}", session_id, part_number, expires_at).as_bytes());
+    mac.verify_slice(&tag)
+        .map_err(|_| Error::unauthenticated("invalid part upload signature"))
+}
+
 async fn create_upload_session(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1138,10 +1184,50 @@ async fn list_upload_session_parts(
     get_upload_session(State(state), headers, axum::extract::Path(session_id)).await
 }
 
+async fn list_part_upload_urls(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> Result<Json<Vec<PartUploadUrl>>, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Read, Resource::DatasetVersion).await?;
+    let session = state
+        .upload_sessions
+        .get(&session_id)
+        .await?
+        .ok_or_else(|| Error::not_found("upload session"))?;
+    if session.tenant_id != ctx.tenant_id {
+        return Err(Error::not_found("upload session").into());
+    }
+    let ttl_seconds = 900_u64; // short-lived signed URLs
+    let max_expires = (UtcTimestamp::now().as_offset().unix_timestamp() as u64) + ttl_seconds;
+    let session_expires = (session.expires_at.as_offset().unix_timestamp() as u64).min(max_expires);
+    let urls: Vec<PartUploadUrl> = session
+        .parts
+        .values()
+        .filter(|p| !p.completed)
+        .map(|p| {
+            let n = p.part_number;
+            let sig = sign_part_upload(&state.upload_sig_secret, &session_id, n, session_expires);
+            PartUploadUrl {
+                part_number: n,
+                upload_url: format!(
+                    "/v1/upload-sessions/{}/parts/{}?sig={}&expires={}",
+                    session_id, n, sig, session_expires
+                ),
+                expires_at: session_expires.to_string(),
+            }
+        })
+        .collect();
+    Ok(Json(urls))
+}
+
 async fn upload_part(
     State(state): State<AppState>,
     headers: HeaderMap,
     axum::extract::Path((session_id, part_number)): axum::extract::Path<(String, i32)>,
+    axum::extract::Query(q): axum::extract::Query<UploadPartQuery>,
     body: axum::body::Bytes,
 ) -> Result<StatusCode, ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
@@ -1154,6 +1240,15 @@ async fn upload_part(
         .ok_or_else(|| Error::not_found("upload session"))?;
     if session.tenant_id != ctx.tenant_id {
         return Err(Error::not_found("upload session").into());
+    }
+    if let (Some(sig), Some(expires)) = (q.sig, q.expires) {
+        verify_part_upload(
+            &state.upload_sig_secret,
+            &session_id,
+            part_number,
+            expires,
+            &sig,
+        )?;
     }
     let expected_size = session
         .parts
@@ -1534,6 +1629,10 @@ pub fn app_router(state: AppState) -> Router {
             get(list_upload_session_parts),
         )
         .route(
+            "/v1/upload-sessions/{id}/part-urls",
+            get(list_part_upload_urls),
+        )
+        .route(
             "/v1/upload-sessions/{id}/parts/{partNumber}",
             post(upload_part),
         )
@@ -1715,6 +1814,7 @@ mod tests {
             audit: Arc::new(InMemoryAuditLog::new()),
             object_store: Arc::new(InMemoryObjectStore::new()),
             upload_sessions: Arc::new(InMemoryUploadSessionStore::new()),
+            upload_sig_secret: "test-upload-secret".to_string(),
             db_pool: None,
             scheduler_url: None,
             node_agent_url: None,
@@ -2024,5 +2124,97 @@ mod tests {
         let reg = state.training.lock().unwrap();
         let admitted = reg.get_job(tenant, job_id).unwrap();
         assert!(matches!(admitted.state, TrainingJobState::Admitted));
+    }
+
+    #[tokio::test]
+    async fn upload_session_create_list_upload_complete() {
+        let (state, secret, tenant, project, user) = authed_state();
+        let app = app_router(state);
+        let token = mint_token(user, &secret);
+
+        // Create an empty dataset so the version and upload target reference a dataset.
+        let create_dataset = Request::builder()
+            .method("POST")
+            .uri("/v1/datasets")
+            .header("content-type", "application/json")
+            .header("x-tenant-id", tenant.to_string())
+            .header("x-project-id", project.to_string())
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(format!(
+                "{{\"name\":\"ds\",\"project_id\":\"{}\"}}",
+                project
+            )))
+            .unwrap();
+        let resp = app.clone().oneshot(create_dataset).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let version_id = "ver-1";
+        let create_session = Request::builder()
+            .method("POST")
+            .uri("/v1/upload-sessions")
+            .header("content-type", "application/json")
+            .header("x-tenant-id", tenant.to_string())
+            .header("x-project-id", project.to_string())
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(format!(
+                "{{\"resource_type\":\"datasets\",\"resource_id\":\"ds\",\"version_id\":\"{version_id}\",\"name\":\"data.bin\",\"media_type\":\"application/octet-stream\",\"part_size\":5,\"total_size\":12}}"
+            )))
+            .unwrap();
+        let resp = app.clone().oneshot(create_session).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let session: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let session_id = session["id"].as_str().unwrap().to_string();
+        assert_eq!(session["total_size"].as_u64().unwrap(), 12);
+
+        // Upload 3 parts.
+        for n in 1..=3 {
+            let payload = match n {
+                1 => "12345",
+                2 => "67890",
+                _ => "ab",
+            };
+            let upload = Request::builder()
+                .method("POST")
+                .uri(format!("/v1/upload-sessions/{session_id}/parts/{n}"))
+                .header("content-type", "application/octet-stream")
+                .header("x-tenant-id", tenant.to_string())
+                .header("x-project-id", project.to_string())
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::from(payload))
+                .unwrap();
+            let resp = app.clone().oneshot(upload).await.unwrap();
+            assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        }
+
+        // List part upload URLs; all parts are complete, so result is empty.
+        let list_urls = Request::builder()
+            .method("GET")
+            .uri(format!("/v1/upload-sessions/{session_id}/part-urls"))
+            .header("x-tenant-id", tenant.to_string())
+            .header("x-project-id", project.to_string())
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(list_urls).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let complete = Request::builder()
+            .method("POST")
+            .uri(format!("/v1/upload-sessions/{session_id}/complete"))
+            .header("x-tenant-id", tenant.to_string())
+            .header("x-project-id", project.to_string())
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(complete).await.unwrap();
+        let status = resp.status();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        if status != StatusCode::OK {
+            eprintln!("complete failed: {:?}", String::from_utf8_lossy(&body));
+        }
+        assert_eq!(status, StatusCode::OK);
+        let session: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(session["state"], "Completed");
     }
 }

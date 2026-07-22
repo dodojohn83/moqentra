@@ -187,6 +187,13 @@ class TestDefaultApi(unittest.TestCase):
         """
         pass
 
+    def test_list_part_upload_urls(self) -> None:
+        """Test case for list_part_upload_urls
+
+        List signed URLs for uploading parts
+        """
+        pass
+
     def test_list_training_jobs(self) -> None:
         """Test case for list_training_jobs
 

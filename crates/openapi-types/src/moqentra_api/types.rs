@@ -95,6 +95,13 @@ impl AsRef<str> for OperationState {
         self.as_str()
     }
 }
+pub type ListPartUploadUrlsResponse = Vec<UploadPartUrl>;
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct UploadPartUrl {
+    pub expires_at: String,
+    pub part_number: i64,
+    pub upload_url: String,
+}
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AddAssetRequest {
     pub digest: String,
