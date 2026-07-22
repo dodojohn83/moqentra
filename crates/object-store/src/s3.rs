@@ -231,4 +231,8 @@ impl ObjectStorage for S3ObjectStore {
             .map_err(S3ObjectStore::map_error)?;
         Ok(())
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }

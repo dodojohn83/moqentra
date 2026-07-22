@@ -2,11 +2,17 @@
 
 #![allow(missing_docs)]
 
+pub mod key;
 pub mod memory;
 pub mod s3;
+pub mod upload_session;
+pub mod validation;
 
+pub use key::ObjectKey;
 pub use memory::InMemoryObjectStore;
 pub use s3::S3ObjectStore;
+pub use upload_session::{InMemoryUploadSessionStore, UploadSession, UploadSessionStore};
+pub use validation::{DefaultMediaValidator, MediaInfo, MediaValidationFailure, MediaValidator};
 
 use bytes::Bytes;
 use moqentra_types::Error;
@@ -64,6 +70,10 @@ pub trait ObjectStorage: Send + Sync {
 
     /// Abort a multipart upload.
     async fn abort_multipart(&self, key: &str, upload_id: &str) -> Result<(), Error>;
+
+    /// Allow downcasting to a concrete backend for backend-specific operations
+    /// such as bounded garbage collection.
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 pub mod placeholder {

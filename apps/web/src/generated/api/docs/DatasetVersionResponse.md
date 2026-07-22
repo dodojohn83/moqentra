@@ -9,6 +9,7 @@ Name | Type
 `id` | string
 `dataset_id` | string
 `state` | string
+`manifest_digest` | string
 
 ## Example
 
@@ -20,6 +21,7 @@ const example = {
   "id": null,
   "dataset_id": null,
   "state": null,
+  "manifest_digest": null,
 } satisfies DatasetVersionResponse
 
 console.log(example)

@@ -39,3 +39,6 @@ trap 'rm -rf "${TMP_PY}"' EXIT
 rm -rf "${PY_OUT}"
 mkdir -p "$(dirname "${PY_OUT}")"
 cp -R "${TMP_PY}" "${PY_OUT}"
+
+# Normalize Rust formatting so the generated code matches what cargo fmt produces.
+( cd "${REPO_ROOT}"; cargo fmt --all )

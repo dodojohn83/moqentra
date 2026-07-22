@@ -26,6 +26,13 @@ class TestDefaultApi(unittest.TestCase):
     def tearDown(self) -> None:
         pass
 
+    def test_abort_upload_session(self) -> None:
+        """Test case for abort_upload_session
+
+        Abort an upload session
+        """
+        pass
+
     def test_activate_annotation_project(self) -> None:
         """Test case for activate_annotation_project
 
@@ -33,10 +40,45 @@ class TestDefaultApi(unittest.TestCase):
         """
         pass
 
+    def test_add_dataset_version_asset(self) -> None:
+        """Test case for add_dataset_version_asset
+
+        Add an asset to a draft dataset version
+        """
+        pass
+
     def test_admit_training_job(self) -> None:
         """Test case for admit_training_job
 
         Admit a training job
+        """
+        pass
+
+    def test_approve_annotation_task(self) -> None:
+        """Test case for approve_annotation_task
+
+        Approve an annotation task
+        """
+        pass
+
+    def test_assign_annotation_task(self) -> None:
+        """Test case for assign_annotation_task
+
+        Assign/claim an annotation task
+        """
+        pass
+
+    def test_autosave_annotation(self) -> None:
+        """Test case for autosave_annotation
+
+        Autosave an annotation
+        """
+        pass
+
+    def test_cancel_import_job(self) -> None:
+        """Test case for cancel_import_job
+
+        Cancel an import job
         """
         pass
 
@@ -54,10 +96,24 @@ class TestDefaultApi(unittest.TestCase):
         """
         pass
 
+    def test_complete_upload_session(self) -> None:
+        """Test case for complete_upload_session
+
+        Complete an upload session
+        """
+        pass
+
     def test_create_annotation_project(self) -> None:
         """Test case for create_annotation_project
 
         Create annotation project
+        """
+        pass
+
+    def test_create_annotation_tasks(self) -> None:
+        """Test case for create_annotation_tasks
+
+        Create annotation tasks
         """
         pass
 
@@ -82,6 +138,13 @@ class TestDefaultApi(unittest.TestCase):
         """
         pass
 
+    def test_create_import_job(self) -> None:
+        """Test case for create_import_job
+
+        Create an S3/MinIO import job
+        """
+        pass
+
     def test_create_model(self) -> None:
         """Test case for create_model
 
@@ -93,6 +156,55 @@ class TestDefaultApi(unittest.TestCase):
         """Test case for create_training_job
 
         Create training job
+        """
+        pass
+
+    def test_create_upload_session(self) -> None:
+        """Test case for create_upload_session
+
+        Create a multipart upload session
+        """
+        pass
+
+    def test_export_coco(self) -> None:
+        """Test case for export_coco
+
+        Export annotations as COCO
+        """
+        pass
+
+    def test_export_labelu(self) -> None:
+        """Test case for export_labelu
+
+        Export annotations in LabelU native format
+        """
+        pass
+
+    def test_export_platform(self) -> None:
+        """Test case for export_platform
+
+        Export annotations in platform intermediate format
+        """
+        pass
+
+    def test_generate_dataset_version_splits(self) -> None:
+        """Test case for generate_dataset_version_splits
+
+        Generate deterministic train/val/test splits
+        """
+        pass
+
+    def test_get_annotation_task(self) -> None:
+        """Test case for get_annotation_task
+
+        Get annotation task
+        """
+        pass
+
+    def test_get_asset_media_url(self) -> None:
+        """Test case for get_asset_media_url
+
+        Get short-lived signed media URL
         """
         pass
 
@@ -110,10 +222,59 @@ class TestDefaultApi(unittest.TestCase):
         """
         pass
 
+    def test_get_import_job(self) -> None:
+        """Test case for get_import_job
+
+        Get import job status
+        """
+        pass
+
     def test_get_ready(self) -> None:
         """Test case for get_ready
 
         Readiness probe
+        """
+        pass
+
+    def test_get_upload_session(self) -> None:
+        """Test case for get_upload_session
+
+        Get upload session
+        """
+        pass
+
+    def test_import_coco(self) -> None:
+        """Test case for import_coco
+
+        Import COCO annotations
+        """
+        pass
+
+    def test_import_labelu(self) -> None:
+        """Test case for import_labelu
+
+        Import LabelU native annotations
+        """
+        pass
+
+    def test_import_platform(self) -> None:
+        """Test case for import_platform
+
+        Import platform intermediate annotations
+        """
+        pass
+
+    def test_list_annotation_tasks(self) -> None:
+        """Test case for list_annotation_tasks
+
+        List annotation tasks
+        """
+        pass
+
+    def test_list_annotations(self) -> None:
+        """Test case for list_annotations
+
+        List annotations for a task
         """
         pass
 
@@ -145,10 +306,59 @@ class TestDefaultApi(unittest.TestCase):
         """
         pass
 
+    def test_list_part_upload_urls(self) -> None:
+        """Test case for list_part_upload_urls
+
+        List signed URLs for uploading parts
+        """
+        pass
+
     def test_list_training_jobs(self) -> None:
         """Test case for list_training_jobs
 
         List training jobs
+        """
+        pass
+
+    def test_list_upload_session_parts(self) -> None:
+        """Test case for list_upload_session_parts
+
+        List upload session parts
+        """
+        pass
+
+    def test_publish_dataset_version(self) -> None:
+        """Test case for publish_dataset_version
+
+        Publish a dataset version
+        """
+        pass
+
+    def test_return_annotation_task(self) -> None:
+        """Test case for return_annotation_task
+
+        Return an annotation task for rework
+        """
+        pass
+
+    def test_start_annotation_task(self) -> None:
+        """Test case for start_annotation_task
+
+        Start an assigned annotation task
+        """
+        pass
+
+    def test_submit_annotation_task(self) -> None:
+        """Test case for submit_annotation_task
+
+        Submit annotations for review
+        """
+        pass
+
+    def test_upload_part(self) -> None:
+        """Test case for upload_part
+
+        Upload a part
         """
         pass
 

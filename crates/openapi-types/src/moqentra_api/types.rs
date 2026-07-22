@@ -9,6 +9,33 @@
 #![allow(unreachable_patterns)]
 use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct UploadSessionResponse {
+    pub expires_at: String,
+    pub id: String,
+    pub media_type: String,
+    pub part_size: i64,
+    pub parts: Vec<UploadPartInfo>,
+    pub state: String,
+    pub target_key: String,
+    pub total_size: i64,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct UploadPartInfo {
+    pub completed: bool,
+    pub part_number: i64,
+    pub size: i64,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PlatformAnnotationDataset {
+    pub annotations: Vec<PlatformAnnotationDatasetAnnotationsItem>,
+    pub project_id: String,
+    pub tasks: Vec<PlatformAnnotationDatasetTasksItem>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct PlatformAnnotationDatasetTasksItem {}
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct PlatformAnnotationDatasetAnnotationsItem {}
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Page {
     pub items: Vec<PageItemsItem>,
     pub limit: i64,
@@ -78,11 +105,247 @@ impl AsRef<str> for OperationState {
         self.as_str()
     }
 }
+pub type ListPartUploadUrlsResponse = Vec<UploadPartUrl>;
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct UploadPartUrl {
+    pub expires_at: String,
+    pub part_number: i64,
+    pub upload_url: String,
+}
+pub type ListAnnotationsResponse = Vec<AnnotationResponse>;
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AnnotationResponse {
+    pub actor_id: String,
+    pub asset_id: String,
+    pub client_update_id: String,
+    pub id: String,
+    pub payload: serde_json::Value,
+    pub revision: i64,
+    pub task_id: String,
+}
+pub type ListAnnotationTasksResponse = Vec<TaskResponse>;
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct LabelUDataset {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<LabelUDatasetAnnotations>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config: Option<LabelUProjectConfig>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LabelUProjectConfig {
+    #[serde(rename = "mediaType")]
+    pub media_type: String,
+    pub tools: Vec<LabelUToolConfig>,
+    pub version: String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LabelUToolConfig {
+    pub config: serde_json::Value,
+    pub tool: String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct LabelUDatasetAnnotations {
+    /// Additional properties matching the spec's
+    /// `additionalProperties` value schema.
+    #[serde(flatten)]
+    pub additional_properties: std::collections::BTreeMap<String, Vec<LabelUAnnotation>>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LabelUAnnotation {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frame: Option<i64>,
+    pub id: String,
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub points: Option<Vec<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool: Option<String>,
+    pub r#type: String,
+}
+pub type CreateAnnotationTasksResponse201 = Vec<TaskResponse>;
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TaskResponse {
+    pub asset_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assignee: Option<String>,
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lease_expires_at: Option<String>,
+    pub project_id: String,
+    pub state: String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CocoDataset {
+    pub annotations: Vec<CocoDatasetAnnotationsItem>,
+    pub categories: Vec<CocoDatasetCategoriesItem>,
+    pub images: Vec<CocoDatasetImagesItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub info: Option<serde_json::Value>,
+}
+impl CocoDataset {
+    /// Construct this request with every required wire field.
+    pub fn new(
+        annotations: Vec<CocoDatasetAnnotationsItem>,
+        categories: Vec<CocoDatasetCategoriesItem>,
+        images: Vec<CocoDatasetImagesItem>,
+    ) -> Self {
+        Self {
+            annotations,
+            categories,
+            images,
+            info: None,
+        }
+    }
+    /// Start a dependency-free builder with every required wire field.
+    pub fn builder(
+        annotations: Vec<CocoDatasetAnnotationsItem>,
+        categories: Vec<CocoDatasetCategoriesItem>,
+        images: Vec<CocoDatasetImagesItem>,
+    ) -> CocoDatasetBuilder {
+        CocoDatasetBuilder::new(annotations, categories, images)
+    }
+}
+/// Dependency-free builder for [`#struct_name`].
+#[derive(Debug, Clone)]
+#[must_use]
+pub struct CocoDatasetBuilder {
+    value: CocoDataset,
+}
+impl CocoDatasetBuilder {
+    /// Start a builder with every required wire field.
+    pub fn new(
+        annotations: Vec<CocoDatasetAnnotationsItem>,
+        categories: Vec<CocoDatasetCategoriesItem>,
+        images: Vec<CocoDatasetImagesItem>,
+    ) -> Self {
+        Self {
+            value: CocoDataset::new(annotations, categories, images),
+        }
+    }
+    #[doc = concat!("Set the optional `", "info", "` request field.")]
+    #[must_use]
+    pub fn info(mut self, info: serde_json::Value) -> Self {
+        self.value.info = Some(info);
+        self
+    }
+    /// Finish building the request model.
+    pub fn build(self) -> CocoDataset {
+        self.value
+    }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CocoDatasetImagesItem {
+    pub file_name: String,
+    pub height: i64,
+    pub id: i64,
+    pub width: i64,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CocoDatasetCategoriesItem {
+    pub id: i64,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supercategory: Option<String>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CocoDatasetAnnotationsItem {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub area: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bbox: Option<Vec<f64>>,
+    pub category_id: i64,
+    pub id: i64,
+    pub image_id: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub iscrowd: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keypoints: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub segmentation: Option<serde_json::Value>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AddAssetRequest {
+    pub digest: String,
+    pub media_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+    pub name: String,
+    pub object_key: String,
+    pub size: i64,
+}
+impl AddAssetRequest {
+    /// Construct this request with every required wire field.
+    pub fn new(
+        digest: String,
+        media_type: String,
+        name: String,
+        object_key: String,
+        size: i64,
+    ) -> Self {
+        Self {
+            digest,
+            media_type,
+            name,
+            object_key,
+            size,
+            metadata: None,
+        }
+    }
+    /// Start a dependency-free builder with every required wire field.
+    pub fn builder(
+        digest: String,
+        media_type: String,
+        name: String,
+        object_key: String,
+        size: i64,
+    ) -> AddAssetRequestBuilder {
+        AddAssetRequestBuilder::new(digest, media_type, name, object_key, size)
+    }
+}
+/// Dependency-free builder for [`#struct_name`].
+#[derive(Debug, Clone)]
+#[must_use]
+pub struct AddAssetRequestBuilder {
+    value: AddAssetRequest,
+}
+impl AddAssetRequestBuilder {
+    /// Start a builder with every required wire field.
+    pub fn new(
+        digest: String,
+        media_type: String,
+        name: String,
+        object_key: String,
+        size: i64,
+    ) -> Self {
+        Self {
+            value: AddAssetRequest::new(digest, media_type, name, object_key, size),
+        }
+    }
+    #[doc = concat!("Set the optional `", "metadata", "` request field.")]
+    #[must_use]
+    pub fn metadata(mut self, metadata: serde_json::Value) -> Self {
+        self.value.metadata = Some(metadata);
+        self
+    }
+    /// Finish building the request model.
+    pub fn build(self) -> AddAssetRequest {
+        self.value
+    }
+}
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AnnotationProjectResponse {
     pub id: String,
     pub name: String,
     pub state: String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AssignRequest {
+    pub ttl_seconds: i64,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AutosaveRequest {
+    pub client_update_id: String,
+    pub payload: serde_json::Value,
 }
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct CompileRequest {
@@ -120,9 +383,86 @@ pub struct CreateExperimentRequest {
     pub target_metric: String,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CreateImportJobRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub concurrency: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deadline_seconds: Option<i64>,
+    pub media_type: String,
+    pub source_url: String,
+    pub target_key: String,
+    pub total_bytes: i64,
+}
+impl CreateImportJobRequest {
+    /// Construct this request with every required wire field.
+    pub fn new(
+        media_type: String,
+        source_url: String,
+        target_key: String,
+        total_bytes: i64,
+    ) -> Self {
+        Self {
+            media_type,
+            source_url,
+            target_key,
+            total_bytes,
+            concurrency: None,
+            deadline_seconds: None,
+        }
+    }
+    /// Start a dependency-free builder with every required wire field.
+    pub fn builder(
+        media_type: String,
+        source_url: String,
+        target_key: String,
+        total_bytes: i64,
+    ) -> CreateImportJobRequestBuilder {
+        CreateImportJobRequestBuilder::new(media_type, source_url, target_key, total_bytes)
+    }
+}
+/// Dependency-free builder for [`#struct_name`].
+#[derive(Debug, Clone)]
+#[must_use]
+pub struct CreateImportJobRequestBuilder {
+    value: CreateImportJobRequest,
+}
+impl CreateImportJobRequestBuilder {
+    /// Start a builder with every required wire field.
+    pub fn new(
+        media_type: String,
+        source_url: String,
+        target_key: String,
+        total_bytes: i64,
+    ) -> Self {
+        Self {
+            value: CreateImportJobRequest::new(media_type, source_url, target_key, total_bytes),
+        }
+    }
+    #[doc = concat!("Set the optional `", "concurrency", "` request field.")]
+    #[must_use]
+    pub fn concurrency(mut self, concurrency: i64) -> Self {
+        self.value.concurrency = Some(concurrency);
+        self
+    }
+    #[doc = concat!("Set the optional `", "deadline_seconds", "` request field.")]
+    #[must_use]
+    pub fn deadline_seconds(mut self, deadline_seconds: i64) -> Self {
+        self.value.deadline_seconds = Some(deadline_seconds);
+        self
+    }
+    /// Finish building the request model.
+    pub fn build(self) -> CreateImportJobRequest {
+        self.value
+    }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateModelRequest {
     pub name: String,
     pub project_id: String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CreateTasksRequest {
+    pub asset_ids: Vec<String>,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateTrainingJobRequest {
@@ -132,6 +472,101 @@ pub struct CreateTrainingJobRequest {
     pub experiment_id: String,
     pub image_digest: String,
     pub project_id: String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CreateUploadSessionRequest {
+    pub media_type: String,
+    pub name: String,
+    pub part_size: i64,
+    pub resource_id: String,
+    pub resource_type: String,
+    pub total_size: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttl_seconds: Option<i64>,
+    pub version_id: String,
+}
+impl CreateUploadSessionRequest {
+    /// Construct this request with every required wire field.
+    pub fn new(
+        media_type: String,
+        name: String,
+        part_size: i64,
+        resource_id: String,
+        resource_type: String,
+        total_size: i64,
+        version_id: String,
+    ) -> Self {
+        Self {
+            media_type,
+            name,
+            part_size,
+            resource_id,
+            resource_type,
+            total_size,
+            version_id,
+            ttl_seconds: None,
+        }
+    }
+    /// Start a dependency-free builder with every required wire field.
+    pub fn builder(
+        media_type: String,
+        name: String,
+        part_size: i64,
+        resource_id: String,
+        resource_type: String,
+        total_size: i64,
+        version_id: String,
+    ) -> CreateUploadSessionRequestBuilder {
+        CreateUploadSessionRequestBuilder::new(
+            media_type,
+            name,
+            part_size,
+            resource_id,
+            resource_type,
+            total_size,
+            version_id,
+        )
+    }
+}
+/// Dependency-free builder for [`#struct_name`].
+#[derive(Debug, Clone)]
+#[must_use]
+pub struct CreateUploadSessionRequestBuilder {
+    value: CreateUploadSessionRequest,
+}
+impl CreateUploadSessionRequestBuilder {
+    /// Start a builder with every required wire field.
+    pub fn new(
+        media_type: String,
+        name: String,
+        part_size: i64,
+        resource_id: String,
+        resource_type: String,
+        total_size: i64,
+        version_id: String,
+    ) -> Self {
+        Self {
+            value: CreateUploadSessionRequest::new(
+                media_type,
+                name,
+                part_size,
+                resource_id,
+                resource_type,
+                total_size,
+                version_id,
+            ),
+        }
+    }
+    #[doc = concat!("Set the optional `", "ttl_seconds", "` request field.")]
+    #[must_use]
+    pub fn ttl_seconds(mut self, ttl_seconds: i64) -> Self {
+        self.value.ttl_seconds = Some(ttl_seconds);
+        self
+    }
+    /// Finish building the request model.
+    pub fn build(self) -> CreateUploadSessionRequest {
+        self.value
+    }
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DatasetResponse {
@@ -145,6 +580,8 @@ pub struct DatasetResponse {
 pub struct DatasetVersionResponse {
     pub dataset_id: String,
     pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manifest_digest: Option<String>,
     pub state: String,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -154,10 +591,42 @@ pub struct ExperimentResponse {
     pub state: String,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GenerateSplitsRequest {
+    pub seed: i64,
+    pub test: f64,
+    pub train: f64,
+    pub val: f64,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct HealthResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub service: Option<String>,
     pub status: String,
+}
+pub type ImportCocoResponse201 = Vec<String>;
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ImportJobResponse {
+    pub concurrency: i64,
+    pub deadline_seconds: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure: Option<String>,
+    pub id: String,
+    pub media_type: String,
+    pub retry_count: i64,
+    pub source_url: String,
+    pub state: String,
+    pub target_key: String,
+    pub total_bytes: i64,
+    pub transferred_bytes: i64,
+}
+pub type ImportLabeluResponse201 = Vec<String>;
+pub type ImportPlatformResponse201 = Vec<String>;
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MediaUrlResponse {
+    pub expires_at: String,
+    pub url: String,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ModelResponse {

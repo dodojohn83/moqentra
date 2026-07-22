@@ -12,11 +12,17 @@ mod model_svc;
 mod training_svc;
 
 /// Repository ports used by application services.
+pub mod coco;
+pub mod labelu;
+pub mod platform;
 pub mod ports;
 
 pub use annotation_svc::InMemoryAnnotationRegistry;
+pub use coco::{CocoAnnotation, CocoCategory, CocoDataset, CocoImage};
 pub use dispatch::{plan_dispatch, DispatchAction};
+pub use labelu::{LabelUAnnotation, LabelUDataset, LabelUProjectConfig, LabelUToolConfig};
 pub use model_svc::InMemoryModelRegistry;
+pub use platform::PlatformAnnotationDataset;
 pub use ports::{
     AnnotationRepository, ApplicationRepository, DatasetRepository, DeploymentRepository,
     ModelRepository, ResourceListFilter, TrainingJobRepository, Versioned,
@@ -26,6 +32,7 @@ pub use training_svc::InMemoryTrainingRegistry;
 use moqentra_domain::application::{
     Application, ApplicationSpec, ApplicationVersion, ApplicationVersionState, Binding,
 };
+use moqentra_object_store::ObjectKey;
 use moqentra_types::{ApplicationId, ApplicationVersionId, Error, ProjectId, TenantId};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -309,6 +316,80 @@ impl InMemoryDatasetRegistry {
         Self::default()
     }
 
+    /// Find an asset by id across all dataset versions.
+    pub fn find_asset(
+        &self,
+        tenant_id: TenantId,
+        asset_id: moqentra_types::AssetId,
+    ) -> Option<(
+        moqentra_types::DatasetVersionId,
+        moqentra_domain::dataset::AssetRef,
+    )> {
+        for v in self.versions.values() {
+            if v.tenant_id != tenant_id {
+                continue;
+            }
+            for a in &v.assets {
+                if a.id == asset_id {
+                    return Some((v.id, a.clone()));
+                }
+            }
+        }
+        None
+    }
+
+    /// Return all object keys referenced by dataset version assets.
+    pub fn referenced_object_keys(&self) -> std::collections::BTreeSet<String> {
+        let mut keys = std::collections::BTreeSet::new();
+        for v in self.versions.values() {
+            for a in &v.assets {
+                keys.insert(a.object_key.clone());
+            }
+        }
+        keys
+    }
+
+    /// Return pending (tenant_id, version_id, asset_id, asset_name, object_key, media_type)
+    /// tuples that need media validation.
+    pub fn pending_validations(
+        &self,
+    ) -> Vec<(
+        moqentra_types::TenantId,
+        moqentra_types::DatasetVersionId,
+        String,
+        String,
+        String,
+        String,
+    )> {
+        let mut out = Vec::new();
+        for v in self.versions.values() {
+            if matches!(
+                v.state,
+                moqentra_domain::dataset::DatasetVersionState::Published
+                    | moqentra_domain::dataset::DatasetVersionState::Deprecated
+            ) {
+                continue;
+            }
+            for a in &v.assets {
+                let key = a.id.to_string();
+                match v.asset_validations.get(&key) {
+                    None | Some(moqentra_domain::dataset::AssetValidation::Pending) => {
+                        out.push((
+                            v.tenant_id,
+                            v.id,
+                            key,
+                            a.name.clone(),
+                            a.object_key.clone(),
+                            a.media_type.clone(),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        out
+    }
+
     /// Create a dataset, enforcing tenant isolation on later reads.
     pub fn create_dataset(
         &mut self,
@@ -364,9 +445,97 @@ impl InMemoryDatasetRegistry {
         if self.versions.contains_key(&version.id) {
             return Err(Error::conflict("dataset version already exists"));
         }
+        for asset in &version.assets {
+            ObjectKey::from_str(version.tenant_id, version.project_id, &asset.object_key)?;
+        }
         ds.add_version(version.id)?;
         self.versions.insert(version.id, version.clone());
         Ok(version)
+    }
+
+    /// Add an asset to a draft version and validate its object key.
+    pub fn add_asset(
+        &mut self,
+        tenant_id: TenantId,
+        id: moqentra_types::DatasetVersionId,
+        asset: moqentra_domain::dataset::AssetRef,
+    ) -> Result<moqentra_domain::dataset::DatasetVersion, Error> {
+        let v = self.versions.get_mut(&id).ok_or_else(|| Error::not_found("dataset version"))?;
+        if v.tenant_id != tenant_id {
+            return Err(Error::not_found("dataset version"));
+        }
+        ObjectKey::from_str(v.tenant_id, v.project_id, &asset.object_key)?;
+        v.add_asset(asset)?;
+        Ok(v.clone())
+    }
+
+    /// Generate deterministic train/val/test splits for a draft version.
+    pub fn generate_splits(
+        &mut self,
+        tenant_id: TenantId,
+        id: moqentra_types::DatasetVersionId,
+        seed: u64,
+        train: f64,
+        val: f64,
+        test: f64,
+    ) -> Result<moqentra_domain::dataset::DatasetVersion, Error> {
+        let v = self.versions.get_mut(&id).ok_or_else(|| Error::not_found("dataset version"))?;
+        if v.tenant_id != tenant_id {
+            return Err(Error::not_found("dataset version"));
+        }
+        v.generate_splits(seed, train, val, test)?;
+        Ok(v.clone())
+    }
+
+    /// Publish a dataset version after validating its assets and computing the
+    /// canonical manifest digest.
+    pub fn publish_version(
+        &mut self,
+        tenant_id: TenantId,
+        id: moqentra_types::DatasetVersionId,
+    ) -> Result<moqentra_domain::dataset::DatasetVersion, Error> {
+        let v = self.versions.get_mut(&id).ok_or_else(|| Error::not_found("dataset version"))?;
+        if v.tenant_id != tenant_id {
+            return Err(Error::not_found("dataset version"));
+        }
+        v.publish()?;
+        let dataset = self
+            .datasets
+            .get_mut(&v.dataset_id)
+            .ok_or_else(|| Error::internal("dataset missing for version"))?;
+        dataset.set_latest_published(v.id)?;
+        Ok(v.clone())
+    }
+
+    /// Mark an asset within a draft version as successfully validated.
+    pub fn mark_asset_valid(
+        &mut self,
+        tenant_id: TenantId,
+        id: moqentra_types::DatasetVersionId,
+        asset_name: &str,
+    ) -> Result<moqentra_domain::dataset::DatasetVersion, Error> {
+        let v = self.versions.get_mut(&id).ok_or_else(|| Error::not_found("dataset version"))?;
+        if v.tenant_id != tenant_id {
+            return Err(Error::not_found("dataset version"));
+        }
+        v.mark_asset_valid(asset_name)?;
+        Ok(v.clone())
+    }
+
+    /// Mark an asset within a draft version as failed validation.
+    pub fn mark_asset_failed(
+        &mut self,
+        tenant_id: TenantId,
+        id: moqentra_types::DatasetVersionId,
+        asset_name: &str,
+        reason: impl Into<String>,
+    ) -> Result<moqentra_domain::dataset::DatasetVersion, Error> {
+        let v = self.versions.get_mut(&id).ok_or_else(|| Error::not_found("dataset version"))?;
+        if v.tenant_id != tenant_id {
+            return Err(Error::not_found("dataset version"));
+        }
+        v.mark_asset_failed(asset_name, reason)?;
+        Ok(v.clone())
     }
 
     /// Get a version only when it belongs to `tenant_id`.

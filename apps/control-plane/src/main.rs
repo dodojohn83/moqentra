@@ -15,7 +15,12 @@ use moqentra_auth::{
     ServiceAccountValidator,
 };
 use moqentra_http_api::control_plane::{app_router, spawn_outbox_dispatcher, AppState};
+use moqentra_object_store::{
+    s3::{S3Config, S3ObjectStore},
+    InMemoryObjectStore, InMemoryUploadSessionStore, ObjectStorage,
+};
 use moqentra_storage::{InMemoryOutbox, PgAuditLog};
+use moqentra_types::config::SecretString;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicBool;
@@ -75,6 +80,32 @@ fn build_state_from_env() -> AppState {
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(tokens.is_configured());
 
+    let object_store: Arc<dyn ObjectStorage + Send + Sync> =
+        match std::env::var("MOQENTRA_S3_ENDPOINT") {
+            Ok(endpoint) if !endpoint.is_empty() => {
+                let config = S3Config {
+                    bucket: std::env::var("MOQENTRA_S3_BUCKET").unwrap_or_default(),
+                    endpoint,
+                    region: std::env::var("MOQENTRA_S3_REGION")
+                        .unwrap_or_else(|_| "us-east-1".to_string()),
+                    access_key_id: SecretString::new(
+                        std::env::var("MOQENTRA_S3_ACCESS_KEY_ID").unwrap_or_default(),
+                    ),
+                    secret_access_key: SecretString::new(
+                        std::env::var("MOQENTRA_S3_SECRET_ACCESS_KEY").unwrap_or_default(),
+                    ),
+                    force_path_style: std::env::var("MOQENTRA_S3_FORCE_PATH_STYLE")
+                        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                        .unwrap_or(true),
+                };
+                Arc::new(
+                    S3ObjectStore::new(config)
+                        .expect("S3 object store configuration must be valid"),
+                )
+            }
+            _ => Arc::new(InMemoryObjectStore::new()),
+        };
+
     let (audit, db_pool): (
         Arc<dyn moqentra_auth::AuditLog + Send + Sync>,
         Option<sqlx::PgPool>,
@@ -100,6 +131,12 @@ fn build_state_from_env() -> AppState {
         annotations: Arc::new(Mutex::new(InMemoryAnnotationRegistry::new())),
         outbox: Arc::new(InMemoryOutbox::new()),
         audit,
+        object_store,
+        upload_sessions: Arc::new(InMemoryUploadSessionStore::new()),
+        upload_sig_secret: std::env::var("MOQENTRA_UPLOAD_SIG_SECRET")
+            .unwrap_or_else(|_| "moqentra-upload-sig-secret".to_string()),
+        import_jobs: Arc::new(moqentra_http_api::InMemoryImportJobStore::new()),
+        media_validator: Arc::new(moqentra_object_store::DefaultMediaValidator),
         db_pool,
         scheduler_url: std::env::var("MOQENTRA_SCHEDULER_URL").ok().filter(|s| !s.is_empty()),
         node_agent_url: std::env::var("MOQENTRA_NODE_AGENT_URL").ok().filter(|s| !s.is_empty()),
@@ -132,6 +169,9 @@ async fn main() -> anyhow::Result<()> {
     );
 
     spawn_outbox_dispatcher(state.clone());
+    moqentra_http_api::import::spawn_import_worker(state.clone());
+    moqentra_http_api::validation_worker::spawn_media_validation_worker(state.clone());
+    moqentra_http_api::gc_worker::spawn_gc_worker(state.clone());
     let app = app_router(state);
     tracing::info!(%addr, "moqentra-control-plane listening");
     let listener = tokio::net::TcpListener::bind(addr).await?;

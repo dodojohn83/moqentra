@@ -18,7 +18,7 @@ import re  # noqa: F401
 import json
 
 from pydantic import BaseModel, ConfigDict, StrictStr
-from typing import Any, ClassVar, Dict, List
+from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
 from pydantic_core import to_jsonable_python
@@ -30,7 +30,8 @@ class DatasetVersionResponse(BaseModel):
     id: StrictStr
     dataset_id: StrictStr
     state: StrictStr
-    __properties: ClassVar[List[str]] = ["id", "dataset_id", "state"]
+    manifest_digest: Optional[StrictStr] = None
+    __properties: ClassVar[List[str]] = ["id", "dataset_id", "state", "manifest_digest"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -85,7 +86,8 @@ class DatasetVersionResponse(BaseModel):
         _obj = cls.model_validate({
             "id": obj.get("id"),
             "dataset_id": obj.get("dataset_id"),
-            "state": obj.get("state")
+            "state": obj.get("state"),
+            "manifest_digest": obj.get("manifest_digest")
         })
         return _obj
 

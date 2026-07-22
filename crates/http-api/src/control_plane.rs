@@ -5,6 +5,7 @@
 //!
 //! Health endpoints stay unauthenticated.
 
+use crate::import::ImportJobStore;
 use crate::northbound::{ProblemDetails, TokenBucketLimiter};
 use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -22,14 +23,18 @@ use moqentra_auth::{
 };
 use moqentra_domain::annotation::{AnnotationProject, Ontology, TaskType};
 use moqentra_domain::application::ApplicationSpec;
-use moqentra_domain::dataset::{Dataset, DatasetVersion};
+use moqentra_domain::dataset::{AssetRef, Dataset, DatasetVersion};
+use moqentra_domain::import::ImportJob;
 use moqentra_domain::model_registry::Model;
 use moqentra_domain::training::{
     DistributedConfig, Experiment, ParameterSchema, ResourceRequest, TrainingJob, TrainingJobSpec,
 };
+use moqentra_object_store::{
+    upload_session::part_digest, ObjectKey, ObjectStorage, UploadSession, UploadSessionStore,
+};
 use moqentra_storage::{InMemoryOutbox, OutboxEvent, OutboxStatus, OutboxStore, PgRoleStore};
 use moqentra_types::{
-    AnnotationProjectId, DatasetId, DatasetVersionId, Error, ExperimentId, ModelId, Page,
+    AnnotationProjectId, AssetId, DatasetId, DatasetVersionId, Error, ExperimentId, ModelId, Page,
     PageRequest, Principal, ProjectId, RandomIdGenerator, RequestContext, TenantId, TrainingJobId,
     UtcTimestamp,
 };
@@ -55,6 +60,16 @@ pub struct AppState {
     pub annotations: Arc<Mutex<InMemoryAnnotationRegistry>>,
     pub outbox: Arc<InMemoryOutbox>,
     pub audit: Arc<dyn AuditLog + Send + Sync>,
+    /// Object storage backend for artifacts.
+    pub object_store: Arc<dyn ObjectStorage + Send + Sync>,
+    /// Upload session state.
+    pub upload_sessions: Arc<dyn UploadSessionStore + Send + Sync>,
+    /// HMAC secret used to sign part upload URLs.
+    pub upload_sig_secret: String,
+    /// Import job store.
+    pub import_jobs: Arc<dyn ImportJobStore + Send + Sync>,
+    /// Media validator used before publishing a dataset version.
+    pub media_validator: Arc<dyn moqentra_object_store::MediaValidator + Send + Sync>,
     /// Optional PostgreSQL pool for audit / repository persistence.
     pub db_pool: Option<sqlx::PgPool>,
     /// Optional downstream URLs for outbox side-effects.
@@ -103,7 +118,7 @@ struct WhoAmIResponse {
     request_id: String,
 }
 
-struct ApiError {
+pub(crate) struct ApiError {
     status: StatusCode,
     problem: ProblemDetails,
 }
@@ -135,7 +150,10 @@ fn header_str(headers: &HeaderMap, name: &str) -> Option<String> {
     headers.get(name).and_then(|v| v.to_str().ok()).map(|s| s.to_string())
 }
 
-async fn resolve_context(state: &AppState, headers: &HeaderMap) -> Result<RequestContext, Error> {
+pub(crate) async fn resolve_context(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<RequestContext, Error> {
     let request_id = header_str(headers, "x-request-id")
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| format!("req-{}", UtcTimestamp::now()));
@@ -215,7 +233,10 @@ async fn emit_event(
     let _ = state.outbox.append(event).await;
 }
 
-fn resolve_project_id(ctx: &RequestContext, body_project_id: &str) -> Result<ProjectId, Error> {
+pub(crate) fn resolve_project_id(
+    ctx: &RequestContext,
+    body_project_id: &str,
+) -> Result<ProjectId, Error> {
     if let Some(p) = ctx.project_id {
         if !body_project_id.is_empty() {
             let body = ProjectId::try_from(body_project_id)?;
@@ -231,7 +252,7 @@ fn resolve_project_id(ctx: &RequestContext, body_project_id: &str) -> Result<Pro
     }
 }
 
-fn check_rate_limit(state: &AppState, tenant_id: TenantId) -> Result<(), Error> {
+pub(crate) fn check_rate_limit(state: &AppState, tenant_id: TenantId) -> Result<(), Error> {
     let now = UtcTimestamp::now();
     let mut map = state.rate_limiters.lock().unwrap_or_else(|e| e.into_inner());
     let limiter = map.entry(tenant_id).or_insert_with(|| {
@@ -245,7 +266,7 @@ fn check_rate_limit(state: &AppState, tenant_id: TenantId) -> Result<(), Error> 
     Ok(())
 }
 
-async fn authorize(
+pub(crate) async fn authorize(
     state: &AppState,
     ctx: &RequestContext,
     action: Action,
@@ -288,7 +309,7 @@ async fn authorize(
     }
 }
 
-async fn audit_write(
+pub(crate) async fn audit_write(
     state: &AppState,
     ctx: &RequestContext,
     category: AuditCategory,
@@ -801,11 +822,30 @@ struct CreateDatasetVersionRequest {
     dataset_id: String,
 }
 
+#[derive(Deserialize)]
+struct AddAssetRequest {
+    name: String,
+    object_key: String,
+    digest: String,
+    size: u64,
+    media_type: String,
+    metadata: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct GenerateSplitsRequest {
+    seed: u64,
+    train: f64,
+    val: f64,
+    test: f64,
+}
+
 #[derive(Serialize, Deserialize)]
 struct DatasetVersionResponse {
     id: String,
     dataset_id: String,
     state: String,
+    manifest_digest: Option<String>,
 }
 
 async fn create_dataset_version(
@@ -852,8 +892,690 @@ async fn create_dataset_version(
             id: created.id.to_string(),
             dataset_id: created.dataset_id.to_string(),
             state: format!("{:?}", created.state),
+            manifest_digest: created.manifest_digest.clone(),
         }),
     ))
+}
+
+async fn add_dataset_version_asset(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(version_id): axum::extract::Path<String>,
+    Json(req): Json<AddAssetRequest>,
+) -> Result<(StatusCode, Json<DatasetVersionResponse>), ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Update, Resource::DatasetVersion).await?;
+    let version_id = DatasetVersionId::try_from(version_id.as_str())?;
+    let metadata = req.metadata.unwrap_or(serde_json::Value::Null);
+    let gen = RandomIdGenerator;
+    let asset = AssetRef {
+        id: AssetId::new_v7(&gen),
+        name: req.name,
+        object_key: req.object_key,
+        digest: req.digest,
+        size: req.size,
+        media_type: req.media_type,
+        metadata,
+    };
+    let updated = {
+        let mut reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
+        reg.add_asset(ctx.tenant_id, version_id, asset)?
+    };
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "dataset_version.add_asset",
+        Resource::DatasetVersion,
+        Some(&updated.id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok((
+        StatusCode::OK,
+        Json(DatasetVersionResponse {
+            id: updated.id.to_string(),
+            dataset_id: updated.dataset_id.to_string(),
+            state: format!("{:?}", updated.state),
+            manifest_digest: updated.manifest_digest.clone(),
+        }),
+    ))
+}
+
+async fn generate_dataset_version_splits(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(version_id): axum::extract::Path<String>,
+    Json(req): Json<GenerateSplitsRequest>,
+) -> Result<(StatusCode, Json<DatasetVersionResponse>), ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Update, Resource::DatasetVersion).await?;
+    let version_id = DatasetVersionId::try_from(version_id.as_str())?;
+    let updated = {
+        let mut reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
+        reg.generate_splits(
+            ctx.tenant_id,
+            version_id,
+            req.seed,
+            req.train,
+            req.val,
+            req.test,
+        )?
+    };
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "dataset_version.generate_splits",
+        Resource::DatasetVersion,
+        Some(&updated.id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok((
+        StatusCode::OK,
+        Json(DatasetVersionResponse {
+            id: updated.id.to_string(),
+            dataset_id: updated.dataset_id.to_string(),
+            state: format!("{:?}", updated.state),
+            manifest_digest: updated.manifest_digest.clone(),
+        }),
+    ))
+}
+
+async fn publish_dataset_version(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(version_id): axum::extract::Path<String>,
+) -> Result<(StatusCode, Json<DatasetVersionResponse>), ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Update, Resource::DatasetVersion).await?;
+    let version_id = DatasetVersionId::try_from(version_id.as_str())?;
+
+    // Gather assets without holding the registry across await points.
+    let (tenant_id, assets) = {
+        let reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
+        let v = reg.get_version(ctx.tenant_id, version_id)?;
+        (
+            v.tenant_id,
+            v.assets
+                .iter()
+                .map(|a| {
+                    (
+                        a.id.to_string(),
+                        a.name.clone(),
+                        a.object_key.clone(),
+                        a.media_type.clone(),
+                    )
+                })
+                .collect::<Vec<_>>(),
+        )
+    };
+
+    let mut failures: Vec<(String, String, String)> = Vec::new();
+    for (id, _name, key, media_type) in &assets {
+        match state.object_store.get_object(key).await {
+            Ok((bytes, _)) => {
+                if let Err(e) = state.media_validator.validate(&bytes, media_type).await {
+                    failures.push((id.clone(), _name.clone(), e.to_string()));
+                }
+            }
+            Err(e) => failures.push((id.clone(), _name.clone(), e.to_string())),
+        }
+    }
+
+    let updated = {
+        let mut reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
+        for (id, _name, reason) in &failures {
+            reg.mark_asset_failed(tenant_id, version_id, id, reason)?;
+        }
+        for (id, _name, _, _) in &assets {
+            if !failures.iter().any(|(fid, _, _)| fid == id) {
+                reg.mark_asset_valid(tenant_id, version_id, id)?;
+            }
+        }
+        if !failures.is_empty() {
+            return Err(Error::invalid_argument(format!(
+                "asset validation failed: {}",
+                failures.iter().map(|(_, _, r)| r.as_str()).collect::<Vec<_>>().join(", ")
+            ))
+            .into());
+        }
+        reg.publish_version(tenant_id, version_id)?
+    };
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "dataset_version.publish",
+        Resource::DatasetVersion,
+        Some(&updated.id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok((
+        StatusCode::OK,
+        Json(DatasetVersionResponse {
+            id: updated.id.to_string(),
+            dataset_id: updated.dataset_id.to_string(),
+            state: format!("{:?}", updated.state),
+            manifest_digest: updated.manifest_digest.clone(),
+        }),
+    ))
+}
+
+#[derive(Deserialize)]
+struct CreateUploadSessionRequest {
+    resource_type: String,
+    resource_id: String,
+    version_id: String,
+    name: String,
+    media_type: String,
+    part_size: u64,
+    total_size: u64,
+    ttl_seconds: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct UploadPartInfo {
+    part_number: i32,
+    size: u64,
+    completed: bool,
+}
+
+#[derive(Serialize)]
+struct UploadSessionResponse {
+    id: String,
+    target_key: String,
+    media_type: String,
+    part_size: u64,
+    total_size: u64,
+    parts: Vec<UploadPartInfo>,
+    state: String,
+    expires_at: String,
+}
+
+impl From<&UploadSession> for UploadSessionResponse {
+    fn from(s: &UploadSession) -> Self {
+        Self {
+            id: s.id.clone(),
+            target_key: s.target_key.as_str().to_string(),
+            media_type: s.media_type.clone(),
+            part_size: s.part_size,
+            total_size: s.total_size,
+            parts: s
+                .parts
+                .values()
+                .map(|p| UploadPartInfo {
+                    part_number: p.part_number,
+                    size: p.size,
+                    completed: p.completed,
+                })
+                .collect(),
+            state: format!("{:?}", s.state),
+            expires_at: s.expires_at.to_string(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct UploadPartQuery {
+    sig: Option<String>,
+    expires: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct PartUploadUrl {
+    part_number: i32,
+    upload_url: String,
+    expires_at: String,
+}
+
+type HmacSha256 = hmac::Hmac<sha2::Sha256>;
+
+fn sign_part_upload(secret: &str, session_id: &str, part_number: i32, expires_at: u64) -> String {
+    use hmac::Mac;
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take a key of any size");
+    mac.update(format!("{}:{}:{}", session_id, part_number, expires_at).as_bytes());
+    hex::encode(mac.finalize().into_bytes())
+}
+
+fn verify_part_upload(
+    secret: &str,
+    session_id: &str,
+    part_number: i32,
+    expires_at: u64,
+    sig_hex: &str,
+) -> Result<(), Error> {
+    use hmac::Mac;
+    let tag = hex::decode(sig_hex)
+        .map_err(|_| Error::unauthenticated("invalid part upload signature"))?;
+    let now = UtcTimestamp::now().as_offset().unix_timestamp() as u64;
+    if now > expires_at {
+        return Err(Error::unauthenticated("signed upload URL has expired"));
+    }
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take a key of any size");
+    mac.update(format!("{}:{}:{}", session_id, part_number, expires_at).as_bytes());
+    mac.verify_slice(&tag)
+        .map_err(|_| Error::unauthenticated("invalid part upload signature"))
+}
+
+async fn create_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<CreateUploadSessionRequest>,
+) -> Result<(StatusCode, Json<UploadSessionResponse>), ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Create, Resource::DatasetVersion).await?;
+    let project_id = ctx.project_id.ok_or_else(|| {
+        Error::invalid_argument("X-Project-Id is required when creating an upload session")
+    })?;
+    let ttl = req.ttl_seconds.unwrap_or(3600).clamp(60, 86400);
+    let target_key = ObjectKey::asset(
+        ctx.tenant_id,
+        project_id,
+        &req.resource_type,
+        &req.resource_id,
+        &req.version_id,
+        &req.name,
+    )?;
+    let session_id = Uuid::new_v4().to_string();
+    let backend_upload_id = state
+        .object_store
+        .start_multipart(target_key.as_str(), Some(&req.media_type))
+        .await?;
+    let session = UploadSession::new(
+        session_id,
+        ctx.tenant_id,
+        project_id,
+        target_key,
+        req.media_type,
+        req.part_size,
+        req.total_size,
+        ttl,
+    )?;
+    let mut session = session;
+    session.backend_upload_id = Some(backend_upload_id);
+    state.upload_sessions.save(&session).await?;
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "upload_session.create",
+        Resource::DatasetVersion,
+        Some(&session.id),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok((
+        StatusCode::CREATED,
+        Json(UploadSessionResponse::from(&session)),
+    ))
+}
+
+async fn get_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> Result<Json<UploadSessionResponse>, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Read, Resource::DatasetVersion).await?;
+    let session = state
+        .upload_sessions
+        .get(&session_id)
+        .await?
+        .ok_or_else(|| Error::not_found("upload session"))?;
+    if session.tenant_id != ctx.tenant_id {
+        return Err(Error::not_found("upload session").into());
+    }
+    Ok(Json(UploadSessionResponse::from(&session)))
+}
+
+async fn list_upload_session_parts(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> Result<Json<UploadSessionResponse>, ApiError> {
+    get_upload_session(State(state), headers, axum::extract::Path(session_id)).await
+}
+
+async fn list_part_upload_urls(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> Result<Json<Vec<PartUploadUrl>>, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Read, Resource::DatasetVersion).await?;
+    let session = state
+        .upload_sessions
+        .get(&session_id)
+        .await?
+        .ok_or_else(|| Error::not_found("upload session"))?;
+    if session.tenant_id != ctx.tenant_id {
+        return Err(Error::not_found("upload session").into());
+    }
+    let ttl_seconds = 900_u64; // short-lived signed URLs
+    let max_expires = (UtcTimestamp::now().as_offset().unix_timestamp() as u64) + ttl_seconds;
+    let session_expires = (session.expires_at.as_offset().unix_timestamp() as u64).min(max_expires);
+    let urls: Vec<PartUploadUrl> = session
+        .parts
+        .values()
+        .filter(|p| !p.completed)
+        .map(|p| {
+            let n = p.part_number;
+            let sig = sign_part_upload(&state.upload_sig_secret, &session_id, n, session_expires);
+            PartUploadUrl {
+                part_number: n,
+                upload_url: format!(
+                    "/v1/upload-sessions/{}/parts/{}?sig={}&expires={}",
+                    session_id, n, sig, session_expires
+                ),
+                expires_at: session_expires.to_string(),
+            }
+        })
+        .collect();
+    Ok(Json(urls))
+}
+
+async fn upload_part(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path((session_id, part_number)): axum::extract::Path<(String, i32)>,
+    axum::extract::Query(q): axum::extract::Query<UploadPartQuery>,
+    body: axum::body::Bytes,
+) -> Result<StatusCode, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Update, Resource::DatasetVersion).await?;
+    let mut session = state
+        .upload_sessions
+        .get(&session_id)
+        .await?
+        .ok_or_else(|| Error::not_found("upload session"))?;
+    if session.tenant_id != ctx.tenant_id {
+        return Err(Error::not_found("upload session").into());
+    }
+    if let (Some(sig), Some(expires)) = (q.sig, q.expires) {
+        verify_part_upload(
+            &state.upload_sig_secret,
+            &session_id,
+            part_number,
+            expires,
+            &sig,
+        )?;
+    }
+    let expected_size = session
+        .parts
+        .get(&part_number)
+        .map(|p| p.size)
+        .ok_or_else(|| Error::invalid_argument("invalid part number"))?;
+    let actual_size = body.len() as u64;
+    if actual_size != expected_size {
+        return Err(Error::invalid_argument(format!(
+            "part {} size mismatch: expected {}, got {}",
+            part_number, expected_size, actual_size
+        ))
+        .into());
+    }
+    let backend_upload_id = session
+        .backend_upload_id
+        .clone()
+        .ok_or_else(|| Error::internal("upload session has no backend id"))?;
+    let etag = state
+        .object_store
+        .upload_part(
+            session.target_key.as_str(),
+            &backend_upload_id,
+            part_number,
+            body.clone(),
+        )
+        .await?;
+    let digest = part_digest(&body);
+    session.mark_part_uploaded(part_number, etag, digest)?;
+    state.upload_sessions.save(&session).await?;
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "upload_session.upload_part",
+        Resource::DatasetVersion,
+        Some(&session.id),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn complete_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> Result<Json<UploadSessionResponse>, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Update, Resource::DatasetVersion).await?;
+    let mut session = state
+        .upload_sessions
+        .get(&session_id)
+        .await?
+        .ok_or_else(|| Error::not_found("upload session"))?;
+    if session.tenant_id != ctx.tenant_id {
+        return Err(Error::not_found("upload session").into());
+    }
+    session.validate_for_completion()?;
+    let backend_upload_id = session
+        .backend_upload_id
+        .clone()
+        .ok_or_else(|| Error::internal("upload session has no backend id"))?;
+    let parts: Vec<(i32, String)> = session
+        .parts
+        .values()
+        .map(|p| (p.part_number, p.etag.clone().unwrap_or_default()))
+        .collect();
+    let _meta = state
+        .object_store
+        .complete_multipart(session.target_key.as_str(), &backend_upload_id, parts)
+        .await?;
+    session.state = moqentra_object_store::upload_session::UploadSessionState::Completed;
+    state.upload_sessions.save(&session).await?;
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "upload_session.complete",
+        Resource::DatasetVersion,
+        Some(&session.id),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok(Json(UploadSessionResponse::from(&session)))
+}
+
+async fn abort_upload_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Delete, Resource::DatasetVersion).await?;
+    let session = state
+        .upload_sessions
+        .get(&session_id)
+        .await?
+        .ok_or_else(|| Error::not_found("upload session"))?;
+    if session.tenant_id != ctx.tenant_id {
+        return Err(Error::not_found("upload session").into());
+    }
+    if let Some(backend_upload_id) = session.backend_upload_id {
+        let _ = state
+            .object_store
+            .abort_multipart(session.target_key.as_str(), &backend_upload_id)
+            .await;
+    }
+    state.upload_sessions.delete(&session_id).await?;
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "upload_session.abort",
+        Resource::DatasetVersion,
+        Some(&session_id),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct CreateImportJobRequest {
+    source_url: String,
+    target_key: String,
+    media_type: String,
+    total_bytes: u64,
+    #[serde(default = "default_import_concurrency")]
+    concurrency: u32,
+    #[serde(default = "default_import_deadline")]
+    deadline_seconds: u32,
+}
+
+fn default_import_concurrency() -> u32 {
+    1
+}
+
+fn default_import_deadline() -> u32 {
+    300
+}
+
+#[derive(Serialize)]
+struct ImportJobResponse {
+    id: String,
+    state: String,
+    source_url: String,
+    target_key: String,
+    media_type: String,
+    total_bytes: u64,
+    transferred_bytes: u64,
+    concurrency: u32,
+    deadline_seconds: u32,
+    digest: Option<String>,
+    failure: Option<String>,
+    retry_count: u32,
+}
+
+impl From<&ImportJob> for ImportJobResponse {
+    fn from(j: &ImportJob) -> Self {
+        Self {
+            id: j.id.clone(),
+            state: format!("{:?}", j.state),
+            source_url: j.source_url.clone(),
+            target_key: j.target_key.clone(),
+            media_type: j.media_type.clone(),
+            total_bytes: j.total_bytes,
+            transferred_bytes: j.transferred_bytes,
+            concurrency: j.concurrency,
+            deadline_seconds: j.deadline_seconds,
+            digest: j.digest.clone(),
+            failure: j.failure.as_ref().map(|f| format!("{:?}", f)),
+            retry_count: j.retry_count,
+        }
+    }
+}
+
+async fn create_import_job(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<CreateImportJobRequest>,
+) -> Result<(StatusCode, Json<ImportJobResponse>), ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Create, Resource::DatasetVersion).await?;
+    let project_id = ctx.project_id.ok_or_else(|| {
+        Error::invalid_argument("X-Project-Id is required when creating an import job")
+    })?;
+    ObjectKey::from_str(ctx.tenant_id, project_id, &req.target_key)?;
+    let id = Uuid::new_v4().to_string();
+    let job = ImportJob::new_v1(
+        id.clone(),
+        ctx.tenant_id,
+        project_id,
+        req.source_url,
+        req.target_key,
+        req.media_type,
+        req.total_bytes,
+        req.concurrency.clamp(1, 16),
+        req.deadline_seconds.clamp(30, 3600),
+    )?;
+    state.import_jobs.save(&job).await?;
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "import_job.create",
+        Resource::DatasetVersion,
+        Some(&id),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok((StatusCode::CREATED, Json(ImportJobResponse::from(&job))))
+}
+
+async fn get_import_job(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(job_id): axum::extract::Path<String>,
+) -> Result<Json<ImportJobResponse>, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Read, Resource::DatasetVersion).await?;
+    let job = state
+        .import_jobs
+        .get(&job_id)
+        .await?
+        .ok_or_else(|| Error::not_found("import job"))?;
+    if job.tenant_id != ctx.tenant_id {
+        return Err(Error::not_found("import job").into());
+    }
+    Ok(Json(ImportJobResponse::from(&job)))
+}
+
+async fn cancel_import_job(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(job_id): axum::extract::Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Delete, Resource::DatasetVersion).await?;
+    let mut job = state
+        .import_jobs
+        .get(&job_id)
+        .await?
+        .ok_or_else(|| Error::not_found("import job"))?;
+    if job.tenant_id != ctx.tenant_id {
+        return Err(Error::not_found("import job").into());
+    }
+    job.cancel()?;
+    state.import_jobs.save(&job).await?;
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "import_job.cancel",
+        Resource::DatasetVersion,
+        Some(&job_id),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn create_model(
@@ -1090,11 +1812,109 @@ pub fn app_router(state: AppState) -> Router {
         .route("/v1/training-jobs/{id}/admit", post(admit_training_job))
         .route("/v1/training-jobs/{id}/cancel", post(cancel_training_job))
         .route("/v1/dataset-versions", post(create_dataset_version))
+        .route(
+            "/v1/dataset-versions/{id}/assets",
+            post(add_dataset_version_asset),
+        )
+        .route(
+            "/v1/dataset-versions/{id}/splits",
+            post(generate_dataset_version_splits),
+        )
+        .route(
+            "/v1/dataset-versions/{id}/publish",
+            post(publish_dataset_version),
+        )
+        .route("/v1/upload-sessions", post(create_upload_session))
+        .route(
+            "/v1/upload-sessions/{id}",
+            get(get_upload_session).delete(abort_upload_session),
+        )
+        .route(
+            "/v1/upload-sessions/{id}/parts",
+            get(list_upload_session_parts),
+        )
+        .route(
+            "/v1/upload-sessions/{id}/part-urls",
+            get(list_part_upload_urls),
+        )
+        .route(
+            "/v1/upload-sessions/{id}/parts/{partNumber}",
+            post(upload_part),
+        )
+        .route(
+            "/v1/upload-sessions/{id}/complete",
+            post(complete_upload_session),
+        )
+        .route("/v1/import-jobs", post(create_import_job))
+        .route(
+            "/v1/import-jobs/{id}",
+            get(get_import_job).delete(cancel_import_job),
+        )
         .route("/v1/models", post(create_model).get(list_models))
         .route("/v1/annotation-projects", post(create_annotation_project))
         .route(
             "/v1/annotation-projects/{id}/activate",
             post(activate_annotation_project),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/tasks",
+            post(crate::annotation::create_tasks).get(crate::annotation::list_tasks),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/tasks/{taskId}",
+            get(crate::annotation::get_task),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/tasks/{taskId}/assign",
+            post(crate::annotation::assign_task),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/tasks/{taskId}/start",
+            post(crate::annotation::start_task),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/tasks/{taskId}/submit",
+            post(crate::annotation::submit_task),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/tasks/{taskId}/return",
+            post(crate::annotation::return_task),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/tasks/{taskId}/approve",
+            post(crate::annotation::approve_task),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/tasks/{taskId}/annotations",
+            post(crate::annotation::autosave_annotation).get(crate::annotation::list_annotations),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/export-coco",
+            get(crate::annotation::export_coco),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/import-coco",
+            post(crate::annotation::import_coco),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/export-labelu",
+            get(crate::annotation::export_labelu),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/import-labelu",
+            post(crate::annotation::import_labelu),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/export-platform",
+            get(crate::annotation::export_platform),
+        )
+        .route(
+            "/v1/annotation-projects/{id}/import-platform",
+            post(crate::annotation::import_platform),
+        )
+        .route(
+            "/v1/assets/{assetId}/media-url",
+            get(crate::annotation::get_asset_media_url),
         )
         .route("/v1/outbox", get(list_outbox))
         .with_state(state.clone())
@@ -1235,10 +2055,12 @@ async fn apply_dispatch(state: &AppState, action: DispatchAction) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::import::InMemoryImportJobStore;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use moqentra_auth::{HmacValidator, InMemoryAuditLog, ServiceAccountValidator};
     use moqentra_domain::application::{ApplicationNode, Port};
+    use moqentra_object_store::{InMemoryObjectStore, InMemoryUploadSessionStore};
     use moqentra_types::UserId;
     use std::collections::BTreeMap;
     use tower::ServiceExt;
@@ -1261,6 +2083,11 @@ mod tests {
             annotations: Arc::new(Mutex::new(InMemoryAnnotationRegistry::new())),
             outbox: Arc::new(InMemoryOutbox::new()),
             audit: Arc::new(InMemoryAuditLog::new()),
+            object_store: Arc::new(InMemoryObjectStore::new()),
+            upload_sessions: Arc::new(InMemoryUploadSessionStore::new()),
+            upload_sig_secret: "test-upload-secret".to_string(),
+            import_jobs: Arc::new(InMemoryImportJobStore::new()),
+            media_validator: Arc::new(moqentra_object_store::DefaultMediaValidator),
             db_pool: None,
             scheduler_url: None,
             node_agent_url: None,
@@ -1570,5 +2397,97 @@ mod tests {
         let reg = state.training.lock().unwrap();
         let admitted = reg.get_job(tenant, job_id).unwrap();
         assert!(matches!(admitted.state, TrainingJobState::Admitted));
+    }
+
+    #[tokio::test]
+    async fn upload_session_create_list_upload_complete() {
+        let (state, secret, tenant, project, user) = authed_state();
+        let app = app_router(state);
+        let token = mint_token(user, &secret);
+
+        // Create an empty dataset so the version and upload target reference a dataset.
+        let create_dataset = Request::builder()
+            .method("POST")
+            .uri("/v1/datasets")
+            .header("content-type", "application/json")
+            .header("x-tenant-id", tenant.to_string())
+            .header("x-project-id", project.to_string())
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(format!(
+                "{{\"name\":\"ds\",\"project_id\":\"{}\"}}",
+                project
+            )))
+            .unwrap();
+        let resp = app.clone().oneshot(create_dataset).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let version_id = "ver-1";
+        let create_session = Request::builder()
+            .method("POST")
+            .uri("/v1/upload-sessions")
+            .header("content-type", "application/json")
+            .header("x-tenant-id", tenant.to_string())
+            .header("x-project-id", project.to_string())
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(format!(
+                "{{\"resource_type\":\"datasets\",\"resource_id\":\"ds\",\"version_id\":\"{version_id}\",\"name\":\"data.bin\",\"media_type\":\"application/octet-stream\",\"part_size\":5,\"total_size\":12}}"
+            )))
+            .unwrap();
+        let resp = app.clone().oneshot(create_session).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let session: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let session_id = session["id"].as_str().unwrap().to_string();
+        assert_eq!(session["total_size"].as_u64().unwrap(), 12);
+
+        // Upload 3 parts.
+        for n in 1..=3 {
+            let payload = match n {
+                1 => "12345",
+                2 => "67890",
+                _ => "ab",
+            };
+            let upload = Request::builder()
+                .method("POST")
+                .uri(format!("/v1/upload-sessions/{session_id}/parts/{n}"))
+                .header("content-type", "application/octet-stream")
+                .header("x-tenant-id", tenant.to_string())
+                .header("x-project-id", project.to_string())
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::from(payload))
+                .unwrap();
+            let resp = app.clone().oneshot(upload).await.unwrap();
+            assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        }
+
+        // List part upload URLs; all parts are complete, so result is empty.
+        let list_urls = Request::builder()
+            .method("GET")
+            .uri(format!("/v1/upload-sessions/{session_id}/part-urls"))
+            .header("x-tenant-id", tenant.to_string())
+            .header("x-project-id", project.to_string())
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(list_urls).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let complete = Request::builder()
+            .method("POST")
+            .uri(format!("/v1/upload-sessions/{session_id}/complete"))
+            .header("x-tenant-id", tenant.to_string())
+            .header("x-project-id", project.to_string())
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(complete).await.unwrap();
+        let status = resp.status();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        if status != StatusCode::OK {
+            eprintln!("complete failed: {:?}", String::from_utf8_lossy(&body));
+        }
+        assert_eq!(status, StatusCode::OK);
+        let session: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(session["state"], "Completed");
     }
 }

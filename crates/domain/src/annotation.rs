@@ -477,6 +477,11 @@ impl AnnotationLog {
     pub fn get(&self, id: AnnotationId) -> Option<&Annotation> {
         self.annotations.get(&id)
     }
+
+    /// Return all annotations in the log, ordered by id.
+    pub fn get_all(&self) -> Vec<&Annotation> {
+        self.annotations.values().collect()
+    }
 }
 
 /// Export format support.

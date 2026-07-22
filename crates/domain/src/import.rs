@@ -1,6 +1,8 @@
 //! Import job state machine.
 
+use moqentra_types::{ProjectId, TenantId};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 /// State of an import job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,9 +31,18 @@ pub enum ImportJobFailure {
 /// Import job aggregate root.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ImportJob {
-    pub state: ImportJobState,
+    pub id: String,
+    pub tenant_id: TenantId,
+    pub project_id: ProjectId,
+    pub source_url: String,
+    pub target_key: String,
+    pub media_type: String,
     pub total_bytes: u64,
     pub transferred_bytes: u64,
+    pub concurrency: u32,
+    pub deadline_seconds: u32,
+    pub digest: Option<String>,
+    pub state: ImportJobState,
     pub failure: Option<ImportJobFailure>,
     pub retry_count: u32,
 }
@@ -45,12 +56,76 @@ impl Default for ImportJob {
 impl ImportJob {
     pub fn new() -> Self {
         Self {
-            state: ImportJobState::Pending,
+            id: String::new(),
+            tenant_id: TenantId::from_str("00000000-0000-0000-0000-000000000000").unwrap(),
+            project_id: ProjectId::from_str("00000000-0000-0000-0000-000000000000").unwrap(),
+            source_url: String::new(),
+            target_key: String::new(),
+            media_type: String::new(),
             total_bytes: 0,
             transferred_bytes: 0,
+            concurrency: 1,
+            deadline_seconds: 300,
+            digest: None,
+            state: ImportJobState::Pending,
             failure: None,
             retry_count: 0,
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_v1(
+        id: String,
+        tenant_id: TenantId,
+        project_id: ProjectId,
+        source_url: String,
+        target_key: String,
+        media_type: String,
+        total_bytes: u64,
+        concurrency: u32,
+        deadline_seconds: u32,
+    ) -> Result<Self, moqentra_types::Error> {
+        if source_url.is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "source_url is required",
+            ));
+        }
+        if target_key.is_empty() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "target_key is required",
+            ));
+        }
+        if total_bytes == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "total_bytes must be greater than zero",
+            ));
+        }
+        if concurrency == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "concurrency must be greater than zero",
+            ));
+        }
+        if deadline_seconds == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "deadline_seconds must be greater than zero",
+            ));
+        }
+        Ok(Self {
+            id,
+            tenant_id,
+            project_id,
+            source_url,
+            target_key,
+            media_type,
+            total_bytes,
+            transferred_bytes: 0,
+            concurrency,
+            deadline_seconds,
+            digest: None,
+            state: ImportJobState::Pending,
+            failure: None,
+            retry_count: 0,
+        })
     }
 
     pub fn start_inspection(&mut self, total_bytes: u64) -> Result<(), moqentra_types::Error> {
