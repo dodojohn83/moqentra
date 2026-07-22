@@ -13,7 +13,8 @@ use moqentra_worker_control::local_executor::{
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Clone)]
@@ -135,7 +136,7 @@ async fn capabilities(State(state): State<AgentState>) -> impl IntoResponse {
 }
 
 async fn allocations(State(state): State<AgentState>) -> impl IntoResponse {
-    let executor = state.executor.lock().unwrap_or_else(|e| e.into_inner());
+    let executor = state.executor.lock().await;
     let summary: Vec<_> = executor
         .allocations_snapshot()
         .into_iter()
@@ -165,7 +166,7 @@ async fn allocate(
         },
         device_count: req.device_count,
     };
-    let mut executor = state.executor.lock().unwrap_or_else(|e| e.into_inner());
+    let mut executor = state.executor.lock().await;
     let alloc = executor
         .allocate(
             &request,
@@ -194,7 +195,7 @@ async fn release(
     State(state): State<AgentState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
-    let mut executor = state.executor.lock().unwrap_or_else(|e| e.into_inner());
+    let mut executor = state.executor.lock().await;
     executor.release(&id).map_err(|e| {
         (
             StatusCode::NOT_FOUND,
@@ -212,7 +213,9 @@ async fn main() -> anyhow::Result<()> {
     let workspace =
         std::env::var("MOQENTRA_WORKSPACE_ROOT").unwrap_or_else(|_| "/tmp/moqentra".to_string());
     let executor = Arc::new(Mutex::new(
-        LocalExecutor::new().with_workspace_root(workspace),
+        LocalExecutor::new()
+            .with_workspace_root(workspace)
+            .with_container_runtime(caps.container_runtime.clone()),
     ));
     let state = AgentState {
         capabilities: Arc::clone(&caps),
@@ -224,7 +227,13 @@ async fn main() -> anyhow::Result<()> {
             let caps = Arc::clone(&caps);
             tokio::spawn(async move {
                 loop {
-                    if let Err(e) = client::run_worker_stream(&grpc_addr, (*caps).clone()).await {
+                    if let Err(e) = client::run_worker_stream(
+                        &grpc_addr,
+                        (*caps).clone(),
+                        Arc::clone(&executor),
+                    )
+                    .await
+                    {
                         tracing::error!(error = %e, "worker stream failed; reconnecting in 5s");
                     }
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;

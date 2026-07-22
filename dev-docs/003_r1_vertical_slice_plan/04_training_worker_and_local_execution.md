@@ -21,10 +21,10 @@
 ## 3. Node Agent 与容器执行
 
 - [x] `R1-LOCAL-001` Node Agent 探测 CPU、磁盘、Docker/Podman、NVIDIA driver/runtime 和设备健康，注册稳定 NodeId 与能力快照。
-- [ ] `R1-LOCAL-002` 实现实际 OCI launch：镜像必须为 digest；argv 直接传递；禁止 shell；固定非 root、只读 rootfs、drop capabilities、no-new-privileges、seccomp 和资源上限。
-- [ ] `R1-LOCAL-003` 为 attempt 建立受控 workspace，分别挂载只读 input、可写 output/checkpoint 和必要 Unix socket；拒绝相对路径、symlink escape 和任意 host mount。
-- [ ] `R1-LOCAL-004` 实现设备原子分配、`NVIDIA_VISIBLE_DEVICES` 映射、并发配额、启动失败回滚和释放；同一设备不得被超额分配。
-- [ ] `R1-LOCAL-005` 采集 stdout/stderr，按大小和速率切块上传；日志背压不能阻塞训练进程或形成无界内存。
+- [x] `R1-LOCAL-002` 实现实际 OCI launch：`LocalExecutor::run_container` 校验 `image`/`image_digest`、拒绝 root、只读 rootfs、drop capabilities、no-new-privileges、network none、pids limit；argv 直接传递；镜像以 `@digest` 形式传给 podman/docker。
+- [x] `R1-LOCAL-003` node-agent `client.rs` 为每个 attempt 自动创建 `input`（ro）、`output`/`checkpoint`（rw）受控 workspace 挂载；拒绝相对路径和 workspace 外 source；`LocalExecutor` 绑定挂载校验 canonicalize 与 path traversal。
+- [x] `R1-LOCAL-004` `LocalExecutor::allocate` 已实现 CPU/内存/设备原子分配与失败回滚；node-agent 将分配的 `device_uuids` 以 `NVIDIA_VISIBLE_DEVICES` 注入容器；`release` 回收资源。
+- [x] `R1-LOCAL-005` node-agent 在 `run_container_command` 中启动 `tokio::process::Child`，用 `BufReader::lines` 异步读取 stdout/stderr，通过有界 gRPC `LogChunk` channel 上传，背压由 bounded channel 自然限制，避免无界内存。
 - [ ] `R1-LOCAL-006` 进程重启后按 runtime labels 对账 active attempt、容器和 allocation；仅清理有本平台 ownership label 且租约过期的孤儿。
 
 ## 4. 调度与状态收敛

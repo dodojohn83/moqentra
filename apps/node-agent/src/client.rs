@@ -4,12 +4,19 @@ use moqentra_contracts::moqentra::worker::v1::{
     worker_agent_service_client::WorkerAgentServiceClient,
     worker_agent_service_open_stream_request::Payload as InPayload,
     worker_agent_service_open_stream_response::Payload as OutPayload, Ack, AckStatus, Command,
-    Framework, Hello, Lease, ModelFormat, Progress, WorkerAgentServiceOpenStreamRequest,
+    Framework, Hello, Lease, LogChunk, ModelFormat, Progress, WorkerAgentServiceOpenStreamRequest,
     WorkerAgentServiceOpenStreamResponse, WorkerCapabilities,
 };
-use moqentra_worker_control::local_executor::{AcceleratorKind, NodeCapabilities};
+use moqentra_types::AttemptId;
+use moqentra_worker_control::local_executor::{
+    AcceleratorKind, AllocationRequest, BindMount, ContainerConfig, LocalExecutor, NodeCapabilities,
+};
+use std::collections::BTreeMap;
+use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::transport::Channel;
 
@@ -104,7 +111,7 @@ fn ack_request(command_id: &str, status: AckStatus) -> WorkerAgentServiceOpenStr
     }
 }
 
-fn _progress_request(
+fn progress_request(
     command_id: &str,
     percent: u32,
     message: &str,
@@ -118,10 +125,45 @@ fn _progress_request(
     }
 }
 
+fn log_chunk_request(command_id: &str, data: Vec<u8>) -> WorkerAgentServiceOpenStreamRequest {
+    WorkerAgentServiceOpenStreamRequest {
+        payload: Some(InPayload::LogChunk(LogChunk {
+            command_id: command_id.to_string(),
+            data,
+        })),
+    }
+}
+
+fn result_request(command_id: String, success: bool) -> WorkerAgentServiceOpenStreamRequest {
+    WorkerAgentServiceOpenStreamRequest {
+        payload: Some(InPayload::Result(
+            moqentra_contracts::moqentra::worker::v1::Result {
+                command_id,
+                success,
+                payload: vec![],
+                error: None,
+            },
+        )),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct RunContainerCommand {
+    attempt_id: String,
+    cpu_cores: u32,
+    memory_mib: u64,
+    devices: Vec<AcceleratorKind>,
+    device_count: u32,
+    #[serde(default)]
+    env: BTreeMap<String, String>,
+    container: ContainerConfig,
+}
+
 /// Connect to the control plane and maintain the worker stream.
 pub async fn run_worker_stream(
     dst: &str,
     capabilities: NodeCapabilities,
+    executor: Arc<Mutex<LocalExecutor>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut client: WorkerAgentServiceClient<Channel> =
         WorkerAgentServiceClient::connect(dst.to_string()).await?;
@@ -148,7 +190,9 @@ pub async fn run_worker_stream(
             msg = inbound.message() => {
                 match msg {
                     Ok(Some(WorkerAgentServiceOpenStreamResponse { payload: Some(payload) })) => {
-                        handle_payload(&tx, payload, &capabilities).await?;
+                        if let Err(e) = handle_payload(&tx, payload, &capabilities, &executor).await {
+                            tracing::error!(error = %e, "failed to handle worker payload");
+                        }
                     }
                     Ok(Some(WorkerAgentServiceOpenStreamResponse { payload: None })) => {}
                     Ok(None) => {
@@ -169,26 +213,25 @@ pub async fn run_worker_stream(
 async fn handle_payload(
     tx: &mpsc::Sender<WorkerAgentServiceOpenStreamRequest>,
     payload: OutPayload,
-    _caps: &NodeCapabilities,
+    caps: &NodeCapabilities,
+    executor: &Arc<Mutex<LocalExecutor>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match payload {
-        OutPayload::Command(Command { command_id, .. }) => {
-            tracing::info!(command_id = %command_id, "received command");
+        OutPayload::Command(Command {
+            command_id,
+            command_type,
+            payload,
+            ..
+        }) => {
+            tracing::info!(command_id = %command_id, command_type = %command_type, "received command");
             tx.send(ack_request(&command_id, AckStatus::Received)).await?;
-            // Simulated progress/result. Real implementation would launch
-            // the OCI container via LocalExecutor and stream logs/metrics.
-            tx.send(_progress_request(&command_id, 50, "processing")).await?;
-            tx.send(WorkerAgentServiceOpenStreamRequest {
-                payload: Some(InPayload::Result(
-                    moqentra_contracts::moqentra::worker::v1::Result {
-                        command_id,
-                        success: true,
-                        payload: vec![],
-                        error: None,
-                    },
-                )),
-            })
-            .await?;
+
+            if command_type == "RUN_CONTAINER" || command_type == "run_container" {
+                run_container_command(tx, &command_id, &payload, caps, executor).await?;
+            } else {
+                tx.send(progress_request(&command_id, 50, "processing")).await?;
+                tx.send(result_request(command_id, true)).await?;
+            }
         }
         OutPayload::Lease(Lease {
             lease_id,
@@ -208,4 +251,133 @@ async fn handle_payload(
         }
     }
     Ok(())
+}
+
+async fn run_container_command(
+    tx: &mpsc::Sender<WorkerAgentServiceOpenStreamRequest>,
+    command_id: &str,
+    payload: &[u8],
+    caps: &NodeCapabilities,
+    executor: &Arc<Mutex<LocalExecutor>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let cmd: RunContainerCommand = serde_json::from_slice(payload)?;
+    let attempt_id = AttemptId::try_from(cmd.attempt_id.as_str())?;
+
+    // Allocate resources before launching the container.
+    let mut guard = executor.lock().await;
+    let allocation = guard.allocate(
+        &AllocationRequest {
+            attempt_id,
+            cpu_cores: cmd.cpu_cores,
+            memory_mib: cmd.memory_mib,
+            devices: cmd.devices,
+            device_count: cmd.device_count,
+        },
+        caps.node_id,
+        caps,
+        1,
+    )?;
+    let device_uuids: Vec<String> = allocation.device_uuids.iter().cloned().collect();
+    let allocation_id = allocation.id.clone();
+    let workspace = guard.workspace_root().to_path_buf();
+    let mut container_config = cmd.container;
+    let env_overrides = cmd.env;
+    drop(guard);
+
+    // Prepare bind mount sources under the controlled workspace and bind target.
+    prepare_workspace_mounts(&workspace, &mut container_config).await?;
+
+    let nv_devices = if device_uuids.is_empty() {
+        None
+    } else {
+        Some(device_uuids.join(","))
+    };
+
+    let guard = executor.lock().await;
+    let mut child = guard
+        .run_container(&container_config, &env_overrides, nv_devices.as_deref())
+        .await?;
+    drop(guard);
+
+    tx.send(progress_request(command_id, 25, "container started")).await?;
+
+    let stdout = child.stdout.take().ok_or("missing stdout")?;
+    let stderr = child.stderr.take().ok_or("missing stderr")?;
+
+    let tx_out = tx.clone();
+    let tx_err = tx.clone();
+    let cid_out = command_id.to_string();
+    let cid_err = command_id.to_string();
+
+    let log_out = tokio::spawn(stream_lines(BufReader::new(stdout), cid_out, tx_out));
+    let log_err = tokio::spawn(stream_lines(BufReader::new(stderr), cid_err, tx_err));
+
+    let status = child.wait().await?;
+
+    let _ = tokio::try_join!(log_out, log_err);
+
+    let mut guard = executor.lock().await;
+    let _ = guard.release(&allocation_id);
+    drop(guard);
+
+    let success = status.success();
+    tx.send(result_request(command_id.to_string(), success)).await?;
+    Ok(())
+}
+
+async fn prepare_workspace_mounts(
+    workspace: &Path,
+    container: &mut ContainerConfig,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    for mount in &container.bind_mounts {
+        let src = Path::new(&mount.source);
+        if !src.is_absolute() || !is_within_workspace(src, workspace) {
+            return Err(format!("bind mount {} escapes workspace", mount.source).into());
+        }
+    }
+
+    // Always ensure input is read-only and output/checkpoint are writable.
+    let required = vec![
+        ("input", "/input", true),
+        ("output", "/output", false),
+        ("checkpoint", "/checkpoint", false),
+    ];
+    for (name, target, read_only) in required {
+        let source = workspace.join(name).to_string_lossy().to_string();
+        tokio::fs::create_dir_all(&source).await?;
+        if !container.bind_mounts.iter().any(|m| m.target == target) {
+            container.bind_mounts.push(BindMount {
+                source,
+                target: target.to_string(),
+                read_only,
+            });
+        }
+    }
+    Ok(())
+}
+
+fn is_within_workspace(path: &Path, workspace: &Path) -> bool {
+    let mut components = path.components();
+    for wc in workspace.components() {
+        match components.next() {
+            Some(c) if c == wc => continue,
+            _ => return false,
+        }
+    }
+    true
+}
+
+async fn stream_lines<R>(
+    reader: R,
+    command_id: String,
+    tx: mpsc::Sender<WorkerAgentServiceOpenStreamRequest>,
+) where
+    R: tokio::io::AsyncBufRead + Unpin,
+{
+    let mut lines = reader.lines();
+    while let Ok(Some(line)) = lines.next_line().await {
+        if tx.send(log_chunk_request(&command_id, line.into_bytes())).await.is_err() {
+            break;
+        }
+    }
 }
