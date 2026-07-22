@@ -8,4 +8,10 @@ repository.workspace = true
 
 [dependencies]
 moqentra-types = { path = "../types" }
+moqentra-contracts = { path = "../contracts" }
 serde = { workspace = true }
+tokio = { workspace = true }
+tonic = { workspace = true }
+tokio-stream = { workspace = true }
+async-stream = { workspace = true }
+tracing = { workspace = true }

@@ -140,5 +140,5 @@ message WorkerAgentServiceConnectResponse {
 
 // Bidirectional worker/agent stream.
 service WorkerAgentService {
-  rpc Connect(stream WorkerAgentServiceConnectRequest) returns (stream WorkerAgentServiceConnectResponse);
+  rpc OpenStream(stream WorkerAgentServiceConnectRequest) returns (stream WorkerAgentServiceConnectResponse);
 }
