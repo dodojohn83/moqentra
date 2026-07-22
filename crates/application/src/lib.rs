@@ -23,7 +23,7 @@ pub use coco::{CocoAnnotation, CocoCategory, CocoDataset, CocoImage};
 pub use conversion_svc::{InMemoryConversionRegistry, InMemoryEvaluationRegistry};
 pub use dispatch::{plan_dispatch, DispatchAction};
 pub use labelu::{LabelUAnnotation, LabelUDataset, LabelUProjectConfig, LabelUToolConfig};
-pub use model_svc::InMemoryModelRegistry;
+pub use model_svc::{ArtifactReconciler, InMemoryModelRegistry};
 pub use platform::PlatformAnnotationDataset;
 pub use ports::{
     AnnotationRepository, ApplicationRepository, ConversionRepository, DatasetRepository,

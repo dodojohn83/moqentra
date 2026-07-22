@@ -7,6 +7,8 @@ use moqentra_types::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::fmt;
+use std::str::FromStr;
 
 /// Target backend for conversion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -17,6 +19,37 @@ pub enum ConversionTarget {
     Sophon,
     AscendOM,
     Onnx,
+}
+
+impl fmt::Display for ConversionTarget {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConversionTarget::TensorRT => write!(f, "TensorRT"),
+            ConversionTarget::OpenVINO => write!(f, "OpenVINO"),
+            ConversionTarget::Rknn => write!(f, "Rknn"),
+            ConversionTarget::Sophon => write!(f, "Sophon"),
+            ConversionTarget::AscendOM => write!(f, "AscendOM"),
+            ConversionTarget::Onnx => write!(f, "Onnx"),
+        }
+    }
+}
+
+impl FromStr for ConversionTarget {
+    type Err = moqentra_types::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "TensorRT" => Ok(Self::TensorRT),
+            "OpenVINO" => Ok(Self::OpenVINO),
+            "Rknn" => Ok(Self::Rknn),
+            "Sophon" => Ok(Self::Sophon),
+            "AscendOM" => Ok(Self::AscendOM),
+            "Onnx" => Ok(Self::Onnx),
+            _ => Err(moqentra_types::Error::invalid_argument(format!(
+                "unknown conversion target: {s}"
+            ))),
+        }
+    }
 }
 
 /// Toolchain and hardware profile for a conversion target.
@@ -39,6 +72,35 @@ pub enum ConversionJobState {
     Succeeded,
     Failed,
     Cancelled,
+}
+
+impl fmt::Display for ConversionJobState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConversionJobState::Pending => write!(f, "Pending"),
+            ConversionJobState::Running => write!(f, "Running"),
+            ConversionJobState::Succeeded => write!(f, "Succeeded"),
+            ConversionJobState::Failed => write!(f, "Failed"),
+            ConversionJobState::Cancelled => write!(f, "Cancelled"),
+        }
+    }
+}
+
+impl FromStr for ConversionJobState {
+    type Err = moqentra_types::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Pending" => Ok(Self::Pending),
+            "Running" => Ok(Self::Running),
+            "Succeeded" => Ok(Self::Succeeded),
+            "Failed" => Ok(Self::Failed),
+            "Cancelled" => Ok(Self::Cancelled),
+            _ => Err(moqentra_types::Error::invalid_argument(format!(
+                "unknown conversion job state: {s}"
+            ))),
+        }
+    }
 }
 
 /// A model conversion job.
@@ -207,6 +269,33 @@ pub enum EvaluationRunState {
     Running,
     Succeeded,
     Failed,
+}
+
+impl fmt::Display for EvaluationRunState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EvaluationRunState::Pending => write!(f, "Pending"),
+            EvaluationRunState::Running => write!(f, "Running"),
+            EvaluationRunState::Succeeded => write!(f, "Succeeded"),
+            EvaluationRunState::Failed => write!(f, "Failed"),
+        }
+    }
+}
+
+impl FromStr for EvaluationRunState {
+    type Err = moqentra_types::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Pending" => Ok(Self::Pending),
+            "Running" => Ok(Self::Running),
+            "Succeeded" => Ok(Self::Succeeded),
+            "Failed" => Ok(Self::Failed),
+            _ => Err(moqentra_types::Error::invalid_argument(format!(
+                "unknown evaluation run state: {s}"
+            ))),
+        }
+    }
 }
 
 /// A model evaluation run.
