@@ -9,14 +9,14 @@
 
 ## 2. 任务
 
-- [ ] `R1-K8S-001` 实现 Kubernetes client adapter 和版本/capability discovery；启动时验证 CRD、权限、namespace、storage 和 device resource。
-- [ ] `R1-K8S-002` 把同一 `TrainingJobSpec/v1` 确定性编译为 Job/VolcanoJob，包含 image digest、argv、资源、deadline、restart policy、labels 和 owner reference。
-- [ ] `R1-K8S-003` 为每个 tenant/project/attempt 使用受控 namespace 或标签/策略边界；创建最小 ServiceAccount、RBAC、NetworkPolicy 和 Pod Security 设置。
-- [ ] `R1-K8S-004` 数据与产物通过短期凭据或 init/sidecar 物化，不把长期 S3 密钥写入 JobSpec、Pod env dump 或日志。
-- [ ] `R1-K8S-005` watch 使用 resourceVersion 恢复、超时重连和分页 list；410 Gone 时安全 relist，重复事件保持幂等。
-- [ ] `R1-K8S-006` 将 Pod pending/running/succeeded/failed/evicted 和 termination reason 归一化为 attempt 状态；保留安全的原始诊断供 operator 查看。
-- [ ] `R1-K8S-007` 取消先更新 desired state，再删除/终止 workload；处理 API timeout、重复 delete 和控制面重启。
-- [ ] `R1-K8S-008` 对账器使用 generation、lease 和 ownership labels 回收孤儿；禁止删除不属于本平台或仍有有效租约的 workload。
+- [x] `R1-K8S-001` 实现 Kubernetes client adapter 和版本/capability discovery；启动时验证 CRD、权限、namespace、storage 和 device resource。
+- [x] `R1-K8S-002` 把同一 `TrainingJobSpec/v1` 确定性编译为 Job/VolcanoJob，包含 image digest、argv、资源、deadline、restart policy、labels 和 owner reference。
+- [x] `R1-K8S-003` 为每个 tenant/project/attempt 使用受控 namespace 或标签/策略边界；创建最小 ServiceAccount、RBAC、NetworkPolicy 和 Pod Security 设置。
+- [x] `R1-K8S-004` 数据与产物通过短期凭据或 init/sidecar 物化，不把长期 S3 密钥写入 JobSpec、Pod env dump 或日志。
+- [x] `R1-K8S-005` watch 使用 resourceVersion 恢复、超时重连和分页 list；410 Gone 时安全 relist，重复事件保持幂等。
+- [x] `R1-K8S-006` 将 Pod pending/running/succeeded/failed/evicted 和 termination reason 归一化为 attempt 状态；保留安全的原始诊断供 operator 查看。
+- [x] `R1-K8S-007` 取消先更新 desired state，再删除/终止 workload；处理 API timeout、重复 delete 和控制面重启。
+- [x] `R1-K8S-008` 对账器使用 generation、lease 和 ownership labels 回收孤儿；禁止删除不属于本平台或仍有有效租约的 workload。
 - [ ] `R1-K8S-009` 在单节点 k3s 上分别完成 Kubernetes Job smoke test 和 VolcanoJob NVIDIA 检测训练。
 
 ## 3. 一致性要求
