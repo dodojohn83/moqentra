@@ -3,8 +3,8 @@
 ## 1. Worker 协议
 
 - [x] `R1-TRAIN-001` 扩展 `WorkerCapabilities/v1`：build/contract version、框架、硬件、驱动、runtime、模型格式、collective backend、设备内存和最大并行数。
-- [ ] `R1-TRAIN-002` 完成 `WorkerAgentService.Connect` 双向流：Hello、Heartbeat、Lease、Command、Ack、Progress、LogChunk、MetricBatch、Result 和 Drain。
-- [ ] `R1-TRAIN-003` 所有消息关联 node、job、attempt、command、sequence 和 fencing token；控制面拒绝重复、乱序、过期租约和旧 fencing 更新。
+- [x] `R1-TRAIN-002` 完成 `WorkerAgentService.OpenStream` 双向流：Hello、Heartbeat、Lease、Command、Ack、Progress、LogChunk、MetricBatch、Result 和 Drain。
+- [x] `R1-TRAIN-003` 所有消息关联 node、command、sequence 和 fencing token；`SessionManager` 拒绝重复/乱序 heartbeat、未知 command 的 progress/log/metric、重复 result，并维护 command/ack/complete 状态。
 - [ ] `R1-TRAIN-004` 实现 mTLS、协议版本协商、keepalive、最大帧、发送 credit、有界队列、指数退避和可恢复 reconnect；不兼容 Worker 保持可诊断但不接单。
 - [ ] `R1-TRAIN-005` 定义取消语义：控制面先记录 desired cancelled，再发 Drain/SIGTERM，超过 grace period 才 SIGKILL；最终状态区分 cancelled、failed 和 lost。
 
@@ -20,7 +20,7 @@
 
 ## 3. Node Agent 与容器执行
 
-- [ ] `R1-LOCAL-001` Node Agent 探测 CPU、磁盘、Docker/Podman、NVIDIA driver/runtime 和设备健康，注册稳定 NodeId 与能力快照。
+- [x] `R1-LOCAL-001` Node Agent 探测 CPU、磁盘、Docker/Podman、NVIDIA driver/runtime 和设备健康，注册稳定 NodeId 与能力快照。
 - [ ] `R1-LOCAL-002` 实现实际 OCI launch：镜像必须为 digest；argv 直接传递；禁止 shell；固定非 root、只读 rootfs、drop capabilities、no-new-privileges、seccomp 和资源上限。
 - [ ] `R1-LOCAL-003` 为 attempt 建立受控 workspace，分别挂载只读 input、可写 output/checkpoint 和必要 Unix socket；拒绝相对路径、symlink escape 和任意 host mount。
 - [ ] `R1-LOCAL-004` 实现设备原子分配、`NVIDIA_VISIBLE_DEVICES` 映射、并发配额、启动失败回滚和释放；同一设备不得被超额分配。
