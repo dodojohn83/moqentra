@@ -454,8 +454,8 @@ mod tests {
         Artifact, Attachment, ModelLineage, ModelSignature, TensorSpec,
     };
     use moqentra_types::{
-        AssetId, DatasetVersionId, ExperimentId, Principal, RandomIdGenerator, TrainingJobId,
-        UserId,
+        AssetId, AttemptId, DatasetVersionId, ExperimentId, Principal, RandomIdGenerator,
+        TrainingJobId, UserId,
     };
     use sqlx::PgPool;
 
@@ -512,6 +512,7 @@ mod tests {
             training_job_id: Some(TrainingJobId::new_v7(&gen)),
             experiment_id: Some(ExperimentId::new_v7(&gen)),
             dataset_version_id,
+            attempt_id: Some(AttemptId::new_v7(&gen)),
             annotation_project_id: None,
             base_model_version_id: None,
             code_digest: "sha256:5694d08a2e53ffcae0c3103e5ad6f6076abd960eb1f8a56577040bc1028f702b"

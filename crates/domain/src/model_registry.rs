@@ -1,8 +1,8 @@
 //! Model registry, artifacts, signatures and lineage.
 
 use moqentra_types::{
-    AnnotationProjectId, AssetId, DatasetVersionId, ExperimentId, ModelId, ModelVersionId,
-    ProjectId, TenantId, TrainingJobId, UtcTimestamp,
+    AnnotationProjectId, AssetId, AttemptId, DatasetVersionId, ExperimentId, ModelId,
+    ModelVersionId, ProjectId, TenantId, TrainingJobId, UtcTimestamp,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -77,6 +77,7 @@ pub struct ModelLineage {
     pub training_job_id: Option<TrainingJobId>,
     pub experiment_id: Option<ExperimentId>,
     pub dataset_version_id: DatasetVersionId,
+    pub attempt_id: Option<AttemptId>,
     pub annotation_project_id: Option<AnnotationProjectId>,
     pub base_model_version_id: Option<ModelVersionId>,
     pub code_digest: String,
@@ -345,6 +346,7 @@ mod tests {
             training_job_id: None,
             experiment_id: None,
             dataset_version_id: DatasetVersionId::new_v7(&gen),
+            attempt_id: None,
             annotation_project_id: None,
             base_model_version_id: None,
             code_digest: "sha256:5694d08a2e53ffcae0c3103e5ad6f6076abd960eb1f8a56577040bc1028f702b"

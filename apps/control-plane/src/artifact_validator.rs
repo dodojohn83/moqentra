@@ -126,10 +126,12 @@ impl ArtifactValidator for AppArtifactValidator {
             job.mark_finalizing(fencing_token)?;
             job.finalize(fencing_token, output_manifest)?;
 
+            let attempt_id = job.current_attempt.as_ref().map(|a| a.id);
             let lineage = ModelLineage {
                 training_job_id: Some(job.id),
                 experiment_id: Some(job.experiment_id),
                 dataset_version_id: job.spec.dataset_version_id,
+                attempt_id,
                 annotation_project_id: None,
                 base_model_version_id: None,
                 code_digest: job.spec.code_digest.clone(),
@@ -141,8 +143,21 @@ impl ArtifactValidator for AppArtifactValidator {
             (job.id, job.tenant_id, job.project_id, lineage)
         };
 
-        // 5. Create a unique ModelVersion for the validated artifact.
+        // 5. Check for an existing ModelVersion from the same (tenant, attempt, artifact digest)
+        //    before creating a new one.
         let mut models = self.models.lock().unwrap();
+        if let Some(existing) =
+            models.find_duplicate_version(tenant_id, attempt_id, &model_artifact_digest)
+        {
+            tracing::info!(
+                job_id = %job_id,
+                version_id = %existing.id,
+                "duplicate model version detected; skipping creation"
+            );
+            return Ok(());
+        }
+
+        // 6. Create a unique ModelVersion for the validated artifact.
         let model_id = ModelId::new_v7(&gen);
         let model = Model::new(model_id, tenant_id, project_id, format!("model-{job_id}"))?;
         models.create_model(model)?;

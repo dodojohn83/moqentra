@@ -1,7 +1,7 @@
 //! Model registry application services.
 
 use moqentra_domain::model_registry::{Artifact, Model, ModelVersion, ModelVersionState};
-use moqentra_types::{Error, ModelId, ModelVersionId, ProjectId, TenantId};
+use moqentra_types::{AttemptId, Error, ModelId, ModelVersionId, ProjectId, TenantId};
 use std::collections::BTreeMap;
 
 /// Reconciles a model version's artifacts and transitions it to ready.
@@ -128,6 +128,21 @@ impl InMemoryModelRegistry {
         Ok(v)
     }
 
+    /// Look up an existing model version produced from the same tenant,
+    /// training attempt and artifact digest to avoid creating a duplicate.
+    pub fn find_duplicate_version(
+        &self,
+        tenant_id: TenantId,
+        attempt_id: AttemptId,
+        artifact_digest: &str,
+    ) -> Option<&ModelVersion> {
+        self.versions.values().find(|v| {
+            v.tenant_id == tenant_id
+                && v.lineage.attempt_id == Some(attempt_id)
+                && v.artifacts.iter().any(|a| a.digest == artifact_digest)
+        })
+    }
+
     /// Mutable access for state transitions after tenant check.
     pub fn with_version_mut<R>(
         &mut self,
@@ -163,6 +178,7 @@ mod tests {
             training_job_id: None,
             experiment_id: None,
             dataset_version_id: DatasetVersionId::new_v7(&gen),
+            attempt_id: None,
             annotation_project_id: None,
             base_model_version_id: None,
             code_digest: "sha256:a172cedcae47474b615c54d510a5d84a8dea3032e958587430b413538be3f333"
@@ -207,6 +223,7 @@ mod tests {
                 training_job_id: None,
                 experiment_id: None,
                 dataset_version_id: DatasetVersionId::new_v7(&gen),
+                attempt_id: None,
                 annotation_project_id: None,
                 base_model_version_id: None,
                 code_digest:
