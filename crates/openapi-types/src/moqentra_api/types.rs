@@ -79,6 +79,75 @@ impl AsRef<str> for OperationState {
     }
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AddAssetRequest {
+    pub digest: String,
+    pub media_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+    pub name: String,
+    pub object_key: String,
+    pub size: i64,
+}
+impl AddAssetRequest {
+    /// Construct this request with every required wire field.
+    pub fn new(
+        digest: String,
+        media_type: String,
+        name: String,
+        object_key: String,
+        size: i64,
+    ) -> Self {
+        Self {
+            digest,
+            media_type,
+            name,
+            object_key,
+            size,
+            metadata: None,
+        }
+    }
+    /// Start a dependency-free builder with every required wire field.
+    pub fn builder(
+        digest: String,
+        media_type: String,
+        name: String,
+        object_key: String,
+        size: i64,
+    ) -> AddAssetRequestBuilder {
+        AddAssetRequestBuilder::new(digest, media_type, name, object_key, size)
+    }
+}
+/// Dependency-free builder for [`#struct_name`].
+#[derive(Debug, Clone)]
+#[must_use]
+pub struct AddAssetRequestBuilder {
+    value: AddAssetRequest,
+}
+impl AddAssetRequestBuilder {
+    /// Start a builder with every required wire field.
+    pub fn new(
+        digest: String,
+        media_type: String,
+        name: String,
+        object_key: String,
+        size: i64,
+    ) -> Self {
+        Self {
+            value: AddAssetRequest::new(digest, media_type, name, object_key, size),
+        }
+    }
+    #[doc = concat!("Set the optional `", "metadata", "` request field.")]
+    #[must_use]
+    pub fn metadata(mut self, metadata: serde_json::Value) -> Self {
+        self.value.metadata = Some(metadata);
+        self
+    }
+    /// Finish building the request model.
+    pub fn build(self) -> AddAssetRequest {
+        self.value
+    }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AnnotationProjectResponse {
     pub id: String,
     pub name: String,
@@ -145,6 +214,8 @@ pub struct DatasetResponse {
 pub struct DatasetVersionResponse {
     pub dataset_id: String,
     pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manifest_digest: Option<String>,
     pub state: String,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -152,6 +223,13 @@ pub struct ExperimentResponse {
     pub id: String,
     pub name: String,
     pub state: String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GenerateSplitsRequest {
+    pub seed: i64,
+    pub test: f64,
+    pub train: f64,
+    pub val: f64,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct HealthResponse {

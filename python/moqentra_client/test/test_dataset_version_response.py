@@ -37,7 +37,8 @@ class TestDatasetVersionResponse(unittest.TestCase):
             return DatasetVersionResponse(
                 id = '',
                 dataset_id = '',
-                state = ''
+                state = '',
+                manifest_digest = ''
             )
         else:
             return DatasetVersionResponse(

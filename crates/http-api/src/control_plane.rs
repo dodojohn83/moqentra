@@ -22,7 +22,7 @@ use moqentra_auth::{
 };
 use moqentra_domain::annotation::{AnnotationProject, Ontology, TaskType};
 use moqentra_domain::application::ApplicationSpec;
-use moqentra_domain::dataset::{Dataset, DatasetVersion};
+use moqentra_domain::dataset::{AssetRef, Dataset, DatasetVersion};
 use moqentra_domain::model_registry::Model;
 use moqentra_domain::training::{
     DistributedConfig, Experiment, ParameterSchema, ResourceRequest, TrainingJob, TrainingJobSpec,
@@ -801,11 +801,30 @@ struct CreateDatasetVersionRequest {
     dataset_id: String,
 }
 
+#[derive(Deserialize)]
+struct AddAssetRequest {
+    name: String,
+    object_key: String,
+    digest: String,
+    size: u64,
+    media_type: String,
+    metadata: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct GenerateSplitsRequest {
+    seed: u64,
+    train: f64,
+    val: f64,
+    test: f64,
+}
+
 #[derive(Serialize, Deserialize)]
 struct DatasetVersionResponse {
     id: String,
     dataset_id: String,
     state: String,
+    manifest_digest: Option<String>,
 }
 
 async fn create_dataset_version(
@@ -852,6 +871,127 @@ async fn create_dataset_version(
             id: created.id.to_string(),
             dataset_id: created.dataset_id.to_string(),
             state: format!("{:?}", created.state),
+            manifest_digest: created.manifest_digest.clone(),
+        }),
+    ))
+}
+
+async fn add_dataset_version_asset(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(version_id): axum::extract::Path<String>,
+    Json(req): Json<AddAssetRequest>,
+) -> Result<(StatusCode, Json<DatasetVersionResponse>), ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Update, Resource::DatasetVersion).await?;
+    let version_id = DatasetVersionId::try_from(version_id.as_str())?;
+    let metadata = req.metadata.unwrap_or(serde_json::Value::Null);
+    let asset = AssetRef {
+        name: req.name,
+        object_key: req.object_key,
+        digest: req.digest,
+        size: req.size,
+        media_type: req.media_type,
+        metadata,
+    };
+    let updated = {
+        let mut reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
+        reg.add_asset(ctx.tenant_id, version_id, asset)?
+    };
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "dataset_version.add_asset",
+        Resource::DatasetVersion,
+        Some(&updated.id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok((
+        StatusCode::OK,
+        Json(DatasetVersionResponse {
+            id: updated.id.to_string(),
+            dataset_id: updated.dataset_id.to_string(),
+            state: format!("{:?}", updated.state),
+            manifest_digest: updated.manifest_digest.clone(),
+        }),
+    ))
+}
+
+async fn generate_dataset_version_splits(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(version_id): axum::extract::Path<String>,
+    Json(req): Json<GenerateSplitsRequest>,
+) -> Result<(StatusCode, Json<DatasetVersionResponse>), ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Update, Resource::DatasetVersion).await?;
+    let version_id = DatasetVersionId::try_from(version_id.as_str())?;
+    let updated = {
+        let mut reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
+        reg.generate_splits(
+            ctx.tenant_id,
+            version_id,
+            req.seed,
+            req.train,
+            req.val,
+            req.test,
+        )?
+    };
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "dataset_version.generate_splits",
+        Resource::DatasetVersion,
+        Some(&updated.id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok((
+        StatusCode::OK,
+        Json(DatasetVersionResponse {
+            id: updated.id.to_string(),
+            dataset_id: updated.dataset_id.to_string(),
+            state: format!("{:?}", updated.state),
+            manifest_digest: updated.manifest_digest.clone(),
+        }),
+    ))
+}
+
+async fn publish_dataset_version(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(version_id): axum::extract::Path<String>,
+) -> Result<(StatusCode, Json<DatasetVersionResponse>), ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Update, Resource::DatasetVersion).await?;
+    let version_id = DatasetVersionId::try_from(version_id.as_str())?;
+    let updated = {
+        let mut reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
+        reg.publish_version(ctx.tenant_id, version_id)?
+    };
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "dataset_version.publish",
+        Resource::DatasetVersion,
+        Some(&updated.id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok((
+        StatusCode::OK,
+        Json(DatasetVersionResponse {
+            id: updated.id.to_string(),
+            dataset_id: updated.dataset_id.to_string(),
+            state: format!("{:?}", updated.state),
+            manifest_digest: updated.manifest_digest.clone(),
         }),
     ))
 }
@@ -1090,6 +1230,18 @@ pub fn app_router(state: AppState) -> Router {
         .route("/v1/training-jobs/{id}/admit", post(admit_training_job))
         .route("/v1/training-jobs/{id}/cancel", post(cancel_training_job))
         .route("/v1/dataset-versions", post(create_dataset_version))
+        .route(
+            "/v1/dataset-versions/{id}/assets",
+            post(add_dataset_version_asset),
+        )
+        .route(
+            "/v1/dataset-versions/{id}/splits",
+            post(generate_dataset_version_splits),
+        )
+        .route(
+            "/v1/dataset-versions/{id}/publish",
+            post(publish_dataset_version),
+        )
         .route("/v1/models", post(create_model).get(list_models))
         .route("/v1/annotation-projects", post(create_annotation_project))
         .route(

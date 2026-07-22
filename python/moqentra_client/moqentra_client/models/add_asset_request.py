@@ -17,21 +17,23 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, StrictStr
+from pydantic import BaseModel, ConfigDict, StrictInt, StrictStr
 from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
 from pydantic_core import to_jsonable_python
 
-class DatasetVersionResponse(BaseModel):
+class AddAssetRequest(BaseModel):
     """
-    DatasetVersionResponse
+    AddAssetRequest
     """ # noqa: E501
-    id: StrictStr
-    dataset_id: StrictStr
-    state: StrictStr
-    manifest_digest: Optional[StrictStr] = None
-    __properties: ClassVar[List[str]] = ["id", "dataset_id", "state", "manifest_digest"]
+    name: StrictStr
+    object_key: StrictStr
+    digest: StrictStr
+    size: StrictInt
+    media_type: StrictStr
+    metadata: Optional[Dict[str, Any]] = None
+    __properties: ClassVar[List[str]] = ["name", "object_key", "digest", "size", "media_type", "metadata"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -51,7 +53,7 @@ class DatasetVersionResponse(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of DatasetVersionResponse from a JSON string"""
+        """Create an instance of AddAssetRequest from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -76,7 +78,7 @@ class DatasetVersionResponse(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of DatasetVersionResponse from a dict"""
+        """Create an instance of AddAssetRequest from a dict"""
         if obj is None:
             return None
 
@@ -84,10 +86,12 @@ class DatasetVersionResponse(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "id": obj.get("id"),
-            "dataset_id": obj.get("dataset_id"),
-            "state": obj.get("state"),
-            "manifest_digest": obj.get("manifest_digest")
+            "name": obj.get("name"),
+            "object_key": obj.get("object_key"),
+            "digest": obj.get("digest"),
+            "size": obj.get("size"),
+            "media_type": obj.get("media_type"),
+            "metadata": obj.get("metadata")
         })
         return _obj
 

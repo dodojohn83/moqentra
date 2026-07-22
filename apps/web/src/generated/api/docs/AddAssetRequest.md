@@ -1,28 +1,32 @@
 
-# DatasetVersionResponse
+# AddAssetRequest
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`id` | string
-`dataset_id` | string
-`state` | string
-`manifest_digest` | string
+`name` | string
+`object_key` | string
+`digest` | string
+`size` | number
+`media_type` | string
+`metadata` | object
 
 ## Example
 
 ```typescript
-import type { DatasetVersionResponse } from ''
+import type { AddAssetRequest } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "id": null,
-  "dataset_id": null,
-  "state": null,
-  "manifest_digest": null,
-} satisfies DatasetVersionResponse
+  "name": null,
+  "object_key": null,
+  "digest": null,
+  "size": null,
+  "media_type": null,
+  "metadata": null,
+} satisfies AddAssetRequest
 
 console.log(example)
 
@@ -31,7 +35,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as DatasetVersionResponse
+const exampleParsed = JSON.parse(exampleJSON) as AddAssetRequest
 console.log(exampleParsed)
 ```
 

@@ -373,6 +373,40 @@ impl InMemoryDatasetRegistry {
         Ok(version)
     }
 
+    /// Add an asset to a draft version and validate its object key.
+    pub fn add_asset(
+        &mut self,
+        tenant_id: TenantId,
+        id: moqentra_types::DatasetVersionId,
+        asset: moqentra_domain::dataset::AssetRef,
+    ) -> Result<moqentra_domain::dataset::DatasetVersion, Error> {
+        let v = self.versions.get_mut(&id).ok_or_else(|| Error::not_found("dataset version"))?;
+        if v.tenant_id != tenant_id {
+            return Err(Error::not_found("dataset version"));
+        }
+        ObjectKey::from_str(v.tenant_id, v.project_id, &asset.object_key)?;
+        v.add_asset(asset)?;
+        Ok(v.clone())
+    }
+
+    /// Generate deterministic train/val/test splits for a draft version.
+    pub fn generate_splits(
+        &mut self,
+        tenant_id: TenantId,
+        id: moqentra_types::DatasetVersionId,
+        seed: u64,
+        train: f64,
+        val: f64,
+        test: f64,
+    ) -> Result<moqentra_domain::dataset::DatasetVersion, Error> {
+        let v = self.versions.get_mut(&id).ok_or_else(|| Error::not_found("dataset version"))?;
+        if v.tenant_id != tenant_id {
+            return Err(Error::not_found("dataset version"));
+        }
+        v.generate_splits(seed, train, val, test)?;
+        Ok(v.clone())
+    }
+
     /// Publish a dataset version after validating its assets and computing the
     /// canonical manifest digest.
     pub fn publish_version(

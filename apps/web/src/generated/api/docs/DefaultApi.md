@@ -5,6 +5,7 @@ All URIs are relative to *http://localhost*
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
 | [**activateAnnotationProject**](DefaultApi.md#activateannotationproject) | **POST** /v1/annotation-projects/{id}/activate | Activate annotation project |
+| [**addDatasetVersionAsset**](DefaultApi.md#adddatasetversionasset) | **POST** /v1/dataset-versions/{id}/assets | Add an asset to a draft dataset version |
 | [**admitTrainingJob**](DefaultApi.md#admittrainingjob) | **POST** /v1/training-jobs/{id}/admit | Admit a training job |
 | [**cancelTrainingJob**](DefaultApi.md#canceltrainingjob) | **POST** /v1/training-jobs/{id}/cancel | Cancel a training job |
 | [**compileApplication**](DefaultApi.md#compileapplication) | **POST** /v1/applications:compile | Compile an application graph |
@@ -14,6 +15,7 @@ All URIs are relative to *http://localhost*
 | [**createExperiment**](DefaultApi.md#createexperimentoperation) | **POST** /v1/experiments | Create experiment |
 | [**createModel**](DefaultApi.md#createmodeloperation) | **POST** /v1/models | Create model family |
 | [**createTrainingJob**](DefaultApi.md#createtrainingjoboperation) | **POST** /v1/training-jobs | Create training job |
+| [**generateDatasetVersionSplits**](DefaultApi.md#generatedatasetversionsplits) | **POST** /v1/dataset-versions/{id}/splits | Generate deterministic train/val/test splits |
 | [**getDataset**](DefaultApi.md#getdataset) | **GET** /v1/datasets/{id} | Get dataset by id |
 | [**getHealth**](DefaultApi.md#gethealth) | **GET** /healthz | Liveness probe |
 | [**getReady**](DefaultApi.md#getready) | **GET** /readyz | Readiness probe |
@@ -22,6 +24,7 @@ All URIs are relative to *http://localhost*
 | [**listModels**](DefaultApi.md#listmodels) | **GET** /v1/models | List models |
 | [**listOutboxEvents**](DefaultApi.md#listoutboxevents) | **GET** /v1/outbox | List outbox events |
 | [**listTrainingJobs**](DefaultApi.md#listtrainingjobs) | **GET** /v1/training-jobs | List training jobs |
+| [**publishDatasetVersion**](DefaultApi.md#publishdatasetversion) | **POST** /v1/dataset-versions/{id}/publish | Publish a dataset version |
 | [**whoAmI**](DefaultApi.md#whoami) | **GET** /v1/whoami | Resolve authenticated principal |
 
 
@@ -93,6 +96,83 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Activated |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## addDatasetVersionAsset
+
+> DatasetVersionResponse addDatasetVersionAsset(xTenantId, id, addAssetRequest, authorization, idempotencyKey)
+
+Add an asset to a draft dataset version
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { AddDatasetVersionAssetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // AddAssetRequest
+    addAssetRequest: ...,
+    // string (optional)
+    authorization: authorization_example,
+    // string (optional)
+    idempotencyKey: idempotencyKey_example,
+  } satisfies AddDatasetVersionAssetRequest;
+
+  try {
+    const data = await api.addDatasetVersionAsset(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **addAssetRequest** | [AddAssetRequest](AddAssetRequest.md) |  | |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+| **idempotencyKey** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**DatasetVersionResponse**](DatasetVersionResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Asset added |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
@@ -754,6 +834,80 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## generateDatasetVersionSplits
+
+> DatasetVersionResponse generateDatasetVersionSplits(xTenantId, id, generateSplitsRequest, authorization)
+
+Generate deterministic train/val/test splits
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GenerateDatasetVersionSplitsRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // GenerateSplitsRequest
+    generateSplitsRequest: ...,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies GenerateDatasetVersionSplitsRequest;
+
+  try {
+    const data = await api.generateDatasetVersionSplits(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **generateSplitsRequest** | [GenerateSplitsRequest](GenerateSplitsRequest.md) |  | |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**DatasetVersionResponse**](DatasetVersionResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Splits generated |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## getDataset
 
 > DatasetResponse getDataset(xTenantId, id, authorization)
@@ -1306,6 +1460,77 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Job list |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## publishDatasetVersion
+
+> DatasetVersionResponse publishDatasetVersion(xTenantId, id, authorization)
+
+Publish a dataset version
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { PublishDatasetVersionRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies PublishDatasetVersionRequest;
+
+  try {
+    const data = await api.publishDatasetVersion(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**DatasetVersionResponse**](DatasetVersionResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Version published |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 

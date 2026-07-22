@@ -14,6 +14,11 @@
 
 import * as runtime from '../runtime';
 import {
+    type AddAssetRequest,
+    AddAssetRequestFromJSON,
+    AddAssetRequestToJSON,
+} from '../models/AddAssetRequest';
+import {
     type AnnotationProjectResponse,
     AnnotationProjectResponseFromJSON,
     AnnotationProjectResponseToJSON,
@@ -74,6 +79,11 @@ import {
     ExperimentResponseToJSON,
 } from '../models/ExperimentResponse';
 import {
+    type GenerateSplitsRequest,
+    GenerateSplitsRequestFromJSON,
+    GenerateSplitsRequestToJSON,
+} from '../models/GenerateSplitsRequest';
+import {
     type HealthResponse,
     HealthResponseFromJSON,
     HealthResponseToJSON,
@@ -108,6 +118,14 @@ export interface ActivateAnnotationProjectRequest {
     xTenantId: string;
     id: string;
     authorization?: string;
+}
+
+export interface AddDatasetVersionAssetRequest {
+    xTenantId: string;
+    id: string;
+    addAssetRequest: AddAssetRequest;
+    authorization?: string;
+    idempotencyKey?: string;
 }
 
 export interface AdmitTrainingJobRequest {
@@ -170,6 +188,13 @@ export interface CreateTrainingJobOperationRequest {
     idempotencyKey?: string;
 }
 
+export interface GenerateDatasetVersionSplitsRequest {
+    xTenantId: string;
+    id: string;
+    generateSplitsRequest: GenerateSplitsRequest;
+    authorization?: string;
+}
+
 export interface GetDatasetRequest {
     xTenantId: string;
     id: string;
@@ -209,6 +234,12 @@ export interface ListTrainingJobsRequest {
     authorization?: string;
     limit?: number;
     offset?: number;
+}
+
+export interface PublishDatasetVersionRequest {
+    xTenantId: string;
+    id: string;
+    authorization?: string;
 }
 
 export interface WhoAmIRequest {
@@ -278,6 +309,80 @@ export class DefaultApi extends runtime.BaseAPI {
      */
     async activateAnnotationProject(requestParameters: ActivateAnnotationProjectRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationProjectResponse> {
         const response = await this.activateAnnotationProjectRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for addDatasetVersionAsset without sending the request
+     */
+    async addDatasetVersionAssetRequestOpts(requestParameters: AddDatasetVersionAssetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling addDatasetVersionAsset().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling addDatasetVersionAsset().'
+            );
+        }
+
+        if (requestParameters['addAssetRequest'] == null) {
+            throw new runtime.RequiredError(
+                'addAssetRequest',
+                'Required parameter "addAssetRequest" was null or undefined when calling addDatasetVersionAsset().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+        if (requestParameters['idempotencyKey'] != null) {
+            headerParameters['Idempotency-Key'] = String(requestParameters['idempotencyKey']);
+        }
+
+
+        let urlPath = `/v1/dataset-versions/{id}/assets`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: AddAssetRequestToJSON(requestParameters['addAssetRequest']),
+        };
+    }
+
+    /**
+     * Add an asset to a draft dataset version
+     */
+    async addDatasetVersionAssetRaw(requestParameters: AddDatasetVersionAssetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DatasetVersionResponse>> {
+        const requestOptions = await this.addDatasetVersionAssetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DatasetVersionResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Add an asset to a draft dataset version
+     */
+    async addDatasetVersionAsset(requestParameters: AddDatasetVersionAssetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DatasetVersionResponse> {
+        const response = await this.addDatasetVersionAssetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -860,6 +965,76 @@ export class DefaultApi extends runtime.BaseAPI {
     }
 
     /**
+     * Creates request options for generateDatasetVersionSplits without sending the request
+     */
+    async generateDatasetVersionSplitsRequestOpts(requestParameters: GenerateDatasetVersionSplitsRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling generateDatasetVersionSplits().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling generateDatasetVersionSplits().'
+            );
+        }
+
+        if (requestParameters['generateSplitsRequest'] == null) {
+            throw new runtime.RequiredError(
+                'generateSplitsRequest',
+                'Required parameter "generateSplitsRequest" was null or undefined when calling generateDatasetVersionSplits().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/dataset-versions/{id}/splits`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: GenerateSplitsRequestToJSON(requestParameters['generateSplitsRequest']),
+        };
+    }
+
+    /**
+     * Generate deterministic train/val/test splits
+     */
+    async generateDatasetVersionSplitsRaw(requestParameters: GenerateDatasetVersionSplitsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DatasetVersionResponse>> {
+        const requestOptions = await this.generateDatasetVersionSplitsRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DatasetVersionResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Generate deterministic train/val/test splits
+     */
+    async generateDatasetVersionSplits(requestParameters: GenerateDatasetVersionSplitsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DatasetVersionResponse> {
+        const response = await this.generateDatasetVersionSplitsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for getDataset without sending the request
      */
     async getDatasetRequestOpts(requestParameters: GetDatasetRequest): Promise<runtime.RequestOpts> {
@@ -1290,6 +1465,66 @@ export class DefaultApi extends runtime.BaseAPI {
      */
     async listTrainingJobs(requestParameters: ListTrainingJobsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Page> {
         const response = await this.listTrainingJobsRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for publishDatasetVersion without sending the request
+     */
+    async publishDatasetVersionRequestOpts(requestParameters: PublishDatasetVersionRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling publishDatasetVersion().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling publishDatasetVersion().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/dataset-versions/{id}/publish`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Publish a dataset version
+     */
+    async publishDatasetVersionRaw(requestParameters: PublishDatasetVersionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DatasetVersionResponse>> {
+        const requestOptions = await this.publishDatasetVersionRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DatasetVersionResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Publish a dataset version
+     */
+    async publishDatasetVersion(requestParameters: PublishDatasetVersionRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DatasetVersionResponse> {
+        const response = await this.publishDatasetVersionRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

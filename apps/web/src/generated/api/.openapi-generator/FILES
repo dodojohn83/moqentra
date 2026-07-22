@@ -1,6 +1,7 @@
 .openapi-generator-ignore
 apis/DefaultApi.ts
 apis/index.ts
+docs/AddAssetRequest.md
 docs/AnnotationProjectResponse.md
 docs/CompileRequest.md
 docs/CompileResponse.md
@@ -14,6 +15,7 @@ docs/DatasetResponse.md
 docs/DatasetVersionResponse.md
 docs/DefaultApi.md
 docs/ExperimentResponse.md
+docs/GenerateSplitsRequest.md
 docs/HealthResponse.md
 docs/ModelResponse.md
 docs/Operation.md
@@ -25,6 +27,7 @@ docs/ReadyResponse.md
 docs/TrainingJobResponse.md
 docs/WhoAmIResponse.md
 index.ts
+models/AddAssetRequest.ts
 models/AnnotationProjectResponse.ts
 models/CompileRequest.ts
 models/CompileResponse.ts
@@ -37,6 +40,7 @@ models/CreateTrainingJobRequest.ts
 models/DatasetResponse.ts
 models/DatasetVersionResponse.ts
 models/ExperimentResponse.ts
+models/GenerateSplitsRequest.ts
 models/HealthResponse.ts
 models/ModelResponse.ts
 models/Operation.ts

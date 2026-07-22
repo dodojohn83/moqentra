@@ -33,6 +33,13 @@ class TestDefaultApi(unittest.TestCase):
         """
         pass
 
+    def test_add_dataset_version_asset(self) -> None:
+        """Test case for add_dataset_version_asset
+
+        Add an asset to a draft dataset version
+        """
+        pass
+
     def test_admit_training_job(self) -> None:
         """Test case for admit_training_job
 
@@ -96,6 +103,13 @@ class TestDefaultApi(unittest.TestCase):
         """
         pass
 
+    def test_generate_dataset_version_splits(self) -> None:
+        """Test case for generate_dataset_version_splits
+
+        Generate deterministic train/val/test splits
+        """
+        pass
+
     def test_get_dataset(self) -> None:
         """Test case for get_dataset
 
@@ -149,6 +163,13 @@ class TestDefaultApi(unittest.TestCase):
         """Test case for list_training_jobs
 
         List training jobs
+        """
+        pass
+
+    def test_publish_dataset_version(self) -> None:
+        """Test case for publish_dataset_version
+
+        Publish a dataset version
         """
         pass
 

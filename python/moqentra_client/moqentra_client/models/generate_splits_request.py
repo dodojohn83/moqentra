@@ -17,21 +17,21 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, StrictStr
-from typing import Any, ClassVar, Dict, List, Optional
+from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt
+from typing import Any, ClassVar, Dict, List, Union
 from typing import Optional, Set
 from typing_extensions import Self
 from pydantic_core import to_jsonable_python
 
-class DatasetVersionResponse(BaseModel):
+class GenerateSplitsRequest(BaseModel):
     """
-    DatasetVersionResponse
+    GenerateSplitsRequest
     """ # noqa: E501
-    id: StrictStr
-    dataset_id: StrictStr
-    state: StrictStr
-    manifest_digest: Optional[StrictStr] = None
-    __properties: ClassVar[List[str]] = ["id", "dataset_id", "state", "manifest_digest"]
+    seed: StrictInt
+    train: Union[StrictFloat, StrictInt]
+    val: Union[StrictFloat, StrictInt]
+    test: Union[StrictFloat, StrictInt]
+    __properties: ClassVar[List[str]] = ["seed", "train", "val", "test"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -51,7 +51,7 @@ class DatasetVersionResponse(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of DatasetVersionResponse from a JSON string"""
+        """Create an instance of GenerateSplitsRequest from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -76,7 +76,7 @@ class DatasetVersionResponse(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of DatasetVersionResponse from a dict"""
+        """Create an instance of GenerateSplitsRequest from a dict"""
         if obj is None:
             return None
 
@@ -84,10 +84,10 @@ class DatasetVersionResponse(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "id": obj.get("id"),
-            "dataset_id": obj.get("dataset_id"),
-            "state": obj.get("state"),
-            "manifest_digest": obj.get("manifest_digest")
+            "seed": obj.get("seed"),
+            "train": obj.get("train"),
+            "val": obj.get("val"),
+            "test": obj.get("test")
         })
         return _obj
 

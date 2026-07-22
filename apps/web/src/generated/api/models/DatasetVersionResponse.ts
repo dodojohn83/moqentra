@@ -37,6 +37,12 @@ export interface DatasetVersionResponse {
      * @memberof DatasetVersionResponse
      */
     state: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof DatasetVersionResponse
+     */
+    manifest_digest?: string;
 }
 
 /**
@@ -62,6 +68,7 @@ export function DatasetVersionResponseFromJSONTyped(json: any, ignoreDiscriminat
         'id': json['id'],
         'dataset_id': json['dataset_id'],
         'state': json['state'],
+        'manifest_digest': json['manifest_digest'] == null ? undefined : json['manifest_digest'],
     };
 }
 
@@ -79,6 +86,7 @@ export function DatasetVersionResponseToJSONTyped(value?: DatasetVersionResponse
         'id': value['id'],
         'dataset_id': value['dataset_id'],
         'state': value['state'],
+        'manifest_digest': value['manifest_digest'],
     };
 }
 

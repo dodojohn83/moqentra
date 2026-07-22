@@ -267,6 +267,79 @@ paths:
               schema:
                 $ref: '#/components/schemas/DatasetVersionResponse'
 
+  /v1/dataset-versions/{id}/assets:
+    post:
+      operationId: addDatasetVersionAsset
+      summary: Add an asset to a draft dataset version
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddAssetRequest'
+      responses:
+        '200':
+          description: Asset added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetVersionResponse'
+
+  /v1/dataset-versions/{id}/splits:
+    post:
+      operationId: generateDatasetVersionSplits
+      summary: Generate deterministic train/val/test splits
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateSplitsRequest'
+      responses:
+        '200':
+          description: Splits generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetVersionResponse'
+
+  /v1/dataset-versions/{id}/publish:
+    post:
+      operationId: publishDatasetVersion
+      summary: Publish a dataset version
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Version published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetVersionResponse'
+
   /v1/models:
     get:
       operationId: listModels
@@ -537,6 +610,41 @@ components:
         dataset_id:
           type: string
 
+    AddAssetRequest:
+      type: object
+      required: [name, object_key, digest, size, media_type]
+      properties:
+        name:
+          type: string
+        object_key:
+          type: string
+        digest:
+          type: string
+        size:
+          type: integer
+          format: int64
+        media_type:
+          type: string
+        metadata:
+          type: object
+
+    GenerateSplitsRequest:
+      type: object
+      required: [seed, train, val, test]
+      properties:
+        seed:
+          type: integer
+          format: int64
+        train:
+          type: number
+          format: double
+        val:
+          type: number
+          format: double
+        test:
+          type: number
+          format: double
+
     DatasetVersionResponse:
       type: object
       required: [id, dataset_id, state]
@@ -547,6 +655,9 @@ components:
           type: string
         state:
           type: string
+        manifest_digest:
+          type: string
+          nullable: true
 
     CreateModelRequest:
       type: object

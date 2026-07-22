@@ -13,6 +13,7 @@
 """  # noqa: E501
 
 # import models into model package
+from moqentra_client.models.add_asset_request import AddAssetRequest
 from moqentra_client.models.annotation_project_response import AnnotationProjectResponse
 from moqentra_client.models.compile_request import CompileRequest
 from moqentra_client.models.compile_response import CompileResponse
@@ -25,6 +26,7 @@ from moqentra_client.models.create_training_job_request import CreateTrainingJob
 from moqentra_client.models.dataset_response import DatasetResponse
 from moqentra_client.models.dataset_version_response import DatasetVersionResponse
 from moqentra_client.models.experiment_response import ExperimentResponse
+from moqentra_client.models.generate_splits_request import GenerateSplitsRequest
 from moqentra_client.models.health_response import HealthResponse
 from moqentra_client.models.model_response import ModelResponse
 from moqentra_client.models.operation import Operation

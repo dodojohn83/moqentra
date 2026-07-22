@@ -88,6 +88,7 @@ All URIs are relative to *http://localhost*
 Class | Method | HTTP request | Description
 ------------ | ------------- | ------------- | -------------
 *DefaultApi* | [**activate_annotation_project**](docs/DefaultApi.md#activate_annotation_project) | **POST** /v1/annotation-projects/{id}/activate | Activate annotation project
+*DefaultApi* | [**add_dataset_version_asset**](docs/DefaultApi.md#add_dataset_version_asset) | **POST** /v1/dataset-versions/{id}/assets | Add an asset to a draft dataset version
 *DefaultApi* | [**admit_training_job**](docs/DefaultApi.md#admit_training_job) | **POST** /v1/training-jobs/{id}/admit | Admit a training job
 *DefaultApi* | [**cancel_training_job**](docs/DefaultApi.md#cancel_training_job) | **POST** /v1/training-jobs/{id}/cancel | Cancel a training job
 *DefaultApi* | [**compile_application**](docs/DefaultApi.md#compile_application) | **POST** /v1/applications:compile | Compile an application graph
@@ -97,6 +98,7 @@ Class | Method | HTTP request | Description
 *DefaultApi* | [**create_experiment**](docs/DefaultApi.md#create_experiment) | **POST** /v1/experiments | Create experiment
 *DefaultApi* | [**create_model**](docs/DefaultApi.md#create_model) | **POST** /v1/models | Create model family
 *DefaultApi* | [**create_training_job**](docs/DefaultApi.md#create_training_job) | **POST** /v1/training-jobs | Create training job
+*DefaultApi* | [**generate_dataset_version_splits**](docs/DefaultApi.md#generate_dataset_version_splits) | **POST** /v1/dataset-versions/{id}/splits | Generate deterministic train/val/test splits
 *DefaultApi* | [**get_dataset**](docs/DefaultApi.md#get_dataset) | **GET** /v1/datasets/{id} | Get dataset by id
 *DefaultApi* | [**get_health**](docs/DefaultApi.md#get_health) | **GET** /healthz | Liveness probe
 *DefaultApi* | [**get_ready**](docs/DefaultApi.md#get_ready) | **GET** /readyz | Readiness probe
@@ -105,11 +107,13 @@ Class | Method | HTTP request | Description
 *DefaultApi* | [**list_models**](docs/DefaultApi.md#list_models) | **GET** /v1/models | List models
 *DefaultApi* | [**list_outbox_events**](docs/DefaultApi.md#list_outbox_events) | **GET** /v1/outbox | List outbox events
 *DefaultApi* | [**list_training_jobs**](docs/DefaultApi.md#list_training_jobs) | **GET** /v1/training-jobs | List training jobs
+*DefaultApi* | [**publish_dataset_version**](docs/DefaultApi.md#publish_dataset_version) | **POST** /v1/dataset-versions/{id}/publish | Publish a dataset version
 *DefaultApi* | [**who_am_i**](docs/DefaultApi.md#who_am_i) | **GET** /v1/whoami | Resolve authenticated principal
 
 
 ## Documentation For Models
 
+ - [AddAssetRequest](docs/AddAssetRequest.md)
  - [AnnotationProjectResponse](docs/AnnotationProjectResponse.md)
  - [CompileRequest](docs/CompileRequest.md)
  - [CompileResponse](docs/CompileResponse.md)
@@ -122,6 +126,7 @@ Class | Method | HTTP request | Description
  - [DatasetResponse](docs/DatasetResponse.md)
  - [DatasetVersionResponse](docs/DatasetVersionResponse.md)
  - [ExperimentResponse](docs/ExperimentResponse.md)
+ - [GenerateSplitsRequest](docs/GenerateSplitsRequest.md)
  - [HealthResponse](docs/HealthResponse.md)
  - [ModelResponse](docs/ModelResponse.md)
  - [Operation](docs/Operation.md)

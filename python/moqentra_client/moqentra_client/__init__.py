@@ -28,6 +28,7 @@ __all__ = [
     "ApiKeyError",
     "ApiAttributeError",
     "ApiException",
+    "AddAssetRequest",
     "AnnotationProjectResponse",
     "CompileRequest",
     "CompileResponse",
@@ -40,6 +41,7 @@ __all__ = [
     "DatasetResponse",
     "DatasetVersionResponse",
     "ExperimentResponse",
+    "GenerateSplitsRequest",
     "HealthResponse",
     "ModelResponse",
     "Operation",
@@ -67,6 +69,7 @@ from moqentra_client.exceptions import ApiAttributeError as ApiAttributeError
 from moqentra_client.exceptions import ApiException as ApiException
 
 # import models into sdk package
+from moqentra_client.models.add_asset_request import AddAssetRequest as AddAssetRequest
 from moqentra_client.models.annotation_project_response import AnnotationProjectResponse as AnnotationProjectResponse
 from moqentra_client.models.compile_request import CompileRequest as CompileRequest
 from moqentra_client.models.compile_response import CompileResponse as CompileResponse
@@ -79,6 +82,7 @@ from moqentra_client.models.create_training_job_request import CreateTrainingJob
 from moqentra_client.models.dataset_response import DatasetResponse as DatasetResponse
 from moqentra_client.models.dataset_version_response import DatasetVersionResponse as DatasetVersionResponse
 from moqentra_client.models.experiment_response import ExperimentResponse as ExperimentResponse
+from moqentra_client.models.generate_splits_request import GenerateSplitsRequest as GenerateSplitsRequest
 from moqentra_client.models.health_response import HealthResponse as HealthResponse
 from moqentra_client.models.model_response import ModelResponse as ModelResponse
 from moqentra_client.models.operation import Operation as Operation

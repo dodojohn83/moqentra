@@ -1,28 +1,28 @@
 
-# DatasetVersionResponse
+# GenerateSplitsRequest
 
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`id` | string
-`dataset_id` | string
-`state` | string
-`manifest_digest` | string
+`seed` | number
+`train` | number
+`val` | number
+`test` | number
 
 ## Example
 
 ```typescript
-import type { DatasetVersionResponse } from ''
+import type { GenerateSplitsRequest } from ''
 
 // TODO: Update the object below with actual values
 const example = {
-  "id": null,
-  "dataset_id": null,
-  "state": null,
-  "manifest_digest": null,
-} satisfies DatasetVersionResponse
+  "seed": null,
+  "train": null,
+  "val": null,
+  "test": null,
+} satisfies GenerateSplitsRequest
 
 console.log(example)
 
@@ -31,7 +31,7 @@ const exampleJSON: string = JSON.stringify(example)
 console.log(exampleJSON)
 
 // Parse the JSON string back to an object
-const exampleParsed = JSON.parse(exampleJSON) as DatasetVersionResponse
+const exampleParsed = JSON.parse(exampleJSON) as GenerateSplitsRequest
 console.log(exampleParsed)
 ```
 

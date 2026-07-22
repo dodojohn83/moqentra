@@ -1,5 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
+export * from './AddAssetRequest';
 export * from './AnnotationProjectResponse';
 export * from './CompileRequest';
 export * from './CompileResponse';
@@ -12,6 +13,7 @@ export * from './CreateTrainingJobRequest';
 export * from './DatasetResponse';
 export * from './DatasetVersionResponse';
 export * from './ExperimentResponse';
+export * from './GenerateSplitsRequest';
 export * from './HealthResponse';
 export * from './ModelResponse';
 export * from './Operation';

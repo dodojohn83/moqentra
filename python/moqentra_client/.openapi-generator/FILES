@@ -4,6 +4,7 @@
 .openapi-generator-ignore
 .travis.yml
 README.md
+docs/AddAssetRequest.md
 docs/AnnotationProjectResponse.md
 docs/CompileRequest.md
 docs/CompileResponse.md
@@ -17,6 +18,7 @@ docs/DatasetResponse.md
 docs/DatasetVersionResponse.md
 docs/DefaultApi.md
 docs/ExperimentResponse.md
+docs/GenerateSplitsRequest.md
 docs/HealthResponse.md
 docs/ModelResponse.md
 docs/Operation.md
@@ -36,6 +38,7 @@ moqentra_client/api_response.py
 moqentra_client/configuration.py
 moqentra_client/exceptions.py
 moqentra_client/models/__init__.py
+moqentra_client/models/add_asset_request.py
 moqentra_client/models/annotation_project_response.py
 moqentra_client/models/compile_request.py
 moqentra_client/models/compile_response.py
@@ -48,6 +51,7 @@ moqentra_client/models/create_training_job_request.py
 moqentra_client/models/dataset_response.py
 moqentra_client/models/dataset_version_response.py
 moqentra_client/models/experiment_response.py
+moqentra_client/models/generate_splits_request.py
 moqentra_client/models/health_response.py
 moqentra_client/models/model_response.py
 moqentra_client/models/operation.py
@@ -66,6 +70,7 @@ setup.cfg
 setup.py
 test-requirements.txt
 test/__init__.py
+test/test_add_asset_request.py
 test/test_annotation_project_response.py
 test/test_compile_request.py
 test/test_compile_response.py
@@ -79,6 +84,7 @@ test/test_dataset_response.py
 test/test_dataset_version_response.py
 test/test_default_api.py
 test/test_experiment_response.py
+test/test_generate_splits_request.py
 test/test_health_response.py
 test/test_model_response.py
 test/test_operation.py

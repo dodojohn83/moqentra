@@ -8,6 +8,7 @@ Name | Type | Description | Notes
 **id** | **str** |  | 
 **dataset_id** | **str** |  | 
 **state** | **str** |  | 
+**manifest_digest** | **str** |  | [optional] 
 
 ## Example
 

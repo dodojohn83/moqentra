@@ -5,6 +5,7 @@ All URIs are relative to *http://localhost*
 Method | HTTP request | Description
 ------------- | ------------- | -------------
 [**activate_annotation_project**](DefaultApi.md#activate_annotation_project) | **POST** /v1/annotation-projects/{id}/activate | Activate annotation project
+[**add_dataset_version_asset**](DefaultApi.md#add_dataset_version_asset) | **POST** /v1/dataset-versions/{id}/assets | Add an asset to a draft dataset version
 [**admit_training_job**](DefaultApi.md#admit_training_job) | **POST** /v1/training-jobs/{id}/admit | Admit a training job
 [**cancel_training_job**](DefaultApi.md#cancel_training_job) | **POST** /v1/training-jobs/{id}/cancel | Cancel a training job
 [**compile_application**](DefaultApi.md#compile_application) | **POST** /v1/applications:compile | Compile an application graph
@@ -14,6 +15,7 @@ Method | HTTP request | Description
 [**create_experiment**](DefaultApi.md#create_experiment) | **POST** /v1/experiments | Create experiment
 [**create_model**](DefaultApi.md#create_model) | **POST** /v1/models | Create model family
 [**create_training_job**](DefaultApi.md#create_training_job) | **POST** /v1/training-jobs | Create training job
+[**generate_dataset_version_splits**](DefaultApi.md#generate_dataset_version_splits) | **POST** /v1/dataset-versions/{id}/splits | Generate deterministic train/val/test splits
 [**get_dataset**](DefaultApi.md#get_dataset) | **GET** /v1/datasets/{id} | Get dataset by id
 [**get_health**](DefaultApi.md#get_health) | **GET** /healthz | Liveness probe
 [**get_ready**](DefaultApi.md#get_ready) | **GET** /readyz | Readiness probe
@@ -22,6 +24,7 @@ Method | HTTP request | Description
 [**list_models**](DefaultApi.md#list_models) | **GET** /v1/models | List models
 [**list_outbox_events**](DefaultApi.md#list_outbox_events) | **GET** /v1/outbox | List outbox events
 [**list_training_jobs**](DefaultApi.md#list_training_jobs) | **GET** /v1/training-jobs | List training jobs
+[**publish_dataset_version**](DefaultApi.md#publish_dataset_version) | **POST** /v1/dataset-versions/{id}/publish | Publish a dataset version
 [**who_am_i**](DefaultApi.md#who_am_i) | **GET** /v1/whoami | Resolve authenticated principal
 
 
@@ -92,6 +95,81 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 **200** | Activated |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **add_dataset_version_asset**
+> DatasetVersionResponse add_dataset_version_asset(x_tenant_id, id, add_asset_request, authorization=authorization, idempotency_key=idempotency_key)
+
+Add an asset to a draft dataset version
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.add_asset_request import AddAssetRequest
+from moqentra_client.models.dataset_version_response import DatasetVersionResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    add_asset_request = moqentra_client.AddAssetRequest() # AddAssetRequest | 
+    authorization = 'authorization_example' # str |  (optional)
+    idempotency_key = 'idempotency_key_example' # str |  (optional)
+
+    try:
+        # Add an asset to a draft dataset version
+        api_response = api_instance.add_dataset_version_asset(x_tenant_id, id, add_asset_request, authorization=authorization, idempotency_key=idempotency_key)
+        print("The response of DefaultApi->add_dataset_version_asset:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->add_dataset_version_asset: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **add_asset_request** | [**AddAssetRequest**](AddAssetRequest.md)|  | 
+ **authorization** | **str**|  | [optional] 
+ **idempotency_key** | **str**|  | [optional] 
+
+### Return type
+
+[**DatasetVersionResponse**](DatasetVersionResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Asset added |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
@@ -744,6 +822,79 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **generate_dataset_version_splits**
+> DatasetVersionResponse generate_dataset_version_splits(x_tenant_id, id, generate_splits_request, authorization=authorization)
+
+Generate deterministic train/val/test splits
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.dataset_version_response import DatasetVersionResponse
+from moqentra_client.models.generate_splits_request import GenerateSplitsRequest
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    generate_splits_request = moqentra_client.GenerateSplitsRequest() # GenerateSplitsRequest | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Generate deterministic train/val/test splits
+        api_response = api_instance.generate_dataset_version_splits(x_tenant_id, id, generate_splits_request, authorization=authorization)
+        print("The response of DefaultApi->generate_dataset_version_splits:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->generate_dataset_version_splits: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **generate_splits_request** | [**GenerateSplitsRequest**](GenerateSplitsRequest.md)|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**DatasetVersionResponse**](DatasetVersionResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Splits generated |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **get_dataset**
 > DatasetResponse get_dataset(x_tenant_id, id, authorization=authorization)
 
@@ -1296,6 +1447,76 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 **200** | Job list |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **publish_dataset_version**
+> DatasetVersionResponse publish_dataset_version(x_tenant_id, id, authorization=authorization)
+
+Publish a dataset version
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.dataset_version_response import DatasetVersionResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Publish a dataset version
+        api_response = api_instance.publish_dataset_version(x_tenant_id, id, authorization=authorization)
+        print("The response of DefaultApi->publish_dataset_version:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->publish_dataset_version: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**DatasetVersionResponse**](DatasetVersionResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Version published |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
