@@ -6,7 +6,7 @@
 //! Health endpoints stay unauthenticated.
 
 use crate::northbound::{ProblemDetails, TokenBucketLimiter};
-use axum::extract::{DefaultBodyLimit, Path, Request, State};
+use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
@@ -29,8 +29,9 @@ use moqentra_domain::training::{
 };
 use moqentra_storage::{InMemoryOutbox, OutboxEvent, OutboxStatus, OutboxStore, PgRoleStore};
 use moqentra_types::{
-    AnnotationProjectId, DatasetId, DatasetVersionId, Error, ExperimentId, ModelId, Principal,
-    ProjectId, RandomIdGenerator, RequestContext, TenantId, TrainingJobId, UtcTimestamp,
+    AnnotationProjectId, DatasetId, DatasetVersionId, Error, ExperimentId, ModelId, Page,
+    PageRequest, Principal, ProjectId, RandomIdGenerator, RequestContext, TenantId, TrainingJobId,
+    UtcTimestamp,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -447,15 +448,28 @@ async fn get_dataset(
 async fn list_datasets(
     State(state): State<AppState>,
     headers: HeaderMap,
-) -> Result<Json<Vec<DatasetResponse>>, ApiError> {
+    Query(page): Query<PageRequest>,
+) -> Result<Json<Page<DatasetResponse>>, ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::List, Resource::Dataset).await?;
 
     let registry = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
-    let items = registry
+    let mut items: Vec<Dataset> = registry
         .list_datasets(ctx.tenant_id, ctx.project_id)
         .into_iter()
+        .cloned()
+        .collect();
+    items.sort_by(|a, b| {
+        b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
+    });
+
+    let total = items.len() as u64;
+    let limit = page.bounded_limit() as usize;
+    let offset = page.offset as usize;
+    let end = (offset + limit).min(items.len());
+    let page_items = items[offset..end]
+        .iter()
         .map(|ds| DatasetResponse {
             id: ds.id.to_string(),
             tenant_id: ds.tenant_id.to_string(),
@@ -464,7 +478,7 @@ async fn list_datasets(
             state: format!("{:?}", ds.state),
         })
         .collect();
-    Ok(Json(items))
+    Ok(Json(Page::new(page_items, total, page)))
 }
 
 #[derive(Deserialize)]
@@ -571,21 +585,33 @@ async fn create_experiment(
 async fn list_experiments(
     State(state): State<AppState>,
     headers: HeaderMap,
-) -> Result<Json<Vec<ExperimentResponse>>, ApiError> {
+    Query(page): Query<PageRequest>,
+) -> Result<Json<Page<ExperimentResponse>>, ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::List, Resource::TrainingJob).await?;
     let reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
-    let items = reg
+    let mut items: Vec<Experiment> = reg
         .list_experiments(ctx.tenant_id, ctx.project_id)
         .into_iter()
+        .cloned()
+        .collect();
+    items.sort_by(|a, b| {
+        b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
+    });
+    let total = items.len() as u64;
+    let limit = page.bounded_limit() as usize;
+    let offset = page.offset as usize;
+    let end = (offset + limit).min(items.len());
+    let page_items = items[offset..end]
+        .iter()
         .map(|e| ExperimentResponse {
             id: e.id.to_string(),
             name: e.name.clone(),
             state: "active".to_string(),
         })
         .collect();
-    Ok(Json(items))
+    Ok(Json(Page::new(page_items, total, page)))
 }
 
 async fn create_training_job(
@@ -670,21 +696,30 @@ async fn create_training_job(
 async fn list_training_jobs(
     State(state): State<AppState>,
     headers: HeaderMap,
-) -> Result<Json<Vec<TrainingJobResponse>>, ApiError> {
+    Query(page): Query<PageRequest>,
+) -> Result<Json<Page<TrainingJobResponse>>, ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Read, Resource::TrainingJob).await?;
     let reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
-    let items = reg
-        .list_jobs(ctx.tenant_id, None)
-        .into_iter()
+    let mut items: Vec<TrainingJob> =
+        reg.list_jobs(ctx.tenant_id, None).into_iter().cloned().collect();
+    items.sort_by(|a, b| {
+        b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
+    });
+    let total = items.len() as u64;
+    let limit = page.bounded_limit() as usize;
+    let offset = page.offset as usize;
+    let end = (offset + limit).min(items.len());
+    let page_items = items[offset..end]
+        .iter()
         .map(|j| TrainingJobResponse {
             id: j.id.to_string(),
             experiment_id: j.experiment_id.to_string(),
             state: format!("{:?}", j.state),
         })
         .collect();
-    Ok(Json(items))
+    Ok(Json(Page::new(page_items, total, page)))
 }
 
 async fn admit_training_job(
@@ -858,20 +893,29 @@ async fn create_model(
 async fn list_models(
     State(state): State<AppState>,
     headers: HeaderMap,
-) -> Result<Json<Vec<ModelResponse>>, ApiError> {
+    Query(page): Query<PageRequest>,
+) -> Result<Json<Page<ModelResponse>>, ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::List, Resource::ModelVersion).await?;
     let reg = state.models.lock().unwrap_or_else(|e| e.into_inner());
-    let items = reg
-        .list_models(ctx.tenant_id, ctx.project_id)
-        .into_iter()
+    let mut items: Vec<Model> =
+        reg.list_models(ctx.tenant_id, ctx.project_id).into_iter().cloned().collect();
+    items.sort_by(|a, b| {
+        b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
+    });
+    let total = items.len() as u64;
+    let limit = page.bounded_limit() as usize;
+    let offset = page.offset as usize;
+    let end = (offset + limit).min(items.len());
+    let page_items = items[offset..end]
+        .iter()
         .map(|m| ModelResponse {
             id: m.id.to_string(),
             name: m.name.clone(),
         })
         .collect();
-    Ok(Json(items))
+    Ok(Json(Page::new(page_items, total, page)))
 }
 
 async fn create_annotation_project(
@@ -956,14 +1000,22 @@ async fn activate_annotation_project(
 async fn list_outbox(
     State(state): State<AppState>,
     headers: HeaderMap,
-) -> Result<Json<Vec<serde_json::Value>>, ApiError> {
+    Query(page): Query<PageRequest>,
+) -> Result<Json<Page<serde_json::Value>>, ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Read, Resource::AuditLog).await?;
-    let pending = state.outbox.poll_pending(100).await?;
-    let items = pending
-        .into_iter()
-        .filter(|e| e.tenant_id == ctx.tenant_id)
+    let limit = page.bounded_limit().min(1000);
+    let mut pending = state.outbox.poll_pending(limit).await?;
+    pending.retain(|e| e.tenant_id == ctx.tenant_id);
+    pending.sort_by(|a, b| {
+        b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
+    });
+    let total = pending.len() as u64;
+    let offset = page.offset as usize;
+    let end = (offset + page.bounded_limit() as usize).min(pending.len());
+    let items = pending[offset..end]
+        .iter()
         .map(|e| {
             serde_json::json!({
                 "id": e.id.to_string(),
@@ -974,7 +1026,7 @@ async fn list_outbox(
             })
         })
         .collect();
-    Ok(Json(items))
+    Ok(Json(Page::new(items, total, page)))
 }
 
 /// Global security response headers.

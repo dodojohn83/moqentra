@@ -15,7 +15,8 @@
 - [x] `R1-API-002` 在 application 层定义 dataset、annotation、training、model、application、deployment repositories；所有方法显式携带 `RequestContext`（operation/audit/outbox/idempotency ports 在后续 storage adapter 中补齐）。
   - Evidence: `crates/application/src/ports.rs` (`DatasetRepository`, `AnnotationRepository`, `TrainingJobRepository`, `ModelRepository`, `ApplicationRepository`, `DeploymentRepository`), `Versioned<T>` with `Revision`/`ETag`.
 - [ ] `R1-API-003` 定义 `UnitOfWork`：聚合变更、Operation、outbox、audit 和 idempotency response 必须在同一 PostgreSQL 事务提交。
-- [ ] `R1-API-004` 统一 cursor pagination、过滤、稳定排序、revision 和 ETag；禁止无上限 list。
+- [~] `R1-API-004` 统一 cursor pagination、过滤、稳定排序、revision 和 ETag；禁止无上限 list。
+  - Evidence: `crates/http-api/src/control_plane.rs` list handlers (`list_datasets`, `list_experiments`, `list_training_jobs`, `list_models`, `list_outbox`) accept `Query<PageRequest>`, cap at `MAX_LIMIT`, sort by `created_at` desc + id tie-breaker, and return `Page<T>`. `Versioned<T>` with `etag`/`Revision` already in `crates/application/src/ports.rs`. Filter/query string and `If-Match` enforcement on update endpoints deferred to `R1-DB-002` repository integration.
 - [x] `R1-API-005` 新增 `Operation/v1` 与 `EventEnvelope/v1` schema，覆盖状态、进度、资源引用、错误、deadline、取消、重试、事件序号和 SSE cursor。
   - Evidence: `proto/moqentra/common/v1/operation.proto`, `proto/moqentra/common/v1/event_envelope.proto`; generated Rust types in `moqentra-contracts`, roundtrip tests in `crates/contracts/src/lib.rs`.
 - [ ] `R1-API-006` 生成并校验 Rust server types、TypeScript client 和 Python client；生成结果必须确定性且 CI 工作区无差异。
