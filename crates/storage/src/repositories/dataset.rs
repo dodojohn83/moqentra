@@ -421,3 +421,121 @@ struct DatasetVersionRow {
     _created_by: Uuid,
     created_at: OffsetDateTime,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use moqentra_types::{Principal, RandomIdGenerator, UserId};
+    use sqlx::PgPool;
+
+    async fn pool() -> Option<PgPool> {
+        let url = std::env::var("DATABASE_URL").ok()?;
+        PgPool::connect(&url).await.ok()
+    }
+
+    async fn setup_tenant_project(pool: &PgPool) -> (TenantId, ProjectId, UserId) {
+        let gen = RandomIdGenerator;
+        let tenant_id = TenantId::new_v7(&gen);
+        let project_id = ProjectId::new_v7(&gen);
+        let user_id = UserId::new_v7(&gen);
+        let tenant_str = tenant_id.to_string();
+
+        sqlx::query("SELECT set_config('app.current_tenant', $1, true)")
+            .bind(&tenant_str)
+            .execute(pool)
+            .await
+            .unwrap();
+
+        sqlx::query("INSERT INTO tenants (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING")
+            .bind(tenant_id.as_uuid())
+            .bind(format!("tenant-{tenant_str}"))
+            .execute(pool)
+            .await
+            .unwrap();
+
+        sqlx::query(
+            "INSERT INTO projects (id, tenant_id, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+        )
+        .bind(project_id.as_uuid())
+        .bind(tenant_id.as_uuid())
+        .bind(format!("project-{project_id}"))
+        .execute(pool)
+        .await
+        .unwrap();
+
+        (tenant_id, project_id, user_id)
+    }
+
+    fn ctx(tenant_id: TenantId, project_id: ProjectId, user_id: UserId) -> RequestContext {
+        RequestContext::new(
+            tenant_id,
+            Principal::User { id: user_id },
+            "test-req".to_string(),
+        )
+        .with_project(project_id)
+    }
+
+    #[tokio::test]
+    async fn dataset_crud_and_version() {
+        let Some(pool) = pool().await else { return };
+        let (tenant_id, project_id, user_id) = setup_tenant_project(&pool).await;
+
+        let repo = PgDatasetRepository::new(pool.clone());
+        let c = ctx(tenant_id, project_id, user_id);
+
+        sqlx::query("DELETE FROM dataset_versions WHERE tenant_id = $1")
+            .bind(tenant_id.as_uuid())
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM datasets WHERE tenant_id = $1")
+            .bind(tenant_id.as_uuid())
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let dataset = Dataset::new(
+            DatasetId::new_v7(&RandomIdGenerator),
+            tenant_id,
+            project_id,
+            "test-dataset",
+        )
+        .unwrap();
+        let created = repo.create(&c, dataset.clone()).await.unwrap();
+        assert_eq!(created.entity.name, "test-dataset");
+        assert_eq!(created.revision.as_u64(), 0);
+
+        let fetched = repo.get(&c, created.entity.id).await.unwrap();
+        assert_eq!(fetched.entity.id, created.entity.id);
+
+        let mut updated = created.entity.clone();
+        updated.name = "updated-name".to_string();
+        let versioned =
+            repo.update(&c, updated.id, created.revision, updated.clone()).await.unwrap();
+        assert_eq!(versioned.revision.as_u64(), 1);
+
+        let version = DatasetVersion::new(
+            DatasetVersionId::new_v7(&RandomIdGenerator),
+            updated.id,
+            tenant_id,
+            project_id,
+        );
+        let v = repo.create_version(&c, updated.id, version).await.unwrap();
+        assert_eq!(v.entity.state, DatasetVersionState::Draft);
+
+        let listed = repo
+            .list(
+                &c,
+                project_id,
+                ResourceListFilter::default(),
+                PageRequest::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(listed.items.len(), 1);
+        assert_eq!(listed.total, 1);
+
+        repo.delete(&c, updated.id, versioned.revision).await.unwrap();
+        assert!(repo.get(&c, updated.id).await.is_err());
+    }
+}
