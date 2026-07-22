@@ -35,7 +35,8 @@
 
 ## 4. OIDC、RBAC 与审计
 
-- [ ] `R1-IAM-001` 实现 OIDC discovery、JWKS 缓存与轮换、issuer/audience/nonce 校验、clock skew 和失败降级；移除生产 HMAC 开发 token 路径。
+- [x] `R1-IAM-001` 实现 OIDC discovery、JWKS 缓存与轮换、issuer/audience/nonce 校验、clock skew 和失败降级；移除生产 HMAC 开发 token 路径。
+  - Evidence: `crates/auth/src/oidc.rs` (`OidcConfig`, `JwkSetValidator`), `crates/auth/src/jwt.rs` (`TokenClaims.nonce`, async `TokenValidator`, `CompositeTokenValidator.with_oidc`); `apps/control-plane/src/main.rs` uses `MOQENTRA_OIDC_ISSUER`/`MOQENTRA_OIDC_AUDIENCE` and OIDC takes precedence, HMAC only as local test fallback.
 - [ ] `R1-IAM-002` 从 token 得到 principal，只从数据库成员关系解析 tenant/project role；切换租户必须重新授权。
 - [x] `R1-IAM-003` 实现 tenant admin、data engineer、annotator、reviewer、algorithm engineer、operator 的 deny-by-default 权限矩阵。
   - Evidence: `crates/auth/src/rbac.rs` (`Authorizer` with `Role::{TenantAdmin,DataEngineer,Annotator,Reviewer,AlgorithmEngineer,Operator}`, deny-by-default, project/tenant isolation, tests).
