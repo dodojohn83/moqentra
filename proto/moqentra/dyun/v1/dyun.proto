@@ -15,11 +15,11 @@ message CommandHeader {
 }
 
 // Agent capability exchange.
-message DyunCapabilityRequest {
+message DyunAgentServiceCapabilityRequest {
   CommandHeader header = 1;
 }
 
-message DyunCapabilityResponse {
+message DyunAgentServiceCapabilityResponse {
   string agent_version = 1;
   repeated string element_schemas = 2;
   repeated string codecs = 3;
@@ -30,41 +30,41 @@ message DyunCapabilityResponse {
 }
 
 // Prepare a signed graph bundle for execution.
-message DyunPrepareRequest {
+message DyunAgentServicePrepareRequest {
   CommandHeader header = 1;
   string bundle_digest = 2;
   string graph_digest = 3;
   repeated string artifact_object_keys = 4;
 }
 
-message DyunPrepareResponse {
+message DyunAgentServicePrepareResponse {
   string bundle_digest = 1;
   string prepared_path_digest = 2;
   moqentra.common.v1.Error error = 3;
 }
 
 // Start a deployment replica.
-message DyunStartRequest {
+message DyunAgentServiceStartRequest {
   CommandHeader header = 1;
   string deployment_id = 2;
   string bundle_digest = 3;
   uint32 replica_index = 4;
 }
 
-message DyunStartResponse {
+message DyunAgentServiceStartResponse {
   string deployment_id = 1;
   string runner_id = 2;
   moqentra.common.v1.Error error = 3;
 }
 
 // Poll or report current status.
-message DyunStatusRequest {
+message DyunAgentServiceStatusRequest {
   CommandHeader header = 1;
   string deployment_id = 2;
   uint64 generation = 3;
 }
 
-message DyunStatusResponse {
+message DyunAgentServiceStatusResponse {
   string deployment_id = 1;
   uint64 observed_generation = 2;
   string state = 3;
@@ -79,45 +79,45 @@ message DyunMetricSample {
   map<string, string> labels = 4;
 }
 
-message DyunMetricsRequest {
+message DyunAgentServiceMetricsRequest {
   CommandHeader header = 1;
   string deployment_id = 2;
 }
 
-message DyunMetricsResponse {
+message DyunAgentServiceMetricsResponse {
   string deployment_id = 1;
   repeated DyunMetricSample samples = 2;
   moqentra.common.v1.Error error = 3;
 }
 
 // Graceful drain with bounded timeout.
-message DyunDrainRequest {
+message DyunAgentServiceDrainRequest {
   CommandHeader header = 1;
   string deployment_id = 2;
   uint32 timeout_seconds = 3;
 }
 
-message DyunDrainResponse {
+message DyunAgentServiceDrainResponse {
   string deployment_id = 1;
   bool accepted = 2;
   moqentra.common.v1.Error error = 3;
 }
 
 // Hard stop a deployment.
-message DyunStopRequest {
+message DyunAgentServiceStopRequest {
   CommandHeader header = 1;
   string deployment_id = 2;
   string reason = 3;
 }
 
-message DyunStopResponse {
+message DyunAgentServiceStopResponse {
   string deployment_id = 1;
   bool accepted = 2;
   moqentra.common.v1.Error error = 3;
 }
 
 // Final result reported by an agent.
-message DyunResultRequest {
+message DyunAgentServiceResultRequest {
   CommandHeader header = 1;
   string deployment_id = 2;
   bool success = 3;
@@ -125,7 +125,7 @@ message DyunResultRequest {
   moqentra.common.v1.Error error = 5;
 }
 
-message DyunResultResponse {
+message DyunAgentServiceResultResponse {
   string deployment_id = 1;
   bool accepted = 2;
   moqentra.common.v1.Error error = 3;
@@ -134,12 +134,12 @@ message DyunResultResponse {
 // Dyun agent control service. Control plane is the client; agent is the
 // server for unary commands, except for agent-initiated results.
 service DyunAgentService {
-  rpc Capability(DyunCapabilityRequest) returns (DyunCapabilityResponse);
-  rpc Prepare(DyunPrepareRequest) returns (DyunPrepareResponse);
-  rpc Start(DyunStartRequest) returns (DyunStartResponse);
-  rpc Status(DyunStatusRequest) returns (DyunStatusResponse);
-  rpc Metrics(DyunMetricsRequest) returns (DyunMetricsResponse);
-  rpc Drain(DyunDrainRequest) returns (DyunDrainResponse);
-  rpc Stop(DyunStopRequest) returns (DyunStopResponse);
-  rpc Result(DyunResultRequest) returns (DyunResultResponse);
+  rpc Capability(DyunAgentServiceCapabilityRequest) returns (DyunAgentServiceCapabilityResponse);
+  rpc Prepare(DyunAgentServicePrepareRequest) returns (DyunAgentServicePrepareResponse);
+  rpc Start(DyunAgentServiceStartRequest) returns (DyunAgentServiceStartResponse);
+  rpc Status(DyunAgentServiceStatusRequest) returns (DyunAgentServiceStatusResponse);
+  rpc Metrics(DyunAgentServiceMetricsRequest) returns (DyunAgentServiceMetricsResponse);
+  rpc Drain(DyunAgentServiceDrainRequest) returns (DyunAgentServiceDrainResponse);
+  rpc Stop(DyunAgentServiceStopRequest) returns (DyunAgentServiceStopResponse);
+  rpc Result(DyunAgentServiceResultRequest) returns (DyunAgentServiceResultResponse);
 }
