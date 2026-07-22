@@ -52,8 +52,17 @@ impl FromStr for ConversionTarget {
     }
 }
 
+/// Post-processing contract required by the conversion target runtime.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PostprocessContract {
+    pub confidence_threshold: Option<f64>,
+    pub nms_threshold: Option<f64>,
+    pub box_format: Option<String>,
+    pub class_map: Vec<String>,
+}
+
 /// Toolchain and hardware profile for a conversion target.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConversionProfile {
     pub target: ConversionTarget,
     pub sdk_version: String,
@@ -62,6 +71,7 @@ pub struct ConversionProfile {
     pub precision: String,
     pub dynamic_shapes: bool,
     pub capabilities: Vec<String>,
+    pub postprocess: Option<PostprocessContract>,
 }
 
 /// Conversion job state.
@@ -104,7 +114,7 @@ impl FromStr for ConversionJobState {
 }
 
 /// A model conversion job.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConversionJob {
     pub id: ConversionJobId,
     pub tenant_id: TenantId,
@@ -179,6 +189,20 @@ impl ConversionJob {
         hasher.update(format!("{:?}", profile.target).as_bytes());
         for cap in &profile.capabilities {
             hasher.update(cap.as_bytes());
+        }
+        if let Some(pp) = &profile.postprocess {
+            if let Some(v) = pp.confidence_threshold {
+                hasher.update(v.to_string().as_bytes());
+            }
+            if let Some(v) = pp.nms_threshold {
+                hasher.update(v.to_string().as_bytes());
+            }
+            if let Some(v) = &pp.box_format {
+                hasher.update(v.as_bytes());
+            }
+            for c in &pp.class_map {
+                hasher.update(c.as_bytes());
+            }
         }
         for (k, v) in parameters {
             hasher.update(k.as_bytes());
@@ -461,6 +485,7 @@ mod tests {
             precision: "fp32".to_string(),
             dynamic_shapes: false,
             capabilities: vec!["opset17".to_string()],
+            postprocess: None,
         }
     }
 

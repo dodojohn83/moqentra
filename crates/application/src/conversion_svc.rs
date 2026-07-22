@@ -181,6 +181,7 @@ mod tests {
             precision: "fp32".to_string(),
             dynamic_shapes: false,
             capabilities: vec![],
+            postprocess: None,
         }
     }
 
