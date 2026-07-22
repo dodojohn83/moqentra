@@ -15,8 +15,8 @@ use axum::routing::{get, post};
 use axum::{middleware, Json, Router};
 use moqentra_application::{
     plan_dispatch, ApplicationCompiler, ArtifactReconciler, CompileResult, DispatchAction,
-    InMemoryAnnotationRegistry, InMemoryDatasetRegistry, InMemoryModelRegistry,
-    InMemoryTrainingRegistry,
+    InMemoryAnnotationRegistry, InMemoryConversionRegistry, InMemoryDatasetRegistry,
+    InMemoryEvaluationRegistry, InMemoryModelRegistry, InMemoryTrainingRegistry,
 };
 use moqentra_auth::{
     Action, AuditCategory, AuditEvent, AuditLog, AuditOutcome, Authorizer, CompositeTokenValidator,
@@ -24,6 +24,7 @@ use moqentra_auth::{
 };
 use moqentra_domain::annotation::{AnnotationProject, Ontology, TaskType};
 use moqentra_domain::application::ApplicationSpec;
+use moqentra_domain::conversion::{ConversionJob, ConversionProfile, EvaluationRun};
 use moqentra_domain::dataset::{AssetRef, Dataset, DatasetVersion};
 use moqentra_domain::import::ImportJob;
 use moqentra_domain::model_registry::{Model, ModelVersion};
@@ -35,12 +36,12 @@ use moqentra_object_store::{
 };
 use moqentra_storage::{InMemoryOutbox, OutboxEvent, OutboxStatus, OutboxStore, PgRoleStore};
 use moqentra_types::{
-    AnnotationProjectId, AssetId, DatasetId, DatasetVersionId, Error, ExperimentId, ModelId,
-    ModelVersionId, Page, PageRequest, Principal, ProjectId, RandomIdGenerator, RequestContext,
-    TenantId, TrainingJobId, UtcTimestamp,
+    AnnotationProjectId, AssetId, ConversionJobId, DatasetId, DatasetVersionId, Error,
+    EvaluationRunId, ExperimentId, ModelId, ModelVersionId, Page, PageRequest, Principal,
+    ProjectId, RandomIdGenerator, RequestContext, TenantId, TrainingJobId, UtcTimestamp,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
@@ -58,6 +59,8 @@ pub struct AppState {
     pub datasets: Arc<Mutex<InMemoryDatasetRegistry>>,
     pub training: Arc<Mutex<InMemoryTrainingRegistry>>,
     pub models: Arc<Mutex<InMemoryModelRegistry>>,
+    pub conversions: Arc<Mutex<InMemoryConversionRegistry>>,
+    pub evaluations: Arc<Mutex<InMemoryEvaluationRegistry>>,
     pub annotations: Arc<Mutex<InMemoryAnnotationRegistry>>,
     pub outbox: Arc<InMemoryOutbox>,
     pub audit: Arc<dyn AuditLog + Send + Sync>,
@@ -577,6 +580,61 @@ impl ModelVersionResponse {
             updated_at: v.updated_at.to_string(),
         }
     }
+}
+
+#[derive(Serialize)]
+struct ConversionJobResponse {
+    id: String,
+    source_model_version_id: String,
+    target: String,
+    state: String,
+    cache_key: String,
+}
+
+impl ConversionJobResponse {
+    fn from_job(job: &ConversionJob) -> Self {
+        Self {
+            id: job.id.to_string(),
+            source_model_version_id: job.source_model_version_id.to_string(),
+            target: job.target.to_string(),
+            state: job.state.to_string(),
+            cache_key: job.cache_key.clone(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct ConvertModelVersionRequest {
+    profile: ConversionProfile,
+    parameters: Option<BTreeMap<String, String>>,
+}
+
+#[derive(Serialize)]
+struct EvaluationRunResponse {
+    id: String,
+    model_version_id: String,
+    dataset_version_id: String,
+    state: String,
+}
+
+impl EvaluationRunResponse {
+    fn from_run(run: &EvaluationRun) -> Self {
+        Self {
+            id: run.id.to_string(),
+            model_version_id: run.model_version_id.to_string(),
+            dataset_version_id: run.dataset_version_id.to_string(),
+            state: run.state.to_string(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct EvaluateModelVersionRequest {
+    dataset_version_id: String,
+    seed: u64,
+    hardware_profile: String,
+    preprocess_version: String,
+    postprocess_version: String,
 }
 
 #[derive(Deserialize)]
@@ -1720,6 +1778,91 @@ async fn approve_model_version(
     Ok(Json(ModelVersionResponse::from_version(&version)))
 }
 
+async fn convert_model_version(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(req): Json<ConvertModelVersionRequest>,
+) -> Result<(StatusCode, Json<ConversionJobResponse>), ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Update, Resource::ModelVersion).await?;
+    let version_id = ModelVersionId::try_from(id.as_str())?;
+    let project_id = ctx.project_id.ok_or_else(|| {
+        ApiError::from(Error::invalid_argument(
+            "project_id is required for conversion",
+        ))
+    })?;
+
+    // Verify the source model version exists within the tenant/project.
+    {
+        let reg = state.models.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = reg.get_version(ctx.tenant_id, version_id).map_err(ApiError::from)?;
+    }
+
+    let gen = RandomIdGenerator;
+    let job = ConversionJob::new(
+        ConversionJobId::new_v7(&gen),
+        ctx.tenant_id,
+        project_id,
+        version_id,
+        req.profile.target,
+        req.profile,
+        req.parameters.unwrap_or_default(),
+    )?;
+    let created = {
+        let mut reg = state.conversions.lock().unwrap_or_else(|e| e.into_inner());
+        reg.create_job(job)?
+    };
+    Ok((
+        StatusCode::CREATED,
+        Json(ConversionJobResponse::from_job(&created)),
+    ))
+}
+
+async fn evaluate_model_version(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(req): Json<EvaluateModelVersionRequest>,
+) -> Result<(StatusCode, Json<EvaluationRunResponse>), ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Update, Resource::ModelVersion).await?;
+    let version_id = ModelVersionId::try_from(id.as_str())?;
+    let project_id = ctx.project_id.ok_or_else(|| {
+        ApiError::from(Error::invalid_argument(
+            "project_id is required for evaluation",
+        ))
+    })?;
+
+    {
+        let reg = state.models.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = reg.get_version(ctx.tenant_id, version_id).map_err(ApiError::from)?;
+    }
+
+    let gen = RandomIdGenerator;
+    let run = EvaluationRun::new(
+        EvaluationRunId::new_v7(&gen),
+        ctx.tenant_id,
+        project_id,
+        version_id,
+        DatasetVersionId::try_from(req.dataset_version_id.as_str())?,
+        req.seed,
+        req.hardware_profile,
+        req.preprocess_version,
+        req.postprocess_version,
+    )?;
+    let created = {
+        let mut reg = state.evaluations.lock().unwrap_or_else(|e| e.into_inner());
+        reg.create_run(run)?
+    };
+    Ok((
+        StatusCode::CREATED,
+        Json(EvaluationRunResponse::from_run(&created)),
+    ))
+}
+
 async fn create_annotation_project(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1938,6 +2081,14 @@ pub fn app_router(state: AppState) -> Router {
         .route(
             "/v1/model-versions/{id}/approve",
             post(approve_model_version),
+        )
+        .route(
+            "/v1/model-versions/{id}/convert",
+            post(convert_model_version),
+        )
+        .route(
+            "/v1/model-versions/{id}/evaluate",
+            post(evaluate_model_version),
         )
         .route("/v1/annotation-projects", post(create_annotation_project))
         .route(
@@ -2168,6 +2319,8 @@ mod tests {
             datasets: Arc::new(Mutex::new(InMemoryDatasetRegistry::new())),
             training: Arc::new(Mutex::new(InMemoryTrainingRegistry::new())),
             models: Arc::new(Mutex::new(InMemoryModelRegistry::new())),
+            conversions: Arc::new(Mutex::new(InMemoryConversionRegistry::new())),
+            evaluations: Arc::new(Mutex::new(InMemoryEvaluationRegistry::new())),
             annotations: Arc::new(Mutex::new(InMemoryAnnotationRegistry::new())),
             outbox: Arc::new(InMemoryOutbox::new()),
             audit: Arc::new(InMemoryAuditLog::new()),

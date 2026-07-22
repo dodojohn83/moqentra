@@ -8,8 +8,8 @@ use axum::serve;
 mod artifact_validator;
 use artifact_validator::AppArtifactValidator;
 use moqentra_application::{
-    InMemoryAnnotationRegistry, InMemoryDatasetRegistry, InMemoryModelRegistry,
-    InMemoryTrainingRegistry,
+    InMemoryAnnotationRegistry, InMemoryConversionRegistry, InMemoryDatasetRegistry,
+    InMemoryEvaluationRegistry, InMemoryModelRegistry, InMemoryTrainingRegistry,
 };
 use moqentra_auth::InMemoryAuditLog;
 use moqentra_auth::{
@@ -130,6 +130,8 @@ fn build_state_from_env() -> AppState {
         datasets: Arc::new(Mutex::new(InMemoryDatasetRegistry::new())),
         training: Arc::new(Mutex::new(InMemoryTrainingRegistry::new())),
         models: Arc::new(Mutex::new(InMemoryModelRegistry::new())),
+        conversions: Arc::new(Mutex::new(InMemoryConversionRegistry::new())),
+        evaluations: Arc::new(Mutex::new(InMemoryEvaluationRegistry::new())),
         annotations: Arc::new(Mutex::new(InMemoryAnnotationRegistry::new())),
         outbox: Arc::new(InMemoryOutbox::new()),
         audit,
