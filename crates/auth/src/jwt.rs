@@ -18,12 +18,15 @@ pub struct TokenClaims {
     pub roles: Vec<String>,
     #[serde(default)]
     pub tenant_ids: Vec<String>,
+    #[serde(default)]
+    pub nonce: Option<String>,
 }
 
 /// Validator for bearer tokens.
+#[async_trait::async_trait]
 pub trait TokenValidator: Send + Sync {
     /// Validates a token and returns the authenticated principal.
-    fn validate(&self, token: &str) -> Result<Principal, Error>;
+    async fn validate(&self, token: &str) -> Result<Principal, Error>;
 }
 
 /// HMAC-based validator for local development and tests.
@@ -85,8 +88,9 @@ impl HmacValidator {
     }
 }
 
+#[async_trait::async_trait]
 impl TokenValidator for HmacValidator {
-    fn validate(&self, token: &str) -> Result<Principal, Error> {
+    async fn validate(&self, token: &str) -> Result<Principal, Error> {
         self.validate_claims(token).map(|(p, _)| p)
     }
 }
@@ -105,8 +109,9 @@ impl ServiceAccountValidator {
     }
 }
 
+#[async_trait::async_trait]
 impl TokenValidator for ServiceAccountValidator {
-    fn validate(&self, token: &str) -> Result<Principal, Error> {
+    async fn validate(&self, token: &str) -> Result<Principal, Error> {
         if token.is_empty() {
             return Err(Error::unauthenticated(
                 "service account token must not be empty",
@@ -125,20 +130,30 @@ pub fn map_roles(claim_roles: &[String]) -> Vec<crate::rbac::Role> {
     claim_roles.iter().filter_map(|s| s.parse::<crate::rbac::Role>().ok()).collect()
 }
 
-/// Tries HMAC JWT first, then service-account token lookup.
+/// Tries OIDC, then HMAC JWT, then service-account token lookup.
 #[derive(Clone)]
 pub struct CompositeTokenValidator {
+    oidc: Option<crate::oidc::JwkSetValidator>,
     hmac: Option<HmacValidator>,
     service: Option<ServiceAccountValidator>,
 }
 
 impl CompositeTokenValidator {
     pub fn new(hmac: Option<HmacValidator>, service: Option<ServiceAccountValidator>) -> Self {
-        Self { hmac, service }
+        Self {
+            oidc: None,
+            hmac,
+            service,
+        }
+    }
+
+    pub fn with_oidc(mut self, oidc: crate::oidc::JwkSetValidator) -> Self {
+        self.oidc = Some(oidc);
+        self
     }
 
     pub fn is_configured(&self) -> bool {
-        self.hmac.is_some() || self.service.is_some()
+        self.oidc.is_some() || self.hmac.is_some() || self.service.is_some()
     }
 }
 
@@ -152,11 +167,17 @@ pub struct AuthSession {
 
 impl CompositeTokenValidator {
     /// Validate and extract role claims when available (HMAC path).
-    pub fn validate_session(&self, token: &str) -> Result<AuthSession, Error> {
+    pub async fn validate_session(&self, token: &str) -> Result<AuthSession, Error> {
         if token.trim().is_empty() {
             return Err(Error::unauthenticated("token must not be empty"));
         }
         let mut last_err = Error::unauthenticated("no token validator configured");
+        if let Some(oidc) = &self.oidc {
+            match oidc.validate_session(token).await {
+                Ok(session) => return Ok(session),
+                Err(e) => last_err = e,
+            }
+        }
         if let Some(hmac) = &self.hmac {
             match hmac.validate_claims(token) {
                 Ok((principal, claims)) => {
@@ -170,7 +191,7 @@ impl CompositeTokenValidator {
             }
         }
         if let Some(service) = &self.service {
-            match service.validate(token) {
+            match service.validate(token).await {
                 Ok(principal) => {
                     return Ok(AuthSession {
                         principal,
@@ -186,9 +207,10 @@ impl CompositeTokenValidator {
     }
 }
 
+#[async_trait::async_trait]
 impl TokenValidator for CompositeTokenValidator {
-    fn validate(&self, token: &str) -> Result<Principal, Error> {
-        self.validate_session(token).map(|s| s.principal)
+    async fn validate(&self, token: &str) -> Result<Principal, Error> {
+        self.validate_session(token).await.map(|s| s.principal)
     }
 }
 
@@ -198,8 +220,8 @@ mod tests {
     use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
     use moqentra_types::RandomIdGenerator;
 
-    #[test]
-    fn hmac_validator_roundtrip() {
+    #[tokio::test]
+    async fn hmac_validator_roundtrip() {
         let gen = RandomIdGenerator;
         let user_id = UserId::new_v7(&gen);
         let claims = TokenClaims {
@@ -210,6 +232,7 @@ mod tests {
             iat: 0,
             roles: vec!["viewer".to_string()],
             tenant_ids: vec![],
+            nonce: None,
         };
 
         let token = encode(
@@ -219,12 +242,12 @@ mod tests {
         )
         .unwrap();
         let validator = HmacValidator::new("secret", "https://moqentra.test", "moqentra");
-        let principal = validator.validate(&token).unwrap();
+        let principal = validator.validate(&token).await.unwrap();
         assert!(matches!(principal, Principal::User { id } if id == user_id));
     }
 
-    #[test]
-    fn expired_token_rejected() {
+    #[tokio::test]
+    async fn expired_token_rejected() {
         let gen = RandomIdGenerator;
         let user_id = UserId::new_v7(&gen);
         let claims = TokenClaims {
@@ -235,6 +258,7 @@ mod tests {
             iat: 0,
             roles: vec![],
             tenant_ids: vec![],
+            nonce: None,
         };
 
         let token = encode(
@@ -244,11 +268,11 @@ mod tests {
         )
         .unwrap();
         let validator = HmacValidator::new("secret", "https://moqentra.test", "moqentra");
-        assert!(validator.validate(&token).is_err());
+        assert!(validator.validate(&token).await.is_err());
     }
 
-    #[test]
-    fn wrong_issuer_rejected() {
+    #[tokio::test]
+    async fn wrong_issuer_rejected() {
         let gen = RandomIdGenerator;
         let user_id = UserId::new_v7(&gen);
         let claims = TokenClaims {
@@ -259,6 +283,7 @@ mod tests {
             iat: 0,
             roles: vec![],
             tenant_ids: vec![],
+            nonce: None,
         };
 
         let token = encode(
@@ -268,6 +293,6 @@ mod tests {
         )
         .unwrap();
         let validator = HmacValidator::new("secret", "https://moqentra.test", "moqentra");
-        assert!(validator.validate(&token).is_err());
+        assert!(validator.validate(&token).await.is_err());
     }
 }

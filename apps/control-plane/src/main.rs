@@ -14,8 +14,8 @@ use moqentra_application::{
     InMemoryDatasetRegistry, InMemoryModelRegistry, InMemoryTrainingRegistry,
 };
 use moqentra_auth::{
-    Action, Authorizer, CompositeTokenValidator, HmacValidator, Resource, Role, Scope,
-    ServiceAccountValidator,
+    Action, Authorizer, CompositeTokenValidator, HmacValidator, JwkSetValidator, OidcConfig,
+    Resource, Role, Scope, ServiceAccountValidator,
 };
 use moqentra_domain::annotation::{AnnotationProject, Ontology, TaskType};
 use moqentra_domain::application::ApplicationSpec;
@@ -130,7 +130,7 @@ fn header_str(headers: &HeaderMap, name: &str) -> Option<String> {
     headers.get(name).and_then(|v| v.to_str().ok()).map(|s| s.to_string())
 }
 
-fn resolve_context(state: &AppState, headers: &HeaderMap) -> Result<RequestContext, Error> {
+async fn resolve_context(state: &AppState, headers: &HeaderMap) -> Result<RequestContext, Error> {
     let request_id = header_str(headers, "x-request-id")
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| format!("req-{}", UtcTimestamp::now()));
@@ -140,7 +140,7 @@ fn resolve_context(state: &AppState, headers: &HeaderMap) -> Result<RequestConte
     let tenant_id = TenantId::try_from(tenant_raw.as_str())?;
 
     let principal = if let Some(token) = bearer_token(headers) {
-        let session = state.tokens.validate_session(&token)?;
+        let session = state.tokens.validate_session(&token).await?;
         // Seed JWT claim roles into the authorizer (deny-by-default still applies
         // until roles are present for this user/tenant).
         if let Principal::User { id } = session.principal {
@@ -277,7 +277,7 @@ async fn whoami(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<WhoAmIResponse>, ApiError> {
-    let ctx = resolve_context(&state, &headers)?;
+    let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     Ok(Json(WhoAmIResponse {
         principal: ctx.principal,
@@ -291,7 +291,7 @@ async fn compile_application(
     headers: HeaderMap,
     Json(req): Json<CompileRequest>,
 ) -> Result<Json<CompileResult>, ApiError> {
-    let ctx = resolve_context(&state, &headers)?;
+    let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Create, Resource::ApplicationVersion)?;
     let result = state.compiler.compile(req.spec)?;
@@ -303,7 +303,7 @@ async fn create_dataset(
     headers: HeaderMap,
     Json(req): Json<CreateDatasetRequest>,
 ) -> Result<(StatusCode, Json<DatasetResponse>), ApiError> {
-    let ctx = resolve_context(&state, &headers)?;
+    let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Create, Resource::Dataset)?;
     let project_id = resolve_project_id(&ctx, &req.project_id)?;
@@ -340,7 +340,7 @@ async fn get_dataset(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<DatasetResponse>, ApiError> {
-    let ctx = resolve_context(&state, &headers)?;
+    let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Read, Resource::Dataset)?;
 
@@ -360,7 +360,7 @@ async fn list_datasets(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<DatasetResponse>>, ApiError> {
-    let ctx = resolve_context(&state, &headers)?;
+    let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::List, Resource::Dataset)?;
 
@@ -443,7 +443,7 @@ async fn create_experiment(
     headers: HeaderMap,
     Json(req): Json<CreateExperimentRequest>,
 ) -> Result<(StatusCode, Json<ExperimentResponse>), ApiError> {
-    let ctx = resolve_context(&state, &headers)?;
+    let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Create, Resource::TrainingJob)?;
     let project_id = resolve_project_id(&ctx, &req.project_id)?;
@@ -472,7 +472,7 @@ async fn list_experiments(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<ExperimentResponse>>, ApiError> {
-    let ctx = resolve_context(&state, &headers)?;
+    let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::List, Resource::TrainingJob)?;
     let reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
@@ -493,7 +493,7 @@ async fn create_training_job(
     headers: HeaderMap,
     Json(req): Json<CreateTrainingJobRequest>,
 ) -> Result<(StatusCode, Json<TrainingJobResponse>), ApiError> {
-    let ctx = resolve_context(&state, &headers)?;
+    let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Create, Resource::TrainingJob)?;
     let project_id = resolve_project_id(&ctx, &req.project_id)?;
@@ -561,7 +561,7 @@ async fn list_training_jobs(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<TrainingJobResponse>>, ApiError> {
-    let ctx = resolve_context(&state, &headers)?;
+    let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Read, Resource::TrainingJob)?;
     let reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
@@ -582,7 +582,7 @@ async fn admit_training_job(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<TrainingJobResponse>, ApiError> {
-    let ctx = resolve_context(&state, &headers)?;
+    let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Execute, Resource::TrainingJob)?;
     let job_id = TrainingJobId::try_from(id.as_str())?;
@@ -616,7 +616,7 @@ async fn cancel_training_job(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<TrainingJobResponse>, ApiError> {
-    let ctx = resolve_context(&state, &headers)?;
+    let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Execute, Resource::TrainingJob)?;
     let job_id = TrainingJobId::try_from(id.as_str())?;
@@ -646,7 +646,7 @@ async fn create_dataset_version(
     headers: HeaderMap,
     Json(req): Json<CreateDatasetVersionRequest>,
 ) -> Result<(StatusCode, Json<DatasetVersionResponse>), ApiError> {
-    let ctx = resolve_context(&state, &headers)?;
+    let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Create, Resource::DatasetVersion)?;
     let dataset_id = DatasetId::try_from(req.dataset_id.as_str())?;
@@ -684,7 +684,7 @@ async fn create_model(
     headers: HeaderMap,
     Json(req): Json<CreateModelRequest>,
 ) -> Result<(StatusCode, Json<ModelResponse>), ApiError> {
-    let ctx = resolve_context(&state, &headers)?;
+    let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Create, Resource::ModelVersion)?;
     let project_id = resolve_project_id(&ctx, &req.project_id)?;
@@ -705,7 +705,7 @@ async fn list_models(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<ModelResponse>>, ApiError> {
-    let ctx = resolve_context(&state, &headers)?;
+    let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::List, Resource::ModelVersion)?;
     let reg = state.models.lock().unwrap_or_else(|e| e.into_inner());
@@ -725,7 +725,7 @@ async fn create_annotation_project(
     headers: HeaderMap,
     Json(req): Json<CreateAnnotationProjectRequest>,
 ) -> Result<(StatusCode, Json<AnnotationProjectResponse>), ApiError> {
-    let ctx = resolve_context(&state, &headers)?;
+    let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Create, Resource::AnnotationTask)?;
     let project_id = resolve_project_id(&ctx, &req.project_id)?;
@@ -762,7 +762,7 @@ async fn activate_annotation_project(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<AnnotationProjectResponse>, ApiError> {
-    let ctx = resolve_context(&state, &headers)?;
+    let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Update, Resource::AnnotationTask)?;
     let id = AnnotationProjectId::try_from(id.as_str())?;
@@ -779,7 +779,7 @@ async fn list_outbox(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<serde_json::Value>>, ApiError> {
-    let ctx = resolve_context(&state, &headers)?;
+    let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Read, Resource::AuditLog)?;
     let pending = state.outbox.poll_pending(100).await?;
@@ -1003,6 +1003,26 @@ async fn apply_dispatch(state: &AppState, action: DispatchAction) -> Result<(), 
 }
 
 fn build_state_from_env() -> AppState {
+    // OIDC configuration takes precedence for browser tokens.
+    let oidc =
+        std::env::var("MOQENTRA_OIDC_ISSUER")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .and_then(|issuer| {
+                std::env::var("MOQENTRA_OIDC_AUDIENCE").ok().filter(|s| !s.is_empty()).map(
+                    |audience| {
+                        let mut config = OidcConfig::new(issuer, audience);
+                        if let Ok(uri) = std::env::var("MOQENTRA_OIDC_JWKS_URI") {
+                            if !uri.is_empty() {
+                                config = config.with_jwks_uri(uri);
+                            }
+                        }
+                        JwkSetValidator::new(config)
+                    },
+                )
+            });
+
+    // HMAC is kept only for local integration tests; OIDC is the production path.
     let jwt_secret = std::env::var("MOQENTRA_JWT_SECRET").ok().filter(|s| !s.is_empty());
     let issuer = std::env::var("MOQENTRA_JWT_ISSUER")
         .unwrap_or_else(|_| "https://moqentra.local".to_string());
@@ -1028,7 +1048,10 @@ fn build_state_from_env() -> AppState {
         Some(ServiceAccountValidator::new(service_map))
     };
 
-    let tokens = CompositeTokenValidator::new(hmac, service);
+    let mut tokens = CompositeTokenValidator::new(hmac, service);
+    if let Some(oidc) = oidc {
+        tokens = tokens.with_oidc(oidc);
+    }
     let require_auth = std::env::var("MOQENTRA_REQUIRE_AUTH")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(tokens.is_configured());
@@ -1146,6 +1169,7 @@ mod tests {
             iat: 0,
             roles: vec!["ml_engineer".to_string()],
             tenant_ids: vec![],
+            nonce: None,
         };
         encode(
             &Header::new(Algorithm::HS256),

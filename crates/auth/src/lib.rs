@@ -4,6 +4,7 @@
 
 pub mod audit;
 pub mod jwt;
+pub mod oidc;
 pub mod rbac;
 pub mod secrets;
 
@@ -12,6 +13,7 @@ pub use jwt::{
     map_roles, AuthSession, CompositeTokenValidator, HmacValidator, ServiceAccountValidator,
     TokenClaims, TokenValidator,
 };
+pub use oidc::{JwkSetValidator, OidcConfig};
 pub use rbac::{
     Action, AuthorizationError, Authorizer, Decision, Permission, Resource, Role, Scope,
 };
