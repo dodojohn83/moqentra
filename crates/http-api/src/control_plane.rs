@@ -14,8 +14,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{middleware, Json, Router};
 use moqentra_application::{
-    plan_dispatch, ApplicationCompiler, CompileResult, DispatchAction, InMemoryAnnotationRegistry,
-    InMemoryDatasetRegistry, InMemoryModelRegistry, InMemoryTrainingRegistry,
+    plan_dispatch, ApplicationCompiler, ArtifactReconciler, CompileResult, DispatchAction,
+    InMemoryAnnotationRegistry, InMemoryDatasetRegistry, InMemoryModelRegistry,
+    InMemoryTrainingRegistry,
 };
 use moqentra_auth::{
     Action, AuditCategory, AuditEvent, AuditLog, AuditOutcome, Authorizer, CompositeTokenValidator,
@@ -25,7 +26,7 @@ use moqentra_domain::annotation::{AnnotationProject, Ontology, TaskType};
 use moqentra_domain::application::ApplicationSpec;
 use moqentra_domain::dataset::{AssetRef, Dataset, DatasetVersion};
 use moqentra_domain::import::ImportJob;
-use moqentra_domain::model_registry::Model;
+use moqentra_domain::model_registry::{Model, ModelVersion};
 use moqentra_domain::training::{
     DistributedConfig, Experiment, ParameterSchema, ResourceRequest, TrainingJob, TrainingJobSpec,
 };
@@ -34,9 +35,9 @@ use moqentra_object_store::{
 };
 use moqentra_storage::{InMemoryOutbox, OutboxEvent, OutboxStatus, OutboxStore, PgRoleStore};
 use moqentra_types::{
-    AnnotationProjectId, AssetId, DatasetId, DatasetVersionId, Error, ExperimentId, ModelId, Page,
-    PageRequest, Principal, ProjectId, RandomIdGenerator, RequestContext, TenantId, TrainingJobId,
-    UtcTimestamp,
+    AnnotationProjectId, AssetId, DatasetId, DatasetVersionId, Error, ExperimentId, ModelId,
+    ModelVersionId, Page, PageRequest, Principal, ProjectId, RandomIdGenerator, RequestContext,
+    TenantId, TrainingJobId, UtcTimestamp,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -544,6 +545,38 @@ struct CreateModelRequest {
 struct ModelResponse {
     id: String,
     name: String,
+}
+
+impl ModelResponse {
+    fn from_model(m: &Model) -> Self {
+        Self {
+            id: m.id.to_string(),
+            name: m.name.clone(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct ModelVersionResponse {
+    id: String,
+    model_id: String,
+    version: String,
+    state: String,
+    created_at: String,
+    updated_at: String,
+}
+
+impl ModelVersionResponse {
+    fn from_version(v: &ModelVersion) -> Self {
+        Self {
+            id: v.id.to_string(),
+            model_id: v.model_id.to_string(),
+            version: v.version.clone(),
+            state: format!("{:?}", v.state),
+            created_at: v.created_at.to_string(),
+            updated_at: v.updated_at.to_string(),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -1630,14 +1663,61 @@ async fn list_models(
     let limit = page.bounded_limit() as usize;
     let offset = page.offset as usize;
     let end = (offset + limit).min(items.len());
-    let page_items = items[offset..end]
-        .iter()
-        .map(|m| ModelResponse {
-            id: m.id.to_string(),
-            name: m.name.clone(),
-        })
-        .collect();
+    let page_items = items[offset..end].iter().map(ModelResponse::from_model).collect();
     Ok(Json(Page::new(page_items, total, page)))
+}
+
+async fn request_publish_model_version(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ModelVersionResponse>, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Update, Resource::ModelVersion).await?;
+    let version_id = ModelVersionId::try_from(id.as_str())?;
+    let mut reg = state.models.lock().unwrap_or_else(|e| e.into_inner());
+    let version = reg
+        .with_version_mut(ctx.tenant_id, version_id, |v| {
+            ArtifactReconciler::reconcile(v)?;
+            Ok(v.clone())
+        })
+        .map_err(ApiError::from)?;
+    Ok(Json(ModelVersionResponse::from_version(&version)))
+}
+
+async fn approve_model_version(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ModelVersionResponse>, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Admin, Resource::ModelVersion).await?;
+    let user_id = match ctx.principal {
+        Principal::User { id } => id,
+        _ => return Err(Error::permission_denied("approval requires a user principal").into()),
+    };
+    let version_id = ModelVersionId::try_from(id.as_str())?;
+    let version = {
+        let mut reg = state.models.lock().unwrap_or_else(|e| e.into_inner());
+        reg.with_version_mut(ctx.tenant_id, version_id, |v| {
+            v.approve(user_id)?;
+            Ok(v.clone())
+        })
+        .map_err(ApiError::from)?
+    };
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::ModelPublish,
+        "model-version.approve",
+        Resource::ModelVersion,
+        Some(&version.id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok(Json(ModelVersionResponse::from_version(&version)))
 }
 
 async fn create_annotation_project(
@@ -1851,6 +1931,14 @@ pub fn app_router(state: AppState) -> Router {
             get(get_import_job).delete(cancel_import_job),
         )
         .route("/v1/models", post(create_model).get(list_models))
+        .route(
+            "/v1/model-versions/{id}/request-publish",
+            post(request_publish_model_version),
+        )
+        .route(
+            "/v1/model-versions/{id}/approve",
+            post(approve_model_version),
+        )
         .route("/v1/annotation-projects", post(create_annotation_project))
         .route(
             "/v1/annotation-projects/{id}/activate",
