@@ -2266,6 +2266,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "clap",
+ "moqentra-application",
  "moqentra-auth",
  "moqentra-types",
  "serde",

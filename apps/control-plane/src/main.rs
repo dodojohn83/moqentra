@@ -289,6 +289,38 @@ async fn authorize(
     }
 }
 
+async fn audit_write(
+    state: &AppState,
+    ctx: &RequestContext,
+    category: AuditCategory,
+    action: &str,
+    resource_type: Resource,
+    resource_id: Option<&str>,
+    outcome: AuditOutcome,
+) {
+    let mut resource = format!("{resource_type:?}");
+    if let Some(id) = resource_id {
+        resource.push(':');
+        resource.push_str(id);
+    }
+    let event = AuditEvent {
+        event_id: format!("evt-{}", Uuid::new_v4()),
+        category,
+        actor: ctx.principal.clone(),
+        tenant_id: ctx.tenant_id,
+        project_id: ctx.project_id,
+        action: action.to_string(),
+        resource,
+        outcome,
+        reason: None,
+        correlation_id: ctx.request_id.clone(),
+        occurred_at: UtcTimestamp::now(),
+    };
+    if let Err(e) = state.audit.record(event).await {
+        tracing::warn!("failed to record write audit event: {}", e);
+    }
+}
+
 async fn healthz() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok",
@@ -333,6 +365,16 @@ async fn compile_application(
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Create, Resource::ApplicationVersion).await?;
     let result = state.compiler.compile(req.spec)?;
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "application.compile",
+        Resource::ApplicationVersion,
+        Some(&result.digest),
+        AuditOutcome::Success,
+    )
+    .await;
     Ok(Json(result))
 }
 
@@ -359,6 +401,16 @@ async fn create_dataset(
         &created.id.to_string(),
         "dataset.created",
         serde_json::json!({"name": created.name}),
+    )
+    .await;
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "dataset.create",
+        Resource::Dataset,
+        Some(&created.id.to_string()),
+        AuditOutcome::Success,
     )
     .await;
     Ok((
@@ -494,8 +546,20 @@ async fn create_experiment(
         DatasetVersionId::try_from(req.dataset_version_id.as_str())?,
         req.target_metric,
     )?;
-    let mut reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
-    let created = reg.create_experiment(exp)?;
+    let created = {
+        let mut reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
+        reg.create_experiment(exp)?
+    };
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Training,
+        "experiment.create",
+        Resource::TrainingJob,
+        Some(&created.id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
     Ok((
         StatusCode::CREATED,
         Json(ExperimentResponse {
@@ -570,6 +634,16 @@ async fn create_training_job(
         let mut reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
         reg.create_job(job)?
     };
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Training,
+        "training_job.create",
+        Resource::TrainingJob,
+        Some(&created.id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
     emit_event(
         &state,
         ctx.tenant_id,
@@ -628,6 +702,16 @@ async fn admit_training_job(
         let mut reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
         reg.admit_job(ctx.tenant_id, job_id)?.clone()
     };
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Training,
+        "training_job.admit",
+        Resource::TrainingJob,
+        Some(&job.id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
     emit_event(
         &state,
         ctx.tenant_id,
@@ -658,8 +742,20 @@ async fn cancel_training_job(
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Execute, Resource::TrainingJob).await?;
     let job_id = TrainingJobId::try_from(id.as_str())?;
-    let mut reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
-    let job = reg.cancel_job(ctx.tenant_id, job_id)?;
+    let job = {
+        let mut reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
+        reg.cancel_job(ctx.tenant_id, job_id)?.clone()
+    };
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Training,
+        "training_job.cancel",
+        Resource::TrainingJob,
+        Some(&job.id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
     Ok(Json(TrainingJobResponse {
         id: job.id.to_string(),
         experiment_id: job.experiment_id.to_string(),
@@ -707,6 +803,16 @@ async fn create_dataset_version(
         let mut reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
         reg.create_version(version)?
     };
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "dataset_version.create",
+        Resource::DatasetVersion,
+        Some(&created.id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
     Ok((
         StatusCode::CREATED,
         Json(DatasetVersionResponse {
@@ -728,8 +834,20 @@ async fn create_model(
     let project_id = resolve_project_id(&ctx, &req.project_id)?;
     let gen = RandomIdGenerator;
     let model = Model::new(ModelId::new_v7(&gen), ctx.tenant_id, project_id, req.name)?;
-    let mut reg = state.models.lock().unwrap_or_else(|e| e.into_inner());
-    let created = reg.create_model(model)?;
+    let created = {
+        let mut reg = state.models.lock().unwrap_or_else(|e| e.into_inner());
+        reg.create_model(model)?
+    };
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::ModelPublish,
+        "model.create",
+        Resource::ModelVersion,
+        Some(&created.id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
     Ok((
         StatusCode::CREATED,
         Json(ModelResponse {
@@ -783,8 +901,20 @@ async fn create_annotation_project(
         task_type,
         Ontology::new(vec![], vec![req.task_type]),
     )?;
-    let mut reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
-    let created = reg.create_project(ap)?;
+    let created = {
+        let mut reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
+        reg.create_project(ap)?
+    };
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "annotation_project.create",
+        Resource::AnnotationTask,
+        Some(&created.id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
     Ok((
         StatusCode::CREATED,
         Json(AnnotationProjectResponse {
@@ -804,8 +934,20 @@ async fn activate_annotation_project(
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Update, Resource::AnnotationTask).await?;
     let id = AnnotationProjectId::try_from(id.as_str())?;
-    let mut reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
-    let p = reg.activate(ctx.tenant_id, id)?;
+    let p = {
+        let mut reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
+        reg.activate(ctx.tenant_id, id)?.clone()
+    };
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "annotation_project.activate",
+        Resource::AnnotationTask,
+        Some(&p.id.to_string()),
+        AuditOutcome::Success,
+    )
+    .await;
     Ok(Json(AnnotationProjectResponse {
         id: p.id.to_string(),
         name: p.name.clone(),

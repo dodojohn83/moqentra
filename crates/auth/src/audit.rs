@@ -7,6 +7,7 @@ use moqentra_types::{Principal, ProjectId, TenantId, UtcTimestamp};
 pub enum AuditCategory {
     Authentication,
     Authorization,
+    Write,
     DataExport,
     Training,
     ModelPublish,
@@ -20,6 +21,7 @@ impl AuditCategory {
         match self {
             AuditCategory::Authentication => "authentication",
             AuditCategory::Authorization => "authorization",
+            AuditCategory::Write => "write",
             AuditCategory::DataExport => "data_export",
             AuditCategory::Training => "training",
             AuditCategory::ModelPublish => "model_publish",
