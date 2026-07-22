@@ -2,9 +2,11 @@
 
 #![allow(missing_docs)]
 
+pub mod key;
 pub mod memory;
 pub mod s3;
 
+pub use key::ObjectKey;
 pub use memory::InMemoryObjectStore;
 pub use s3::S3ObjectStore;
 
