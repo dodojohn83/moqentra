@@ -14,7 +14,7 @@
 - [x] `R1-DATA-007` 持久化 Dataset、Asset、DatasetVersion 和 Manifest，冻结事务中验证所有对象、标签 schema 和摘要后原子发布。
 - [x] `R1-DATA-008` 使用固定 seed 和明确规则生成 train/val/test split；规则和结果进入 `DatasetManifest/v1`，重新生成摘要稳定。
 - [x] `R1-DATA-009` 冻结后禁止增加、删除或替换资产；变更只能派生新版本并保留 parent/source lineage。
-- [ ] `R1-DATA-010` 实现 COCO、LabelU native 和平台中间格式导入导出，验证 round-trip 不丢类别、bbox、polygon、frame 和追踪标识。
+- [x] `R1-DATA-010` 实现 COCO、LabelU native 和平台中间格式导入导出，验证 round-trip 不丢类别、bbox、polygon、frame 和追踪标识。
 
 ## 3. LabelU-Kit 与审核
 
