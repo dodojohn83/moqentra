@@ -47,7 +47,7 @@ impl ScopedConnection {
     /// The variable is session-local and cleared when the session ends.
     pub async fn set_tenant(&mut self, tenant_id: TenantId) -> Result<(), Error> {
         let value = tenant_id.to_string();
-        sqlx::query("SET LOCAL app.current_tenant = $1")
+        sqlx::query("SELECT set_config('app.current_tenant', $1, true)")
             .bind(&value)
             .execute(&mut *self.conn)
             .await

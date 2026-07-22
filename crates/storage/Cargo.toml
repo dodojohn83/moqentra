@@ -12,6 +12,7 @@ path = "src/bin/migrate.rs"
 
 [dependencies]
 moqentra-types = { path = "../types" }
+moqentra-auth = { path = "../auth" }
 
 tokio = { workspace = true }
 tracing = { workspace = true }

@@ -14,8 +14,9 @@ use moqentra_application::{
     InMemoryDatasetRegistry, InMemoryModelRegistry, InMemoryTrainingRegistry,
 };
 use moqentra_auth::{
-    Action, Authorizer, CompositeTokenValidator, HmacValidator, JwkSetValidator, OidcConfig,
-    Resource, Role, Scope, ServiceAccountValidator,
+    Action, AuditCategory, AuditEvent, AuditLog, AuditOutcome, Authorizer, CompositeTokenValidator,
+    HmacValidator, InMemoryAuditLog, JwkSetValidator, OidcConfig, Resource, Role, Scope,
+    ServiceAccountValidator,
 };
 use moqentra_domain::annotation::{AnnotationProject, Ontology, TaskType};
 use moqentra_domain::application::ApplicationSpec;
@@ -25,7 +26,7 @@ use moqentra_domain::training::{
     DistributedConfig, Experiment, ParameterSchema, ResourceRequest, TrainingJob, TrainingJobSpec,
 };
 use moqentra_http_api::northbound::{ProblemDetails, TokenBucketLimiter};
-use moqentra_storage::{InMemoryOutbox, OutboxEvent, OutboxStatus, OutboxStore};
+use moqentra_storage::{InMemoryOutbox, OutboxEvent, OutboxStatus, OutboxStore, PgAuditLog};
 use moqentra_types::{
     AnnotationProjectId, DatasetId, DatasetVersionId, Error, ExperimentId, ModelId, Principal,
     ProjectId, RandomIdGenerator, RequestContext, TenantId, TrainingJobId, UtcTimestamp,
@@ -52,6 +53,9 @@ struct AppState {
     models: Arc<Mutex<InMemoryModelRegistry>>,
     annotations: Arc<Mutex<InMemoryAnnotationRegistry>>,
     outbox: Arc<InMemoryOutbox>,
+    audit: Arc<dyn AuditLog + Send + Sync>,
+    /// Optional PostgreSQL pool for audit / repository persistence.
+    db_pool: Option<sqlx::PgPool>,
     /// Optional downstream URLs for outbox side-effects.
     scheduler_url: Option<String>,
     node_agent_url: Option<String>,
@@ -231,7 +235,7 @@ fn check_rate_limit(state: &AppState, tenant_id: TenantId) -> Result<(), Error> 
     Ok(())
 }
 
-fn authorize(
+async fn authorize(
     state: &AppState,
     ctx: &RequestContext,
     action: Action,
@@ -245,10 +249,33 @@ fn authorize(
     if let Some(project_id) = ctx.project_id {
         scope = scope.with_project(project_id);
     }
-    let authz = state.authorizer.lock().unwrap_or_else(|e| e.into_inner());
-    authz
-        .authorize(ctx, action, resource, &scope)
-        .map_err(|_| Error::permission_denied("not authorized for this action"))
+    let outcome = {
+        let authz = state.authorizer.lock().unwrap_or_else(|e| e.into_inner());
+        match authz.authorize(ctx, action, resource, &scope) {
+            Ok(_) => AuditOutcome::Success,
+            Err(_) => AuditOutcome::Denied,
+        }
+    };
+    let event = AuditEvent {
+        event_id: format!("evt-{}", Uuid::new_v4()),
+        category: AuditCategory::Authorization,
+        actor: ctx.principal.clone(),
+        tenant_id: ctx.tenant_id,
+        project_id: ctx.project_id,
+        action: format!("{action:?}"),
+        resource: format!("{resource:?}"),
+        outcome,
+        reason: None,
+        correlation_id: ctx.request_id.clone(),
+        occurred_at: UtcTimestamp::now(),
+    };
+    if let Err(e) = state.audit.record(event).await {
+        tracing::warn!("failed to record authorization audit event: {}", e);
+    }
+    match outcome {
+        AuditOutcome::Success => Ok(()),
+        _ => Err(Error::permission_denied("not authorized for this action")),
+    }
 }
 
 async fn healthz() -> Json<HealthResponse> {
@@ -293,7 +320,7 @@ async fn compile_application(
 ) -> Result<Json<CompileResult>, ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
-    authorize(&state, &ctx, Action::Create, Resource::ApplicationVersion)?;
+    authorize(&state, &ctx, Action::Create, Resource::ApplicationVersion).await?;
     let result = state.compiler.compile(req.spec)?;
     Ok(Json(result))
 }
@@ -305,7 +332,7 @@ async fn create_dataset(
 ) -> Result<(StatusCode, Json<DatasetResponse>), ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
-    authorize(&state, &ctx, Action::Create, Resource::Dataset)?;
+    authorize(&state, &ctx, Action::Create, Resource::Dataset).await?;
     let project_id = resolve_project_id(&ctx, &req.project_id)?;
 
     let gen = RandomIdGenerator;
@@ -342,7 +369,7 @@ async fn get_dataset(
 ) -> Result<Json<DatasetResponse>, ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
-    authorize(&state, &ctx, Action::Read, Resource::Dataset)?;
+    authorize(&state, &ctx, Action::Read, Resource::Dataset).await?;
 
     let dataset_id = DatasetId::try_from(id.as_str())?;
     let registry = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
@@ -362,7 +389,7 @@ async fn list_datasets(
 ) -> Result<Json<Vec<DatasetResponse>>, ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
-    authorize(&state, &ctx, Action::List, Resource::Dataset)?;
+    authorize(&state, &ctx, Action::List, Resource::Dataset).await?;
 
     let registry = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
     let items = registry
@@ -445,7 +472,7 @@ async fn create_experiment(
 ) -> Result<(StatusCode, Json<ExperimentResponse>), ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
-    authorize(&state, &ctx, Action::Create, Resource::TrainingJob)?;
+    authorize(&state, &ctx, Action::Create, Resource::TrainingJob).await?;
     let project_id = resolve_project_id(&ctx, &req.project_id)?;
     let gen = RandomIdGenerator;
     let exp = Experiment::new(
@@ -474,7 +501,7 @@ async fn list_experiments(
 ) -> Result<Json<Vec<ExperimentResponse>>, ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
-    authorize(&state, &ctx, Action::List, Resource::TrainingJob)?;
+    authorize(&state, &ctx, Action::List, Resource::TrainingJob).await?;
     let reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
     let items = reg
         .list_experiments(ctx.tenant_id, ctx.project_id)
@@ -495,7 +522,7 @@ async fn create_training_job(
 ) -> Result<(StatusCode, Json<TrainingJobResponse>), ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
-    authorize(&state, &ctx, Action::Create, Resource::TrainingJob)?;
+    authorize(&state, &ctx, Action::Create, Resource::TrainingJob).await?;
     let project_id = resolve_project_id(&ctx, &req.project_id)?;
     let gen = RandomIdGenerator;
     let spec = TrainingJobSpec {
@@ -563,7 +590,7 @@ async fn list_training_jobs(
 ) -> Result<Json<Vec<TrainingJobResponse>>, ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
-    authorize(&state, &ctx, Action::Read, Resource::TrainingJob)?;
+    authorize(&state, &ctx, Action::Read, Resource::TrainingJob).await?;
     let reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
     let items = reg
         .list_jobs(ctx.tenant_id, None)
@@ -584,7 +611,7 @@ async fn admit_training_job(
 ) -> Result<Json<TrainingJobResponse>, ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
-    authorize(&state, &ctx, Action::Execute, Resource::TrainingJob)?;
+    authorize(&state, &ctx, Action::Execute, Resource::TrainingJob).await?;
     let job_id = TrainingJobId::try_from(id.as_str())?;
     let job = {
         let mut reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
@@ -618,7 +645,7 @@ async fn cancel_training_job(
 ) -> Result<Json<TrainingJobResponse>, ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
-    authorize(&state, &ctx, Action::Execute, Resource::TrainingJob)?;
+    authorize(&state, &ctx, Action::Execute, Resource::TrainingJob).await?;
     let job_id = TrainingJobId::try_from(id.as_str())?;
     let mut reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
     let job = reg.cancel_job(ctx.tenant_id, job_id)?;
@@ -648,7 +675,7 @@ async fn create_dataset_version(
 ) -> Result<(StatusCode, Json<DatasetVersionResponse>), ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
-    authorize(&state, &ctx, Action::Create, Resource::DatasetVersion)?;
+    authorize(&state, &ctx, Action::Create, Resource::DatasetVersion).await?;
     let dataset_id = DatasetId::try_from(req.dataset_id.as_str())?;
     // Ensure dataset exists and belongs to tenant.
     {
@@ -686,7 +713,7 @@ async fn create_model(
 ) -> Result<(StatusCode, Json<ModelResponse>), ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
-    authorize(&state, &ctx, Action::Create, Resource::ModelVersion)?;
+    authorize(&state, &ctx, Action::Create, Resource::ModelVersion).await?;
     let project_id = resolve_project_id(&ctx, &req.project_id)?;
     let gen = RandomIdGenerator;
     let model = Model::new(ModelId::new_v7(&gen), ctx.tenant_id, project_id, req.name)?;
@@ -707,7 +734,7 @@ async fn list_models(
 ) -> Result<Json<Vec<ModelResponse>>, ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
-    authorize(&state, &ctx, Action::List, Resource::ModelVersion)?;
+    authorize(&state, &ctx, Action::List, Resource::ModelVersion).await?;
     let reg = state.models.lock().unwrap_or_else(|e| e.into_inner());
     let items = reg
         .list_models(ctx.tenant_id, ctx.project_id)
@@ -727,7 +754,7 @@ async fn create_annotation_project(
 ) -> Result<(StatusCode, Json<AnnotationProjectResponse>), ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
-    authorize(&state, &ctx, Action::Create, Resource::AnnotationTask)?;
+    authorize(&state, &ctx, Action::Create, Resource::AnnotationTask).await?;
     let project_id = resolve_project_id(&ctx, &req.project_id)?;
     let task_type = match req.task_type.as_str() {
         "boundingBox" | "rectTool" => TaskType::BoundingBox,
@@ -764,7 +791,7 @@ async fn activate_annotation_project(
 ) -> Result<Json<AnnotationProjectResponse>, ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
-    authorize(&state, &ctx, Action::Update, Resource::AnnotationTask)?;
+    authorize(&state, &ctx, Action::Update, Resource::AnnotationTask).await?;
     let id = AnnotationProjectId::try_from(id.as_str())?;
     let mut reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
     let p = reg.activate(ctx.tenant_id, id)?;
@@ -781,7 +808,7 @@ async fn list_outbox(
 ) -> Result<Json<Vec<serde_json::Value>>, ApiError> {
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
-    authorize(&state, &ctx, Action::Read, Resource::AuditLog)?;
+    authorize(&state, &ctx, Action::Read, Resource::AuditLog).await?;
     let pending = state.outbox.poll_pending(100).await?;
     let items = pending
         .into_iter()
@@ -1056,6 +1083,16 @@ fn build_state_from_env() -> AppState {
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(tokens.is_configured());
 
+    let (audit, db_pool): (Arc<dyn AuditLog + Send + Sync>, Option<sqlx::PgPool>) =
+        match std::env::var("DATABASE_URL") {
+            Ok(url) if !url.is_empty() => {
+                let pool = sqlx::PgPool::connect_lazy(&url)
+                    .expect("DATABASE_URL must be a valid PostgreSQL connection string");
+                (Arc::new(PgAuditLog::new(pool.clone())), Some(pool))
+            }
+            _ => (Arc::new(InMemoryAuditLog::new()), None),
+        };
+
     AppState {
         ready: Arc::new(AtomicBool::new(true)),
         compiler: ApplicationCompiler::new(),
@@ -1068,6 +1105,8 @@ fn build_state_from_env() -> AppState {
         models: Arc::new(Mutex::new(InMemoryModelRegistry::new())),
         annotations: Arc::new(Mutex::new(InMemoryAnnotationRegistry::new())),
         outbox: Arc::new(InMemoryOutbox::new()),
+        audit,
+        db_pool,
         scheduler_url: std::env::var("MOQENTRA_SCHEDULER_URL").ok().filter(|s| !s.is_empty()),
         node_agent_url: std::env::var("MOQENTRA_NODE_AGENT_URL").ok().filter(|s| !s.is_empty()),
         http: reqwest::Client::new(),
@@ -1083,6 +1122,14 @@ async fn main() -> anyhow::Result<()> {
     let addr: SocketAddr = listen.parse()?;
 
     let state = build_state_from_env();
+
+    if let Some(pool) = &state.db_pool {
+        sqlx::migrate!("../../crates/storage/migrations")
+            .run(pool)
+            .await
+            .map_err(|e| anyhow::anyhow!("database migration failed: {e}"))?;
+    }
+
     tracing::info!(
         require_auth = state.require_auth,
         scheduler = ?state.scheduler_url,
@@ -1125,6 +1172,8 @@ mod tests {
             models: Arc::new(Mutex::new(InMemoryModelRegistry::new())),
             annotations: Arc::new(Mutex::new(InMemoryAnnotationRegistry::new())),
             outbox: Arc::new(InMemoryOutbox::new()),
+            audit: Arc::new(InMemoryAuditLog::new()),
+            db_pool: None,
             scheduler_url: None,
             node_agent_url: None,
             http: reqwest::Client::new(),

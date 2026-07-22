@@ -4,6 +4,7 @@
 
 pub mod idempotency;
 pub mod outbox;
+pub mod pg_audit;
 pub mod pg_idempotency;
 pub mod pg_outbox;
 pub mod pool;
@@ -14,6 +15,7 @@ pub use idempotency::{
     InMemoryIdempotencyStore,
 };
 pub use outbox::{InMemoryOutbox, OutboxEvent, OutboxStatus, OutboxStore};
+pub use pg_audit::PgAuditLog;
 pub use pg_idempotency::PgIdempotencyStore;
 pub use pg_outbox::PgOutboxStore;
 pub use pool::{ConnectionPool, ScopedConnection};
