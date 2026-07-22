@@ -4,12 +4,27 @@ use moqentra_types::{DatasetId, DatasetVersionId, ProjectId, TenantId, UtcTimest
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
+use std::str::FromStr;
 
 /// State of a dataset container.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DatasetState {
     Active,
     Archived,
+}
+
+impl FromStr for DatasetState {
+    type Err = moqentra_types::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Active" => Ok(Self::Active),
+            "Archived" => Ok(Self::Archived),
+            _ => Err(moqentra_types::Error::invalid_argument(format!(
+                "unknown dataset state: {s}"
+            ))),
+        }
+    }
 }
 
 /// State of an immutable dataset version.
@@ -19,6 +34,22 @@ pub enum DatasetVersionState {
     Validating,
     Published,
     Deprecated,
+}
+
+impl FromStr for DatasetVersionState {
+    type Err = moqentra_types::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Draft" => Ok(Self::Draft),
+            "Validating" => Ok(Self::Validating),
+            "Published" => Ok(Self::Published),
+            "Deprecated" => Ok(Self::Deprecated),
+            _ => Err(moqentra_types::Error::invalid_argument(format!(
+                "unknown dataset version state: {s}"
+            ))),
+        }
+    }
 }
 
 /// A dataset asset reference.

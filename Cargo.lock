@@ -2268,6 +2268,7 @@ dependencies = [
  "clap",
  "moqentra-application",
  "moqentra-auth",
+ "moqentra-domain",
  "moqentra-types",
  "serde",
  "serde_json",

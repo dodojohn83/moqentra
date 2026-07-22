@@ -9,6 +9,7 @@ pub mod pg_idempotency;
 pub mod pg_outbox;
 pub mod pg_role_store;
 pub mod pool;
+pub mod repositories;
 pub mod unit_of_work;
 
 pub use idempotency::{
@@ -21,6 +22,7 @@ pub use pg_idempotency::PgIdempotencyStore;
 pub use pg_outbox::PgOutboxStore;
 pub use pg_role_store::PgRoleStore;
 pub use pool::{ConnectionPool, ScopedConnection};
+pub use repositories::PgDatasetRepository;
 pub use unit_of_work::{pagination_clause, Cursor, Paginated, UnitOfWork};
 
 pub mod placeholder {
