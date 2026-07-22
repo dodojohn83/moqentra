@@ -48,6 +48,47 @@ pub struct ApplicationSpec {
     pub edges: Vec<(String, String, String, String)>,
 }
 
+/// Canonical dg/v1 graph element.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GraphElement {
+    pub element_type: String,
+    pub runtime_profile: String,
+    pub parameters: BTreeMap<String, serde_json::Value>,
+    /// For each input port, the upstream element ids feeding that port.
+    pub inputs: BTreeMap<String, Vec<String>>,
+    /// For each output port, the downstream element ids receiving that port.
+    pub outputs: BTreeMap<String, Vec<String>>,
+}
+
+/// Canonical dg/v1 graph connection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
+pub struct GraphConnection {
+    pub from: String,
+    pub from_port: String,
+    pub to: String,
+    pub to_port: String,
+}
+
+/// Canonical dg/v1 graph representation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GraphSpec {
+    pub version: String,
+    pub elements: BTreeMap<String, GraphElement>,
+    pub connections: Vec<GraphConnection>,
+}
+
+impl GraphSpec {
+    /// Compute a deterministic digest over the canonical graph.
+    pub fn canonical_digest(&self) -> Result<String, moqentra_types::Error> {
+        use sha2::{Digest, Sha256};
+        let json = serde_json::to_string(self).map_err(|e| {
+            moqentra_types::Error::internal(format!("graph spec serialization failed: {e}"))
+        })?;
+        let hash = Sha256::digest(json.as_bytes());
+        Ok(format!("sha256:{:x}", hash))
+    }
+}
+
 /// A component in the versioned component catalog.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Component {

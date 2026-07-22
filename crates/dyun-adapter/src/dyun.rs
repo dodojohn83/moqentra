@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 pub struct DyunGraphBundle {
     pub version: String,
     pub application_digest: String,
+    pub graph_spec: moqentra_domain::application::GraphSpec,
     pub graph_spec_digest: String,
     pub artifact_bindings: BTreeMap<String, AssetId>,
     pub runtime_profile: String,
@@ -137,6 +138,12 @@ impl Replica {
         {
             return Err(moqentra_types::Error::invalid_argument(
                 "bundle digests must be valid content digests",
+            ));
+        }
+        let computed = self.bundle.graph_spec.canonical_digest()?;
+        if computed != self.bundle.graph_spec_digest {
+            return Err(moqentra_types::Error::invalid_argument(
+                "graph spec digest mismatch",
             ));
         }
         Ok(())
@@ -310,14 +317,19 @@ mod tests {
     use moqentra_types::RandomIdGenerator;
 
     fn make_bundle() -> DyunGraphBundle {
+        let graph_spec = moqentra_domain::application::GraphSpec {
+            version: "dg/v1".to_string(),
+            elements: BTreeMap::new(),
+            connections: Vec::new(),
+        };
+        let graph_spec_digest = graph_spec.canonical_digest().unwrap();
         DyunGraphBundle {
             version: "DyunGraphBundle/v1".to_string(),
             application_digest:
                 "sha256:a172cedcae47474b615c54d510a5d84a8dea3032e958587430b413538be3f333"
                     .to_string(),
-            graph_spec_digest:
-                "sha256:eef93e1d14482804277fca0172464032d1a4fdbcc338524059fa1e861454ad4d"
-                    .to_string(),
+            graph_spec,
+            graph_spec_digest,
             artifact_bindings: BTreeMap::new(),
             runtime_profile: "rtsp-track-rtmp".to_string(),
             resource_limits: ResourceLimits {

@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 moqentra-types = { path = "../../crates/types" }
+moqentra-domain = { path = "../../crates/domain" }
 moqentra-dyun-adapter = { path = "../../crates/dyun-adapter" }
 tokio = { workspace = true }
 axum = { workspace = true }

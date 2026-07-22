@@ -39,6 +39,7 @@ struct CreateReplicaRequest {
     generation: u64,
     fencing_token: u64,
     application_digest: String,
+    graph_spec: moqentra_domain::application::GraphSpec,
     graph_spec_digest: String,
     signature: String,
 }
@@ -101,6 +102,7 @@ async fn create_replica(
     let bundle = DyunGraphBundle {
         version: "DyunGraphBundle/v1".to_string(),
         application_digest: req.application_digest,
+        graph_spec: req.graph_spec,
         graph_spec_digest: req.graph_spec_digest,
         artifact_bindings: BTreeMap::new(),
         runtime_profile: "rtsp-track-rtmp".to_string(),

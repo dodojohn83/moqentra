@@ -34,7 +34,7 @@ pub use training_svc::InMemoryTrainingRegistry;
 
 use moqentra_domain::application::{
     Application, ApplicationSpec, ApplicationVersion, ApplicationVersionState, Binding,
-    ComponentCatalog,
+    ComponentCatalog, GraphConnection, GraphElement, GraphSpec,
 };
 use moqentra_object_store::ObjectKey;
 use moqentra_types::{ApplicationId, ApplicationVersionId, Error, ProjectId, TenantId};
@@ -56,6 +56,10 @@ pub struct CompileResult {
     pub runtime_profiles: Vec<String>,
     /// Resolved model/resource bindings keyed by `node_id:slot`.
     pub artifact_bindings: BTreeMap<String, moqentra_domain::application::ResourceRef>,
+    /// Canonical dg/v1 graph representation.
+    pub graph_spec: GraphSpec,
+    /// Canonical digest of the graph spec.
+    pub graph_spec_digest: String,
 }
 
 /// Structured diff between two application specs.
@@ -146,6 +150,17 @@ impl ApplicationCompiler {
                 validate_resource_ref_name(binding)?;
             }
         }
+        let mut component_lookup: BTreeMap<String, &moqentra_domain::application::Component> =
+            BTreeMap::new();
+        for node in spec.nodes.values() {
+            let component = self.catalog.get(&node.node_type, &node.version).ok_or_else(|| {
+                Error::invalid_argument(format!(
+                    "unknown component '{}/{}' for node '{}'",
+                    node.node_type, node.version, node.id
+                ))
+            })?;
+            component_lookup.insert(format!("{}/{}", node.node_type, node.version), component);
+        }
         spec.edges.sort();
         // Domain constructor is the single authority for digest computation.
         // Ephemeral ids are fine; digests are pure functions of the spec.
@@ -189,6 +204,9 @@ impl ApplicationCompiler {
             }
         }
 
+        let graph_spec = self.build_graph(&spec, &component_lookup)?;
+        let graph_spec_digest = graph_spec.canonical_digest()?;
+
         Ok(CompileResult {
             digest,
             edge_count: spec.edges.len(),
@@ -196,6 +214,61 @@ impl ApplicationCompiler {
             capabilities: capabilities.into_iter().collect(),
             runtime_profiles: runtime_profiles.into_iter().collect(),
             artifact_bindings,
+            graph_spec,
+            graph_spec_digest,
+        })
+    }
+
+    /// Build a canonical dg/v1 `GraphSpec` from a validated `ApplicationSpec`.
+    fn build_graph(
+        &self,
+        spec: &ApplicationSpec,
+        component_lookup: &BTreeMap<String, &moqentra_domain::application::Component>,
+    ) -> Result<GraphSpec, Error> {
+        let mut elements: BTreeMap<String, GraphElement> = BTreeMap::new();
+        for (id, node) in &spec.nodes {
+            let component = component_lookup
+                .get(&format!("{}/{}", node.node_type, node.version))
+                .copied()
+                .ok_or_else(|| Error::invalid_argument(format!("unknown component for {id}")))?;
+            // Start with component defaults; node parameters override.
+            let mut parameters = component.parameters.clone();
+            for (k, v) in &node.parameters {
+                parameters.insert(k.clone(), v.clone());
+            }
+            elements.insert(
+                id.clone(),
+                GraphElement {
+                    element_type: node.node_type.clone(),
+                    runtime_profile: component.runtime_profile.clone(),
+                    parameters,
+                    inputs: BTreeMap::new(),
+                    outputs: BTreeMap::new(),
+                },
+            );
+        }
+
+        let mut connections = Vec::new();
+        for (from, from_port, to, to_port) in &spec.edges {
+            connections.push(GraphConnection {
+                from: from.clone(),
+                from_port: from_port.clone(),
+                to: to.clone(),
+                to_port: to_port.clone(),
+            });
+            if let Some(el) = elements.get_mut(to) {
+                el.inputs.entry(from_port.clone()).or_default().push(from.clone());
+            }
+            if let Some(el) = elements.get_mut(from) {
+                el.outputs.entry(to_port.clone()).or_default().push(to.clone());
+            }
+        }
+        connections.sort();
+
+        Ok(GraphSpec {
+            version: "dg/v1".to_string(),
+            elements,
+            connections,
         })
     }
 

@@ -2534,6 +2534,7 @@ dependencies = [
 name = "moqentra-dyun-adapter"
 version = "0.1.0"
 dependencies = [
+ "moqentra-domain",
  "moqentra-types",
  "serde",
  "serde_json",
@@ -2545,6 +2546,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "moqentra-domain",
  "moqentra-dyun-adapter",
  "moqentra-types",
  "serde",
