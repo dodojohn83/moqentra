@@ -5,6 +5,7 @@
 //!
 //! Health endpoints stay unauthenticated.
 
+use crate::import::ImportJobStore;
 use crate::northbound::{ProblemDetails, TokenBucketLimiter};
 use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -23,6 +24,7 @@ use moqentra_auth::{
 use moqentra_domain::annotation::{AnnotationProject, Ontology, TaskType};
 use moqentra_domain::application::ApplicationSpec;
 use moqentra_domain::dataset::{AssetRef, Dataset, DatasetVersion};
+use moqentra_domain::import::ImportJob;
 use moqentra_domain::model_registry::Model;
 use moqentra_domain::training::{
     DistributedConfig, Experiment, ParameterSchema, ResourceRequest, TrainingJob, TrainingJobSpec,
@@ -64,6 +66,8 @@ pub struct AppState {
     pub upload_sessions: Arc<dyn UploadSessionStore + Send + Sync>,
     /// HMAC secret used to sign part upload URLs.
     pub upload_sig_secret: String,
+    /// Import job store.
+    pub import_jobs: Arc<dyn ImportJobStore + Send + Sync>,
     /// Optional PostgreSQL pool for audit / repository persistence.
     pub db_pool: Option<sqlx::PgPool>,
     /// Optional downstream URLs for outbox side-effects.
@@ -1373,6 +1377,149 @@ async fn abort_upload_session(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+struct CreateImportJobRequest {
+    source_url: String,
+    target_key: String,
+    media_type: String,
+    total_bytes: u64,
+    #[serde(default = "default_import_concurrency")]
+    concurrency: u32,
+    #[serde(default = "default_import_deadline")]
+    deadline_seconds: u32,
+}
+
+fn default_import_concurrency() -> u32 {
+    1
+}
+
+fn default_import_deadline() -> u32 {
+    300
+}
+
+#[derive(Serialize)]
+struct ImportJobResponse {
+    id: String,
+    state: String,
+    source_url: String,
+    target_key: String,
+    media_type: String,
+    total_bytes: u64,
+    transferred_bytes: u64,
+    concurrency: u32,
+    deadline_seconds: u32,
+    digest: Option<String>,
+    failure: Option<String>,
+    retry_count: u32,
+}
+
+impl From<&ImportJob> for ImportJobResponse {
+    fn from(j: &ImportJob) -> Self {
+        Self {
+            id: j.id.clone(),
+            state: format!("{:?}", j.state),
+            source_url: j.source_url.clone(),
+            target_key: j.target_key.clone(),
+            media_type: j.media_type.clone(),
+            total_bytes: j.total_bytes,
+            transferred_bytes: j.transferred_bytes,
+            concurrency: j.concurrency,
+            deadline_seconds: j.deadline_seconds,
+            digest: j.digest.clone(),
+            failure: j.failure.as_ref().map(|f| format!("{:?}", f)),
+            retry_count: j.retry_count,
+        }
+    }
+}
+
+async fn create_import_job(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<CreateImportJobRequest>,
+) -> Result<(StatusCode, Json<ImportJobResponse>), ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Create, Resource::DatasetVersion).await?;
+    let project_id = ctx.project_id.ok_or_else(|| {
+        Error::invalid_argument("X-Project-Id is required when creating an import job")
+    })?;
+    ObjectKey::from_str(ctx.tenant_id, project_id, &req.target_key)?;
+    let id = Uuid::new_v4().to_string();
+    let job = ImportJob::new_v1(
+        id.clone(),
+        ctx.tenant_id,
+        project_id,
+        req.source_url,
+        req.target_key,
+        req.media_type,
+        req.total_bytes,
+        req.concurrency.clamp(1, 16),
+        req.deadline_seconds.clamp(30, 3600),
+    )?;
+    state.import_jobs.save(&job).await?;
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "import_job.create",
+        Resource::DatasetVersion,
+        Some(&id),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok((StatusCode::CREATED, Json(ImportJobResponse::from(&job))))
+}
+
+async fn get_import_job(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(job_id): axum::extract::Path<String>,
+) -> Result<Json<ImportJobResponse>, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Read, Resource::DatasetVersion).await?;
+    let job = state
+        .import_jobs
+        .get(&job_id)
+        .await?
+        .ok_or_else(|| Error::not_found("import job"))?;
+    if job.tenant_id != ctx.tenant_id {
+        return Err(Error::not_found("import job").into());
+    }
+    Ok(Json(ImportJobResponse::from(&job)))
+}
+
+async fn cancel_import_job(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(job_id): axum::extract::Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let ctx = resolve_context(&state, &headers).await?;
+    check_rate_limit(&state, ctx.tenant_id)?;
+    authorize(&state, &ctx, Action::Delete, Resource::DatasetVersion).await?;
+    let mut job = state
+        .import_jobs
+        .get(&job_id)
+        .await?
+        .ok_or_else(|| Error::not_found("import job"))?;
+    if job.tenant_id != ctx.tenant_id {
+        return Err(Error::not_found("import job").into());
+    }
+    job.cancel()?;
+    state.import_jobs.save(&job).await?;
+    audit_write(
+        &state,
+        &ctx,
+        AuditCategory::Write,
+        "import_job.cancel",
+        Resource::DatasetVersion,
+        Some(&job_id),
+        AuditOutcome::Success,
+    )
+    .await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn create_model(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1640,6 +1787,11 @@ pub fn app_router(state: AppState) -> Router {
             "/v1/upload-sessions/{id}/complete",
             post(complete_upload_session),
         )
+        .route("/v1/import-jobs", post(create_import_job))
+        .route(
+            "/v1/import-jobs/{id}",
+            get(get_import_job).delete(cancel_import_job),
+        )
         .route("/v1/models", post(create_model).get(list_models))
         .route("/v1/annotation-projects", post(create_annotation_project))
         .route(
@@ -1785,6 +1937,7 @@ async fn apply_dispatch(state: &AppState, action: DispatchAction) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::import::InMemoryImportJobStore;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use moqentra_auth::{HmacValidator, InMemoryAuditLog, ServiceAccountValidator};
@@ -1815,6 +1968,7 @@ mod tests {
             object_store: Arc::new(InMemoryObjectStore::new()),
             upload_sessions: Arc::new(InMemoryUploadSessionStore::new()),
             upload_sig_secret: "test-upload-secret".to_string(),
+            import_jobs: Arc::new(InMemoryImportJobStore::new()),
             db_pool: None,
             scheduler_url: None,
             node_agent_url: None,

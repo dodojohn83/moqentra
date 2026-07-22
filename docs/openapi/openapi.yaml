@@ -497,6 +497,62 @@ paths:
               schema:
                 $ref: '#/components/schemas/UploadSessionResponse'
 
+  /v1/import-jobs:
+    post:
+      operationId: createImportJob
+      summary: Create an S3/MinIO import job
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateImportJobRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportJobResponse'
+
+  /v1/import-jobs/{id}:
+    get:
+      operationId: getImportJob
+      summary: Get import job status
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Import job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportJobResponse'
+    delete:
+      operationId: cancelImportJob
+      summary: Cancel an import job
+      parameters:
+        - $ref: '#/components/parameters/XTenantId'
+        - $ref: '#/components/parameters/Authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Cancelled
+
   /v1/models:
     get:
       operationId: listModels
@@ -887,6 +943,57 @@ components:
           type: string
         expires_at:
           type: string
+
+    CreateImportJobRequest:
+      type: object
+      required: [source_url, target_key, media_type, total_bytes]
+      properties:
+        source_url:
+          type: string
+        target_key:
+          type: string
+        media_type:
+          type: string
+        total_bytes:
+          type: integer
+          format: int64
+        concurrency:
+          type: integer
+        deadline_seconds:
+          type: integer
+
+    ImportJobResponse:
+      type: object
+      required: [id, state, source_url, target_key, media_type, total_bytes, transferred_bytes, concurrency, deadline_seconds, retry_count]
+      properties:
+        id:
+          type: string
+        state:
+          type: string
+        source_url:
+          type: string
+        target_key:
+          type: string
+        media_type:
+          type: string
+        total_bytes:
+          type: integer
+          format: int64
+        transferred_bytes:
+          type: integer
+          format: int64
+        concurrency:
+          type: integer
+        deadline_seconds:
+          type: integer
+        digest:
+          type: string
+          nullable: true
+        failure:
+          type: string
+          nullable: true
+        retry_count:
+          type: integer
 
     CreateModelRequest:
       type: object

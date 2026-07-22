@@ -12,6 +12,7 @@ docs/CreateAnnotationProjectRequest.md
 docs/CreateDatasetRequest.md
 docs/CreateDatasetVersionRequest.md
 docs/CreateExperimentRequest.md
+docs/CreateImportJobRequest.md
 docs/CreateModelRequest.md
 docs/CreateTrainingJobRequest.md
 docs/CreateUploadSessionRequest.md
@@ -21,6 +22,7 @@ docs/DefaultApi.md
 docs/ExperimentResponse.md
 docs/GenerateSplitsRequest.md
 docs/HealthResponse.md
+docs/ImportJobResponse.md
 docs/ModelResponse.md
 docs/Operation.md
 docs/OutboxEvent.md
@@ -50,6 +52,7 @@ moqentra_client/models/create_annotation_project_request.py
 moqentra_client/models/create_dataset_request.py
 moqentra_client/models/create_dataset_version_request.py
 moqentra_client/models/create_experiment_request.py
+moqentra_client/models/create_import_job_request.py
 moqentra_client/models/create_model_request.py
 moqentra_client/models/create_training_job_request.py
 moqentra_client/models/create_upload_session_request.py
@@ -58,6 +61,7 @@ moqentra_client/models/dataset_version_response.py
 moqentra_client/models/experiment_response.py
 moqentra_client/models/generate_splits_request.py
 moqentra_client/models/health_response.py
+moqentra_client/models/import_job_response.py
 moqentra_client/models/model_response.py
 moqentra_client/models/operation.py
 moqentra_client/models/outbox_event.py
@@ -86,6 +90,7 @@ test/test_create_annotation_project_request.py
 test/test_create_dataset_request.py
 test/test_create_dataset_version_request.py
 test/test_create_experiment_request.py
+test/test_create_import_job_request.py
 test/test_create_model_request.py
 test/test_create_training_job_request.py
 test/test_create_upload_session_request.py
@@ -95,6 +100,7 @@ test/test_default_api.py
 test/test_experiment_response.py
 test/test_generate_splits_request.py
 test/test_health_response.py
+test/test_import_job_response.py
 test/test_model_response.py
 test/test_operation.py
 test/test_outbox_event.py

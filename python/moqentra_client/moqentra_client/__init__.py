@@ -36,6 +36,7 @@ __all__ = [
     "CreateDatasetRequest",
     "CreateDatasetVersionRequest",
     "CreateExperimentRequest",
+    "CreateImportJobRequest",
     "CreateModelRequest",
     "CreateTrainingJobRequest",
     "CreateUploadSessionRequest",
@@ -44,6 +45,7 @@ __all__ = [
     "ExperimentResponse",
     "GenerateSplitsRequest",
     "HealthResponse",
+    "ImportJobResponse",
     "ModelResponse",
     "Operation",
     "OutboxEvent",
@@ -81,6 +83,7 @@ from moqentra_client.models.create_annotation_project_request import CreateAnnot
 from moqentra_client.models.create_dataset_request import CreateDatasetRequest as CreateDatasetRequest
 from moqentra_client.models.create_dataset_version_request import CreateDatasetVersionRequest as CreateDatasetVersionRequest
 from moqentra_client.models.create_experiment_request import CreateExperimentRequest as CreateExperimentRequest
+from moqentra_client.models.create_import_job_request import CreateImportJobRequest as CreateImportJobRequest
 from moqentra_client.models.create_model_request import CreateModelRequest as CreateModelRequest
 from moqentra_client.models.create_training_job_request import CreateTrainingJobRequest as CreateTrainingJobRequest
 from moqentra_client.models.create_upload_session_request import CreateUploadSessionRequest as CreateUploadSessionRequest
@@ -89,6 +92,7 @@ from moqentra_client.models.dataset_version_response import DatasetVersionRespon
 from moqentra_client.models.experiment_response import ExperimentResponse as ExperimentResponse
 from moqentra_client.models.generate_splits_request import GenerateSplitsRequest as GenerateSplitsRequest
 from moqentra_client.models.health_response import HealthResponse as HealthResponse
+from moqentra_client.models.import_job_response import ImportJobResponse as ImportJobResponse
 from moqentra_client.models.model_response import ModelResponse as ModelResponse
 from moqentra_client.models.operation import Operation as Operation
 from moqentra_client.models.outbox_event import OutboxEvent as OutboxEvent

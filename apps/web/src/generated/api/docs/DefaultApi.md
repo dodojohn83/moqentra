@@ -8,6 +8,7 @@ All URIs are relative to *http://localhost*
 | [**activateAnnotationProject**](DefaultApi.md#activateannotationproject) | **POST** /v1/annotation-projects/{id}/activate | Activate annotation project |
 | [**addDatasetVersionAsset**](DefaultApi.md#adddatasetversionasset) | **POST** /v1/dataset-versions/{id}/assets | Add an asset to a draft dataset version |
 | [**admitTrainingJob**](DefaultApi.md#admittrainingjob) | **POST** /v1/training-jobs/{id}/admit | Admit a training job |
+| [**cancelImportJob**](DefaultApi.md#cancelimportjob) | **DELETE** /v1/import-jobs/{id} | Cancel an import job |
 | [**cancelTrainingJob**](DefaultApi.md#canceltrainingjob) | **POST** /v1/training-jobs/{id}/cancel | Cancel a training job |
 | [**compileApplication**](DefaultApi.md#compileapplication) | **POST** /v1/applications:compile | Compile an application graph |
 | [**completeUploadSession**](DefaultApi.md#completeuploadsession) | **POST** /v1/upload-sessions/{id}/complete | Complete an upload session |
@@ -15,12 +16,14 @@ All URIs are relative to *http://localhost*
 | [**createDataset**](DefaultApi.md#createdatasetoperation) | **POST** /v1/datasets | Create dataset |
 | [**createDatasetVersion**](DefaultApi.md#createdatasetversionoperation) | **POST** /v1/dataset-versions | Create dataset version |
 | [**createExperiment**](DefaultApi.md#createexperimentoperation) | **POST** /v1/experiments | Create experiment |
+| [**createImportJob**](DefaultApi.md#createimportjoboperation) | **POST** /v1/import-jobs | Create an S3/MinIO import job |
 | [**createModel**](DefaultApi.md#createmodeloperation) | **POST** /v1/models | Create model family |
 | [**createTrainingJob**](DefaultApi.md#createtrainingjoboperation) | **POST** /v1/training-jobs | Create training job |
 | [**createUploadSession**](DefaultApi.md#createuploadsessionoperation) | **POST** /v1/upload-sessions | Create a multipart upload session |
 | [**generateDatasetVersionSplits**](DefaultApi.md#generatedatasetversionsplits) | **POST** /v1/dataset-versions/{id}/splits | Generate deterministic train/val/test splits |
 | [**getDataset**](DefaultApi.md#getdataset) | **GET** /v1/datasets/{id} | Get dataset by id |
 | [**getHealth**](DefaultApi.md#gethealth) | **GET** /healthz | Liveness probe |
+| [**getImportJob**](DefaultApi.md#getimportjob) | **GET** /v1/import-jobs/{id} | Get import job status |
 | [**getReady**](DefaultApi.md#getready) | **GET** /readyz | Readiness probe |
 | [**getUploadSession**](DefaultApi.md#getuploadsession) | **GET** /v1/upload-sessions/{id} | Get upload session |
 | [**listDatasets**](DefaultApi.md#listdatasets) | **GET** /v1/datasets | List datasets for tenant |
@@ -322,6 +325,77 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Job admitted |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## cancelImportJob
+
+> cancelImportJob(xTenantId, id, authorization)
+
+Cancel an import job
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { CancelImportJobRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies CancelImportJobRequest;
+
+  try {
+    const data = await api.cancelImportJob(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+`void` (Empty response body)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: Not defined
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **204** | Cancelled |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
@@ -835,6 +909,80 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## createImportJob
+
+> ImportJobResponse createImportJob(xTenantId, createImportJobRequest, authorization, idempotencyKey)
+
+Create an S3/MinIO import job
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { CreateImportJobOperationRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // CreateImportJobRequest
+    createImportJobRequest: ...,
+    // string (optional)
+    authorization: authorization_example,
+    // string (optional)
+    idempotencyKey: idempotencyKey_example,
+  } satisfies CreateImportJobOperationRequest;
+
+  try {
+    const data = await api.createImportJob(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **createImportJobRequest** | [CreateImportJobRequest](CreateImportJobRequest.md) |  | |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+| **idempotencyKey** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**ImportJobResponse**](ImportJobResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **201** | Created |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## createModel
 
 > ModelResponse createModel(xTenantId, createModelRequest, authorization, idempotencyKey)
@@ -1255,6 +1403,77 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | OK |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## getImportJob
+
+> ImportJobResponse getImportJob(xTenantId, id, authorization)
+
+Get import job status
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { GetImportJobRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    xTenantId: xTenantId_example,
+    // string
+    id: id_example,
+    // string (optional)
+    authorization: authorization_example,
+  } satisfies GetImportJobRequest;
+
+  try {
+    const data = await api.getImportJob(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **xTenantId** | `string` |  | [Defaults to `undefined`] |
+| **id** | `string` |  | [Defaults to `undefined`] |
+| **authorization** | `string` |  | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**ImportJobResponse**](ImportJobResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Import job |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 

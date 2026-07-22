@@ -8,6 +8,7 @@ Method | HTTP request | Description
 [**activate_annotation_project**](DefaultApi.md#activate_annotation_project) | **POST** /v1/annotation-projects/{id}/activate | Activate annotation project
 [**add_dataset_version_asset**](DefaultApi.md#add_dataset_version_asset) | **POST** /v1/dataset-versions/{id}/assets | Add an asset to a draft dataset version
 [**admit_training_job**](DefaultApi.md#admit_training_job) | **POST** /v1/training-jobs/{id}/admit | Admit a training job
+[**cancel_import_job**](DefaultApi.md#cancel_import_job) | **DELETE** /v1/import-jobs/{id} | Cancel an import job
 [**cancel_training_job**](DefaultApi.md#cancel_training_job) | **POST** /v1/training-jobs/{id}/cancel | Cancel a training job
 [**compile_application**](DefaultApi.md#compile_application) | **POST** /v1/applications:compile | Compile an application graph
 [**complete_upload_session**](DefaultApi.md#complete_upload_session) | **POST** /v1/upload-sessions/{id}/complete | Complete an upload session
@@ -15,12 +16,14 @@ Method | HTTP request | Description
 [**create_dataset**](DefaultApi.md#create_dataset) | **POST** /v1/datasets | Create dataset
 [**create_dataset_version**](DefaultApi.md#create_dataset_version) | **POST** /v1/dataset-versions | Create dataset version
 [**create_experiment**](DefaultApi.md#create_experiment) | **POST** /v1/experiments | Create experiment
+[**create_import_job**](DefaultApi.md#create_import_job) | **POST** /v1/import-jobs | Create an S3/MinIO import job
 [**create_model**](DefaultApi.md#create_model) | **POST** /v1/models | Create model family
 [**create_training_job**](DefaultApi.md#create_training_job) | **POST** /v1/training-jobs | Create training job
 [**create_upload_session**](DefaultApi.md#create_upload_session) | **POST** /v1/upload-sessions | Create a multipart upload session
 [**generate_dataset_version_splits**](DefaultApi.md#generate_dataset_version_splits) | **POST** /v1/dataset-versions/{id}/splits | Generate deterministic train/val/test splits
 [**get_dataset**](DefaultApi.md#get_dataset) | **GET** /v1/datasets/{id} | Get dataset by id
 [**get_health**](DefaultApi.md#get_health) | **GET** /healthz | Liveness probe
+[**get_import_job**](DefaultApi.md#get_import_job) | **GET** /v1/import-jobs/{id} | Get import job status
 [**get_ready**](DefaultApi.md#get_ready) | **GET** /readyz | Readiness probe
 [**get_upload_session**](DefaultApi.md#get_upload_session) | **GET** /v1/upload-sessions/{id} | Get upload session
 [**list_datasets**](DefaultApi.md#list_datasets) | **GET** /v1/datasets | List datasets for tenant
@@ -314,6 +317,73 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 **200** | Job admitted |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **cancel_import_job**
+> cancel_import_job(x_tenant_id, id, authorization=authorization)
+
+Cancel an import job
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Cancel an import job
+        api_instance.cancel_import_job(x_tenant_id, id, authorization=authorization)
+    except Exception as e:
+        print("Exception when calling DefaultApi->cancel_import_job: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+void (empty response body)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: Not defined
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**204** | Cancelled |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
@@ -820,6 +890,79 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **create_import_job**
+> ImportJobResponse create_import_job(x_tenant_id, create_import_job_request, authorization=authorization, idempotency_key=idempotency_key)
+
+Create an S3/MinIO import job
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.create_import_job_request import CreateImportJobRequest
+from moqentra_client.models.import_job_response import ImportJobResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    create_import_job_request = moqentra_client.CreateImportJobRequest() # CreateImportJobRequest | 
+    authorization = 'authorization_example' # str |  (optional)
+    idempotency_key = 'idempotency_key_example' # str |  (optional)
+
+    try:
+        # Create an S3/MinIO import job
+        api_response = api_instance.create_import_job(x_tenant_id, create_import_job_request, authorization=authorization, idempotency_key=idempotency_key)
+        print("The response of DefaultApi->create_import_job:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->create_import_job: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **create_import_job_request** | [**CreateImportJobRequest**](CreateImportJobRequest.md)|  | 
+ **authorization** | **str**|  | [optional] 
+ **idempotency_key** | **str**|  | [optional] 
+
+### Return type
+
+[**ImportJobResponse**](ImportJobResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**201** | Created |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **create_model**
 > ModelResponse create_model(x_tenant_id, create_model_request, authorization=authorization, idempotency_key=idempotency_key)
 
@@ -1241,6 +1384,76 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 **200** | OK |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **get_import_job**
+> ImportJobResponse get_import_job(x_tenant_id, id, authorization=authorization)
+
+Get import job status
+
+### Example
+
+
+```python
+import moqentra_client
+from moqentra_client.models.import_job_response import ImportJobResponse
+from moqentra_client.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = moqentra_client.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with moqentra_client.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = moqentra_client.DefaultApi(api_client)
+    x_tenant_id = 'x_tenant_id_example' # str | 
+    id = 'id_example' # str | 
+    authorization = 'authorization_example' # str |  (optional)
+
+    try:
+        # Get import job status
+        api_response = api_instance.get_import_job(x_tenant_id, id, authorization=authorization)
+        print("The response of DefaultApi->get_import_job:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling DefaultApi->get_import_job: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **x_tenant_id** | **str**|  | 
+ **id** | **str**|  | 
+ **authorization** | **str**|  | [optional] 
+
+### Return type
+
+[**ImportJobResponse**](ImportJobResponse.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Import job |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 

@@ -54,6 +54,13 @@ class TestDefaultApi(unittest.TestCase):
         """
         pass
 
+    def test_cancel_import_job(self) -> None:
+        """Test case for cancel_import_job
+
+        Cancel an import job
+        """
+        pass
+
     def test_cancel_training_job(self) -> None:
         """Test case for cancel_training_job
 
@@ -103,6 +110,13 @@ class TestDefaultApi(unittest.TestCase):
         """
         pass
 
+    def test_create_import_job(self) -> None:
+        """Test case for create_import_job
+
+        Create an S3/MinIO import job
+        """
+        pass
+
     def test_create_model(self) -> None:
         """Test case for create_model
 
@@ -142,6 +156,13 @@ class TestDefaultApi(unittest.TestCase):
         """Test case for get_health
 
         Liveness probe
+        """
+        pass
+
+    def test_get_import_job(self) -> None:
+        """Test case for get_import_job
+
+        Get import job status
         """
         pass
 

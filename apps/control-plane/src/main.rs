@@ -135,6 +135,7 @@ fn build_state_from_env() -> AppState {
         upload_sessions: Arc::new(InMemoryUploadSessionStore::new()),
         upload_sig_secret: std::env::var("MOQENTRA_UPLOAD_SIG_SECRET")
             .unwrap_or_else(|_| "moqentra-upload-sig-secret".to_string()),
+        import_jobs: Arc::new(moqentra_http_api::InMemoryImportJobStore::new()),
         db_pool,
         scheduler_url: std::env::var("MOQENTRA_SCHEDULER_URL").ok().filter(|s| !s.is_empty()),
         node_agent_url: std::env::var("MOQENTRA_NODE_AGENT_URL").ok().filter(|s| !s.is_empty()),
@@ -167,6 +168,7 @@ async fn main() -> anyhow::Result<()> {
     );
 
     spawn_outbox_dispatcher(state.clone());
+    moqentra_http_api::import::spawn_import_worker(state.clone());
     let app = app_router(state);
     tracing::info!(%addr, "moqentra-control-plane listening");
     let listener = tokio::net::TcpListener::bind(addr).await?;

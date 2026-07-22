@@ -54,6 +54,11 @@ import {
     CreateExperimentRequestToJSON,
 } from '../models/CreateExperimentRequest';
 import {
+    type CreateImportJobRequest,
+    CreateImportJobRequestFromJSON,
+    CreateImportJobRequestToJSON,
+} from '../models/CreateImportJobRequest';
+import {
     type CreateModelRequest,
     CreateModelRequestFromJSON,
     CreateModelRequestToJSON,
@@ -93,6 +98,11 @@ import {
     HealthResponseFromJSON,
     HealthResponseToJSON,
 } from '../models/HealthResponse';
+import {
+    type ImportJobResponse,
+    ImportJobResponseFromJSON,
+    ImportJobResponseToJSON,
+} from '../models/ImportJobResponse';
 import {
     type ModelResponse,
     ModelResponseFromJSON,
@@ -155,6 +165,12 @@ export interface AdmitTrainingJobRequest {
     authorization?: string;
 }
 
+export interface CancelImportJobRequest {
+    xTenantId: string;
+    id: string;
+    authorization?: string;
+}
+
 export interface CancelTrainingJobRequest {
     xTenantId: string;
     id: string;
@@ -201,6 +217,13 @@ export interface CreateExperimentOperationRequest {
     idempotencyKey?: string;
 }
 
+export interface CreateImportJobOperationRequest {
+    xTenantId: string;
+    createImportJobRequest: CreateImportJobRequest;
+    authorization?: string;
+    idempotencyKey?: string;
+}
+
 export interface CreateModelOperationRequest {
     xTenantId: string;
     createModelRequest: CreateModelRequest;
@@ -230,6 +253,12 @@ export interface GenerateDatasetVersionSplitsRequest {
 }
 
 export interface GetDatasetRequest {
+    xTenantId: string;
+    id: string;
+    authorization?: string;
+}
+
+export interface GetImportJobRequest {
     xTenantId: string;
     id: string;
     authorization?: string;
@@ -565,6 +594,65 @@ export class DefaultApi extends runtime.BaseAPI {
     async admitTrainingJob(requestParameters: AdmitTrainingJobRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TrainingJobResponse> {
         const response = await this.admitTrainingJobRaw(requestParameters, initOverrides);
         return await response.value();
+    }
+
+    /**
+     * Creates request options for cancelImportJob without sending the request
+     */
+    async cancelImportJobRequestOpts(requestParameters: CancelImportJobRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling cancelImportJob().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling cancelImportJob().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/import-jobs/{id}`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Cancel an import job
+     */
+    async cancelImportJobRaw(requestParameters: CancelImportJobRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.cancelImportJobRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Cancel an import job
+     */
+    async cancelImportJob(requestParameters: CancelImportJobRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.cancelImportJobRaw(requestParameters, initOverrides);
     }
 
     /**
@@ -1014,6 +1102,72 @@ export class DefaultApi extends runtime.BaseAPI {
     }
 
     /**
+     * Creates request options for createImportJob without sending the request
+     */
+    async createImportJobRequestOpts(requestParameters: CreateImportJobOperationRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling createImportJob().'
+            );
+        }
+
+        if (requestParameters['createImportJobRequest'] == null) {
+            throw new runtime.RequiredError(
+                'createImportJobRequest',
+                'Required parameter "createImportJobRequest" was null or undefined when calling createImportJob().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+        if (requestParameters['idempotencyKey'] != null) {
+            headerParameters['Idempotency-Key'] = String(requestParameters['idempotencyKey']);
+        }
+
+
+        let urlPath = `/v1/import-jobs`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: CreateImportJobRequestToJSON(requestParameters['createImportJobRequest']),
+        };
+    }
+
+    /**
+     * Create an S3/MinIO import job
+     */
+    async createImportJobRaw(requestParameters: CreateImportJobOperationRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ImportJobResponse>> {
+        const requestOptions = await this.createImportJobRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => ImportJobResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Create an S3/MinIO import job
+     */
+    async createImportJob(requestParameters: CreateImportJobOperationRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ImportJobResponse> {
+        const response = await this.createImportJobRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for createModel without sending the request
      */
     async createModelRequestOpts(requestParameters: CreateModelOperationRequest): Promise<runtime.RequestOpts> {
@@ -1375,6 +1529,66 @@ export class DefaultApi extends runtime.BaseAPI {
      */
     async getHealth(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<HealthResponse> {
         const response = await this.getHealthRaw(initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for getImportJob without sending the request
+     */
+    async getImportJobRequestOpts(requestParameters: GetImportJobRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['xTenantId'] == null) {
+            throw new runtime.RequiredError(
+                'xTenantId',
+                'Required parameter "xTenantId" was null or undefined when calling getImportJob().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling getImportJob().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (requestParameters['xTenantId'] != null) {
+            headerParameters['X-Tenant-Id'] = String(requestParameters['xTenantId']);
+        }
+
+        if (requestParameters['authorization'] != null) {
+            headerParameters['Authorization'] = String(requestParameters['authorization']);
+        }
+
+
+        let urlPath = `/v1/import-jobs/{id}`;
+        urlPath = urlPath.replace('{id}', encodeURIComponent(String(requestParameters['id'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Get import job status
+     */
+    async getImportJobRaw(requestParameters: GetImportJobRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ImportJobResponse>> {
+        const requestOptions = await this.getImportJobRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => ImportJobResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Get import job status
+     */
+    async getImportJob(requestParameters: GetImportJobRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ImportJobResponse> {
+        const response = await this.getImportJobRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

@@ -213,6 +213,79 @@ pub struct CreateExperimentRequest {
     pub target_metric: String,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CreateImportJobRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub concurrency: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deadline_seconds: Option<i64>,
+    pub media_type: String,
+    pub source_url: String,
+    pub target_key: String,
+    pub total_bytes: i64,
+}
+impl CreateImportJobRequest {
+    /// Construct this request with every required wire field.
+    pub fn new(
+        media_type: String,
+        source_url: String,
+        target_key: String,
+        total_bytes: i64,
+    ) -> Self {
+        Self {
+            media_type,
+            source_url,
+            target_key,
+            total_bytes,
+            concurrency: None,
+            deadline_seconds: None,
+        }
+    }
+    /// Start a dependency-free builder with every required wire field.
+    pub fn builder(
+        media_type: String,
+        source_url: String,
+        target_key: String,
+        total_bytes: i64,
+    ) -> CreateImportJobRequestBuilder {
+        CreateImportJobRequestBuilder::new(media_type, source_url, target_key, total_bytes)
+    }
+}
+/// Dependency-free builder for [`#struct_name`].
+#[derive(Debug, Clone)]
+#[must_use]
+pub struct CreateImportJobRequestBuilder {
+    value: CreateImportJobRequest,
+}
+impl CreateImportJobRequestBuilder {
+    /// Start a builder with every required wire field.
+    pub fn new(
+        media_type: String,
+        source_url: String,
+        target_key: String,
+        total_bytes: i64,
+    ) -> Self {
+        Self {
+            value: CreateImportJobRequest::new(media_type, source_url, target_key, total_bytes),
+        }
+    }
+    #[doc = concat!("Set the optional `", "concurrency", "` request field.")]
+    #[must_use]
+    pub fn concurrency(mut self, concurrency: i64) -> Self {
+        self.value.concurrency = Some(concurrency);
+        self
+    }
+    #[doc = concat!("Set the optional `", "deadline_seconds", "` request field.")]
+    #[must_use]
+    pub fn deadline_seconds(mut self, deadline_seconds: i64) -> Self {
+        self.value.deadline_seconds = Some(deadline_seconds);
+        self
+    }
+    /// Finish building the request model.
+    pub fn build(self) -> CreateImportJobRequest {
+        self.value
+    }
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateModelRequest {
     pub name: String,
     pub project_id: String,
@@ -355,6 +428,23 @@ pub struct HealthResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub service: Option<String>,
     pub status: String,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ImportJobResponse {
+    pub concurrency: i64,
+    pub deadline_seconds: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure: Option<String>,
+    pub id: String,
+    pub media_type: String,
+    pub retry_count: i64,
+    pub source_url: String,
+    pub state: String,
+    pub target_key: String,
+    pub total_bytes: i64,
+    pub transferred_bytes: i64,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ModelResponse {

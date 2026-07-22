@@ -9,6 +9,7 @@ docs/CreateAnnotationProjectRequest.md
 docs/CreateDatasetRequest.md
 docs/CreateDatasetVersionRequest.md
 docs/CreateExperimentRequest.md
+docs/CreateImportJobRequest.md
 docs/CreateModelRequest.md
 docs/CreateTrainingJobRequest.md
 docs/CreateUploadSessionRequest.md
@@ -18,6 +19,7 @@ docs/DefaultApi.md
 docs/ExperimentResponse.md
 docs/GenerateSplitsRequest.md
 docs/HealthResponse.md
+docs/ImportJobResponse.md
 docs/ModelResponse.md
 docs/Operation.md
 docs/OutboxEvent.md
@@ -39,6 +41,7 @@ models/CreateAnnotationProjectRequest.ts
 models/CreateDatasetRequest.ts
 models/CreateDatasetVersionRequest.ts
 models/CreateExperimentRequest.ts
+models/CreateImportJobRequest.ts
 models/CreateModelRequest.ts
 models/CreateTrainingJobRequest.ts
 models/CreateUploadSessionRequest.ts
@@ -47,6 +50,7 @@ models/DatasetVersionResponse.ts
 models/ExperimentResponse.ts
 models/GenerateSplitsRequest.ts
 models/HealthResponse.ts
+models/ImportJobResponse.ts
 models/ModelResponse.ts
 models/Operation.ts
 models/OutboxEvent.ts

@@ -89,6 +89,7 @@ Class | Method | HTTP request | Description
 *DefaultApi* | [**activate_annotation_project**](docs/DefaultApi.md#activate_annotation_project) | **POST** /v1/annotation-projects/{id}/activate | Activate annotation project
 *DefaultApi* | [**add_dataset_version_asset**](docs/DefaultApi.md#add_dataset_version_asset) | **POST** /v1/dataset-versions/{id}/assets | Add an asset to a draft dataset version
 *DefaultApi* | [**admit_training_job**](docs/DefaultApi.md#admit_training_job) | **POST** /v1/training-jobs/{id}/admit | Admit a training job
+*DefaultApi* | [**cancel_import_job**](docs/DefaultApi.md#cancel_import_job) | **DELETE** /v1/import-jobs/{id} | Cancel an import job
 *DefaultApi* | [**cancel_training_job**](docs/DefaultApi.md#cancel_training_job) | **POST** /v1/training-jobs/{id}/cancel | Cancel a training job
 *DefaultApi* | [**compile_application**](docs/DefaultApi.md#compile_application) | **POST** /v1/applications:compile | Compile an application graph
 *DefaultApi* | [**complete_upload_session**](docs/DefaultApi.md#complete_upload_session) | **POST** /v1/upload-sessions/{id}/complete | Complete an upload session
@@ -96,12 +97,14 @@ Class | Method | HTTP request | Description
 *DefaultApi* | [**create_dataset**](docs/DefaultApi.md#create_dataset) | **POST** /v1/datasets | Create dataset
 *DefaultApi* | [**create_dataset_version**](docs/DefaultApi.md#create_dataset_version) | **POST** /v1/dataset-versions | Create dataset version
 *DefaultApi* | [**create_experiment**](docs/DefaultApi.md#create_experiment) | **POST** /v1/experiments | Create experiment
+*DefaultApi* | [**create_import_job**](docs/DefaultApi.md#create_import_job) | **POST** /v1/import-jobs | Create an S3/MinIO import job
 *DefaultApi* | [**create_model**](docs/DefaultApi.md#create_model) | **POST** /v1/models | Create model family
 *DefaultApi* | [**create_training_job**](docs/DefaultApi.md#create_training_job) | **POST** /v1/training-jobs | Create training job
 *DefaultApi* | [**create_upload_session**](docs/DefaultApi.md#create_upload_session) | **POST** /v1/upload-sessions | Create a multipart upload session
 *DefaultApi* | [**generate_dataset_version_splits**](docs/DefaultApi.md#generate_dataset_version_splits) | **POST** /v1/dataset-versions/{id}/splits | Generate deterministic train/val/test splits
 *DefaultApi* | [**get_dataset**](docs/DefaultApi.md#get_dataset) | **GET** /v1/datasets/{id} | Get dataset by id
 *DefaultApi* | [**get_health**](docs/DefaultApi.md#get_health) | **GET** /healthz | Liveness probe
+*DefaultApi* | [**get_import_job**](docs/DefaultApi.md#get_import_job) | **GET** /v1/import-jobs/{id} | Get import job status
 *DefaultApi* | [**get_ready**](docs/DefaultApi.md#get_ready) | **GET** /readyz | Readiness probe
 *DefaultApi* | [**get_upload_session**](docs/DefaultApi.md#get_upload_session) | **GET** /v1/upload-sessions/{id} | Get upload session
 *DefaultApi* | [**list_datasets**](docs/DefaultApi.md#list_datasets) | **GET** /v1/datasets | List datasets for tenant
@@ -126,6 +129,7 @@ Class | Method | HTTP request | Description
  - [CreateDatasetRequest](docs/CreateDatasetRequest.md)
  - [CreateDatasetVersionRequest](docs/CreateDatasetVersionRequest.md)
  - [CreateExperimentRequest](docs/CreateExperimentRequest.md)
+ - [CreateImportJobRequest](docs/CreateImportJobRequest.md)
  - [CreateModelRequest](docs/CreateModelRequest.md)
  - [CreateTrainingJobRequest](docs/CreateTrainingJobRequest.md)
  - [CreateUploadSessionRequest](docs/CreateUploadSessionRequest.md)
@@ -134,6 +138,7 @@ Class | Method | HTTP request | Description
  - [ExperimentResponse](docs/ExperimentResponse.md)
  - [GenerateSplitsRequest](docs/GenerateSplitsRequest.md)
  - [HealthResponse](docs/HealthResponse.md)
+ - [ImportJobResponse](docs/ImportJobResponse.md)
  - [ModelResponse](docs/ModelResponse.md)
  - [Operation](docs/Operation.md)
  - [OutboxEvent](docs/OutboxEvent.md)
