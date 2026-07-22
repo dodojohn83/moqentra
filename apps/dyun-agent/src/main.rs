@@ -234,6 +234,24 @@ async fn heartbeat_replica(
     })))
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+#[allow(dead_code)]
+struct DyunManifest {
+    version: String,
+    #[serde(default)]
+    commit: String,
+    #[serde(default)]
+    schemas: Vec<String>,
+    #[serde(default)]
+    elements: Vec<String>,
+    #[serde(default)]
+    codecs: Vec<String>,
+    #[serde(default)]
+    backends: Vec<String>,
+    #[serde(default)]
+    build_features: Vec<String>,
+}
+
 fn comma_list(env_var: &str) -> Vec<String> {
     std::env::var(env_var)
         .unwrap_or_default()
@@ -245,19 +263,47 @@ fn comma_list(env_var: &str) -> Vec<String> {
 
 fn discover_capabilities() -> AgentCapabilities {
     let gen = RandomIdGenerator;
-    // Capabilities are determined at startup from the dg build environment,
-    // not hard-coded. If no probe data is provided, the agent advertises no
-    // accelerators, forcing explicit configuration.
+    // Capabilities are probed from a manifest pinned to a fixed commit at build
+    // time. Runtime overrides are allowed for accelerators/version, but the
+    // element schemas and backends come from the committed manifest.
+    let manifest: DyunManifest = serde_json::from_str(
+        option_env!("MOQENTRA_DYUN_MANIFEST_JSON")
+            .unwrap_or_else(|| include_str!("../dyun-manifest.json")),
+    )
+    .unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "failed to parse dyun manifest, using empty defaults");
+        DyunManifest {
+            version: "dg/v1".to_string(),
+            commit: String::new(),
+            schemas: Vec::new(),
+            elements: Vec::new(),
+            codecs: Vec::new(),
+            backends: Vec::new(),
+            build_features: Vec::new(),
+        }
+    });
+
+    let accelerators = if std::env::var("MOQENTRA_DG_ACCELERATORS").is_ok() {
+        comma_list("MOQENTRA_DG_ACCELERATORS")
+    } else {
+        // Default to CPU only; real GPU discovery is a follow-up probe.
+        vec!["cpu".to_string()]
+    };
+
     AgentCapabilities {
         node_id: NodeId::new_v7(&gen),
         agent_version: std::env::var("MOQENTRA_DYUN_AGENT_VERSION")
             .unwrap_or_else(|_| "0.1.0".to_string()),
-        dg_versions: comma_list("MOQENTRA_DG_VERSIONS"),
-        codecs: comma_list("MOQENTRA_DG_CODECS"),
-        accelerators: comma_list("MOQENTRA_DG_ACCELERATORS"),
-        element_schemas: comma_list("MOQENTRA_DG_ELEMENT_SCHEMAS"),
-        backends: comma_list("MOQENTRA_DG_BACKENDS"),
-        build_features: comma_list("MOQENTRA_DG_BUILD_FEATURES"),
+        dg_versions: vec![manifest.version],
+        codecs: if std::env::var("MOQENTRA_DG_CODECS").is_ok() {
+            comma_list("MOQENTRA_DG_CODECS")
+        } else {
+            manifest.codecs
+        },
+        accelerators,
+        element_schemas: manifest.schemas,
+        backends: manifest.backends,
+        build_features: manifest.build_features,
         max_replicas: std::env::var("MOQENTRA_DYUN_MAX_REPLICAS")
             .ok()
             .and_then(|s| s.parse().ok())
