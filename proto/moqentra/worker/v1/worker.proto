@@ -116,7 +116,7 @@ message Drain {
 }
 
 // One frame sent by the agent to the control plane.
-message WorkerAgentServiceConnectRequest {
+message WorkerAgentServiceOpenStreamRequest {
   oneof payload {
     Hello hello = 1;
     Heartbeat heartbeat = 2;
@@ -129,7 +129,7 @@ message WorkerAgentServiceConnectRequest {
 }
 
 // One frame sent by the control plane to the agent.
-message WorkerAgentServiceConnectResponse {
+message WorkerAgentServiceOpenStreamResponse {
   oneof payload {
     Command command = 1;
     Lease lease = 2;
@@ -140,5 +140,5 @@ message WorkerAgentServiceConnectResponse {
 
 // Bidirectional worker/agent stream.
 service WorkerAgentService {
-  rpc OpenStream(stream WorkerAgentServiceConnectRequest) returns (stream WorkerAgentServiceConnectResponse);
+  rpc OpenStream(stream WorkerAgentServiceOpenStreamRequest) returns (stream WorkerAgentServiceOpenStreamResponse);
 }

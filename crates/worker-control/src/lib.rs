@@ -5,7 +5,7 @@
 use moqentra_contracts::moqentra::worker::v1::{
     worker_agent_service_client::WorkerAgentServiceClient,
     worker_agent_service_server::{WorkerAgentService, WorkerAgentServiceServer},
-    WorkerAgentServiceConnectRequest, WorkerAgentServiceConnectResponse,
+    WorkerAgentServiceOpenStreamRequest, WorkerAgentServiceOpenStreamResponse,
 };
 use std::pin::Pin;
 use tokio_stream::Stream;
@@ -20,19 +20,19 @@ pub struct WorkerControlService;
 #[tonic::async_trait]
 impl WorkerAgentService for WorkerControlService {
     type OpenStreamStream =
-        Pin<Box<dyn Stream<Item = Result<WorkerAgentServiceConnectResponse, Status>> + Send>>;
+        Pin<Box<dyn Stream<Item = Result<WorkerAgentServiceOpenStreamResponse, Status>> + Send>>;
 
     async fn open_stream(
         &self,
-        request: Request<Streaming<WorkerAgentServiceConnectRequest>>,
+        request: Request<Streaming<WorkerAgentServiceOpenStreamRequest>>,
     ) -> Result<Response<Self::OpenStreamStream>, Status> {
         let mut inbound = request.into_inner();
 
         let outbound = async_stream::try_stream! {
             while let Some(msg) = inbound.message().await? {
                 let response = match msg.payload {
-                    Some(_) => WorkerAgentServiceConnectResponse {
-                        payload: Some(moqentra_contracts::moqentra::worker::v1::worker_agent_service_connect_response::Payload::Command(
+                    Some(_) => WorkerAgentServiceOpenStreamResponse {
+                        payload: Some(moqentra_contracts::moqentra::worker::v1::worker_agent_service_open_stream_response::Payload::Command(
                             moqentra_contracts::moqentra::worker::v1::Command::default(),
                         )),
                     },
