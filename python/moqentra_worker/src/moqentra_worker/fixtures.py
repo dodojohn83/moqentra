@@ -240,6 +240,7 @@ def generate_segmentation_fixture(
     classes = ["circle", "square", "triangle"]
     image_dir = root / split / "images"
     mask_dir = root / split / "masks"
+    mask_dir.mkdir(parents=True, exist_ok=True)
 
     for i in range(n):
         label = int(rng.integers(0, len(classes)))
@@ -250,7 +251,8 @@ def generate_segmentation_fixture(
         # Derive a binary mask from the colored shape by distance from gray bg.
         gray = np.full((image_size, image_size, 3), 0.85, dtype=np.float32)
         mask = np.any(arr != gray, axis=2).astype(np.uint8) * (label + 1)
-        _save_image(mask_dir / name, mask)
+        # Class-index masks are not 0..1 float images; write the uint8 values directly.
+        Image.fromarray(mask, mode="L").save(mask_dir / name)
 
     ann_path = root / split / "annotations.json"
     ann_path.parent.mkdir(parents=True, exist_ok=True)

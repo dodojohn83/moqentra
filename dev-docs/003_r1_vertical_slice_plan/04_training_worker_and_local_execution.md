@@ -12,9 +12,9 @@
 
 - [x] `R1-TRAIN-006` 生成 Python gRPC stubs（`moqentra.worker.v1`、`moqentra.common.v1`）并添加 `moqentra_worker.grpc_client.WorkerAgentClient`：建立 insecure channel、发送 Hello/Capabilities、10s 心跳续活、分发 Command 到 handler 并回 Ack/Result、处理 Drain；不访问控制面数据库。
 - [x] `R1-TRAIN-007` Worker 输入物化与输出提交：`input_dir` 在 `WorkerRuntime` 中设为只读；`WorkerSession.list_inputs()` 计算每个输入文件的 sha256；checkpoint 由 adapter 写入后计算 content digest；`build_manifest()` 将 `ModelArtifactManifest/v1` 临时写入后 rename 到 `output_dir/manifest.json`.
-- [ ] `R1-TRAIN-008` 用真实 PyTorch 实现 ResNet18 分类模板，固定 seed、数据预处理、参数 schema、指标、checkpoint、ONNX export 和环境 manifest。
-- [ ] `R1-TRAIN-009` 实现 SSDlite320 MobileNetV3 检测模板，输出 mAP 所需预测、最佳 checkpoint 和 ONNX；作为 R1 黄金训练/推理模型。
-- [ ] `R1-TRAIN-010` 实现 DeepLabV3 MobileNetV3 分割模板，输出 mIoU、mask 预览和 ONNX。
+- [x] `R1-TRAIN-008` 用真实 PyTorch 实现 ResNet18 分类模板，固定 seed、数据预处理、参数 schema、指标、checkpoint、ONNX export 和环境 manifest。
+- [x] `R1-TRAIN-009` 实现 SSDlite320 MobileNetV3 检测模板，输出 mAP 所需预测、最佳 checkpoint 和 ONNX；作为 R1 黄金训练/推理模型。
+- [x] `R1-TRAIN-010` 实现 DeepLabV3 MobileNetV3 分割模板，输出 mIoU、mask 预览和 ONNX。
 - [x] `R1-TRAIN-011` 确定性视觉 fixture：`moqentra_worker.fixtures` 提供 `generate_classification_fixture`、`generate_detection_fixture`、`generate_segmentation_fixture`，使用固定 seed、PIL/numpy 生成 64x64 PNG、COCO 风格标注和 `manifest.json`；记录 seed/schema/CC0 许可，无外部下载。
 - [x] `R1-TRAIN-012` 半写文件保护：`save_checkpoint` 与 `build_manifest()` 均先写入临时文件再 rename；manifest 写入后才引用已完成的 checkpoint；失败/断线留下的临时文件由后续重试或 GC 清理。
 
