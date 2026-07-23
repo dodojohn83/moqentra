@@ -7,9 +7,11 @@
 #![warn(missing_docs)]
 
 mod annotation_svc;
+mod approval_svc;
 mod conversion_svc;
 mod dispatch;
 mod model_svc;
+mod quota_svc;
 mod training_svc;
 
 /// Repository ports used by application services.
@@ -19,6 +21,7 @@ pub mod platform;
 pub mod ports;
 
 pub use annotation_svc::InMemoryAnnotationRegistry;
+pub use approval_svc::{ApprovalService, InMemoryApprovalRegistry};
 pub use coco::{CocoAnnotation, CocoCategory, CocoDataset, CocoImage};
 pub use conversion_svc::{InMemoryConversionRegistry, InMemoryEvaluationRegistry};
 pub use dispatch::{plan_dispatch, DispatchAction};
@@ -26,10 +29,11 @@ pub use labelu::{LabelUAnnotation, LabelUDataset, LabelUProjectConfig, LabelUToo
 pub use model_svc::{ArtifactReconciler, InMemoryModelRegistry};
 pub use platform::PlatformAnnotationDataset;
 pub use ports::{
-    AnnotationRepository, ApplicationRepository, ConversionRepository, DatasetRepository,
-    DeploymentRepository, EvaluationRepository, ModelRepository, ResourceListFilter,
-    TrainingJobRepository, Versioned,
+    AnnotationRepository, ApplicationRepository, ApprovalRepository, ConversionRepository,
+    DatasetRepository, DeploymentRepository, EvaluationRepository, ModelRepository,
+    QuotaRepository, ResourceListFilter, TrainingJobRepository, Versioned,
 };
+pub use quota_svc::{InMemoryQuotaRegistry, QuotaService};
 pub use training_svc::InMemoryTrainingRegistry;
 
 use moqentra_domain::application::{
