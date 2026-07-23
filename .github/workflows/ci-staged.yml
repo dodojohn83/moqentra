@@ -65,8 +65,10 @@ jobs:
         run: buf format --diff proto
       - name: Buf lint
         run: buf lint proto
+      - name: Fetch origin/main for breaking comparison
+        run: git fetch origin main --depth=1
       - name: Buf breaking
-        run: buf breaking proto --against '.git#branch=origin/main'
+        run: buf breaking proto --against '.git#branch=origin/main,subdir=proto'
       - name: Upload contract reports on failure
         if: failure()
         uses: actions/upload-artifact@v4
