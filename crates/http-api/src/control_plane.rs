@@ -315,9 +315,11 @@ pub(crate) async fn authorize(
         correlation_id: ctx.request_id.clone(),
         occurred_at: UtcTimestamp::now(),
     };
-    if let Err(e) = state.audit.record(event).await {
-        tracing::warn!("failed to record authorization audit event: {}", e);
-    }
+    state
+        .audit
+        .record(event)
+        .await
+        .map_err(|e| Error::internal(format!("audit failed: {e}")))?;
     match outcome {
         AuditOutcome::Success => Ok(()),
         _ => Err(Error::permission_denied("not authorized for this action")),
