@@ -89,6 +89,18 @@ impl GraphSpec {
     }
 }
 
+/// Resolved artifact binding for a graph slot.
+///
+/// Carries the object key and digest so the agent can materialize the artifact
+/// without re-deriving the binding at runtime.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactBinding {
+    pub object_key: String,
+    pub digest: String,
+    pub media_type: String,
+    pub size_bytes: u64,
+}
+
 /// A component in the versioned component catalog.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Component {

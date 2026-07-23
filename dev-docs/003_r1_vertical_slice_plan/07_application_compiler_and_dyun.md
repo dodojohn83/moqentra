@@ -14,7 +14,7 @@
 - [x] `R1-DYUN-001` 在 Proto 增加 DyunAgentService：capability/heartbeat、prepare、start、status、metrics、drain、stop 和 result；命令携带 generation、fencing token、deadline 与幂等键。
 - [x] `R1-DYUN-002` dyun-agent 启动时从固定 commit 探测 schema、elements、codecs、backends 和 build features；不把静态 CPU capability 当真实探测结果。
 - [x] `R1-DYUN-003` 使用可信公钥验证 bundle 签名和全部内容摘要；开发签名与生产签名分离，生产不接受前缀匹配式伪签名。
-- [ ] `R1-DYUN-004` 将模型下载到 digest 命名、只读、本租户 runner 可见的受控目录；SecretRef 在启动时解析且不写入 bundle、命令行或日志。
+- [~] `R1-DYUN-004` 将模型下载到 digest 命名、只读、本租户 runner 可见的受控目录；SecretRef 在启动时解析且不写入 bundle、命令行或日志。
 - [ ] `R1-DYUN-005` 每个 replica 使用独立 runner 进程和故障域，直接调用 dyun-gu Rust API 完成 validate/start/status/metrics/shutdown，禁止生产 shell 拼接 `dg-cli`。
 - [~] `R1-DYUN-006` 持久化 desired/observed generation、runner identity、heartbeat 和错误；agent/control-plane 重启后按 fencing 对账，旧状态不能覆盖新部署。
 - [~] `R1-DYUN-007` drain 等待有界时间后停止；异常 runner、失联 agent、部分下载和重复 start 都收敛到明确状态并可重试。

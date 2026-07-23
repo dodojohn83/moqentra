@@ -7,10 +7,14 @@ use axum::{Json, Router};
 use moqentra_dyun_adapter::dyun::{
     AgentCapabilities, DyunGraphBundle, Replica, ReplicaState, ResourceLimits,
 };
-use moqentra_types::{DeploymentId, NodeId, RandomIdGenerator, ReplicaId, UtcTimestamp};
+use moqentra_types::{
+    DeploymentId, NodeId, ProjectId, RandomIdGenerator, ReplicaId, TenantId, UtcTimestamp,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use tracing_subscriber::EnvFilter;
 
@@ -21,6 +25,7 @@ struct AgentState {
     sandbox_root: String,
     production_keys: Arc<Vec<String>>,
     dev_keys: Arc<Vec<String>>,
+    object_store: Arc<dyn moqentra_object_store::ObjectStorage + Send + Sync>,
 }
 
 #[derive(Serialize)]
@@ -41,6 +46,11 @@ struct CreateReplicaRequest {
     application_digest: String,
     graph_spec: moqentra_domain::application::GraphSpec,
     graph_spec_digest: String,
+    #[serde(default)]
+    artifact_bindings: BTreeMap<String, moqentra_dyun_adapter::dyun::ArtifactBinding>,
+    runtime_profile: String,
+    #[serde(default)]
+    compatible_dg_versions: Vec<String>,
     signature: String,
 }
 
@@ -104,15 +114,19 @@ async fn create_replica(
         application_digest: req.application_digest,
         graph_spec: req.graph_spec,
         graph_spec_digest: req.graph_spec_digest,
-        artifact_bindings: BTreeMap::new(),
-        runtime_profile: "rtsp-track-rtmp".to_string(),
+        artifact_bindings: req.artifact_bindings,
+        runtime_profile: req.runtime_profile,
         resource_limits: ResourceLimits {
             cpu_milli: 2000,
             memory_mib: 4096,
             gpu_count: 0,
         },
         signature: req.signature,
-        compatible_dg_versions: vec!["dg-1.0".to_string()],
+        compatible_dg_versions: if req.compatible_dg_versions.is_empty() {
+            vec!["dg-1.0".to_string()]
+        } else {
+            req.compatible_dg_versions
+        },
     };
     let mut replica = Replica::new(
         ReplicaId::new_v7(&gen),
@@ -236,6 +250,165 @@ async fn heartbeat_replica(
     })))
 }
 
+#[derive(Deserialize)]
+struct PrepareRequest {
+    generation: u64,
+    fencing_token: u64,
+}
+
+async fn prepare_replica(
+    State(state): State<AgentState>,
+    Path(id): Path<String>,
+    Json(req): Json<PrepareRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let replica_id = ReplicaId::try_from(id.as_str()).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+    })?;
+
+    // Extract bindings while holding the lock, then release it before any await.
+    let (base_dir, bindings) = {
+        let mut replicas = state.replicas.lock().unwrap_or_else(|e| e.into_inner());
+        let replica = replicas.get_mut(&replica_id).ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "replica not found"})),
+            )
+        })?;
+
+        if req.generation != replica.generation || req.fencing_token != replica.fencing_token {
+            return Err((
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({"error": "stale prepare command"})),
+            ));
+        }
+
+        let base_dir =
+            PathBuf::from(&state.sandbox_root).join(replica.id.to_string()).join("models");
+        std::fs::create_dir_all(&base_dir).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        })?;
+
+        let bindings: Vec<_> = replica.bundle.artifact_bindings.clone().into_iter().collect();
+        (base_dir, bindings)
+    };
+
+    let paths = materialize_artifacts(state.object_store.clone(), base_dir, bindings).await?;
+
+    let mut replicas = state.replicas.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(replica) = replicas.get_mut(&replica_id) {
+        replica.updated_at = moqentra_types::UtcTimestamp::now();
+    }
+
+    Ok(Json(serde_json::json!({
+        "id": replica_id.to_string(),
+        "prepared": paths,
+    })))
+}
+
+async fn materialize_artifacts(
+    object_store: Arc<dyn moqentra_object_store::ObjectStorage + Send + Sync>,
+    base_dir: PathBuf,
+    bindings: Vec<(String, moqentra_dyun_adapter::dyun::ArtifactBinding)>,
+) -> Result<Vec<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut paths = Vec::new();
+    for (slot, binding) in bindings {
+        if !moqentra_types::valid_content_digest(&binding.digest) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("invalid digest for slot {slot}")})),
+            ));
+        }
+        let parts: Vec<&str> = binding.object_key.split('/').collect();
+        if parts.len() < 4 || parts[0] != "tenants" || parts[2] != "projects" {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(
+                    serde_json::json!({"error": format!("object key for slot {slot} is not tenant-scoped")}),
+                ),
+            ));
+        }
+        let tenant_id = TenantId::from_str(parts[1]).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("invalid tenant in object key for slot {slot}: {e}")})),
+            )
+        })?;
+        let project_id = ProjectId::from_str(parts[3]).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("invalid project in object key for slot {slot}: {e}")})),
+            )
+        })?;
+        let object_key = moqentra_object_store::ObjectKey::from_str(tenant_id, project_id, &binding.object_key)
+            .map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": format!("invalid object key for slot {slot}: {e}")})),
+                )
+            })?;
+        let _ = object_key;
+
+        let (data, meta) = object_store.get_object(&binding.object_key).await.map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(serde_json::json!({"error": format!("failed to fetch {slot}: {e}")})),
+            )
+        })?;
+
+        use sha2::{Digest, Sha256};
+        let computed = format!("sha256:{:x}", Sha256::digest(&data));
+        if computed != binding.digest {
+            return Err((
+                StatusCode::BAD_GATEWAY,
+                Json(serde_json::json!({"error": format!("digest mismatch for slot {slot}")})),
+            ));
+        }
+
+        let digest = binding.digest.split_once(':').map(|(_, h)| h).unwrap_or(&binding.digest);
+        let artifact_dir = base_dir.join(digest);
+        std::fs::create_dir_all(&artifact_dir).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        })?;
+        let file_path = artifact_dir.join("artifact");
+        tokio::fs::write(&file_path, data).await.map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        })?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut dir_perms = std::fs::metadata(&artifact_dir).unwrap().permissions();
+            dir_perms.set_mode(0o555);
+            std::fs::set_permissions(&artifact_dir, dir_perms).ok();
+            let mut file_perms = std::fs::metadata(&file_path).unwrap().permissions();
+            file_perms.set_mode(0o444);
+            std::fs::set_permissions(&file_path, file_perms).ok();
+        }
+
+        paths.push(serde_json::json!({
+            "slot": slot,
+            "object_key": binding.object_key,
+            "path": file_path.to_string_lossy().to_string(),
+            "size": meta.size,
+            "media_type": binding.media_type,
+        }));
+    }
+
+    Ok(paths)
+}
+
 #[derive(Debug, Clone, serde::Deserialize)]
 #[allow(dead_code)]
 struct DyunManifest {
@@ -313,6 +486,33 @@ fn discover_capabilities() -> AgentCapabilities {
     }
 }
 
+fn build_object_store_from_env(
+) -> anyhow::Result<Arc<dyn moqentra_object_store::ObjectStorage + Send + Sync>> {
+    use moqentra_object_store::{InMemoryObjectStore, ObjectStorage, S3ObjectStore};
+    if let Ok(bucket) = std::env::var("MOQENTRA_S3_BUCKET") {
+        let endpoint = std::env::var("MOQENTRA_S3_ENDPOINT")
+            .unwrap_or_else(|_| "http://localhost:9000".to_string());
+        let region =
+            std::env::var("MOQENTRA_S3_REGION").unwrap_or_else(|_| "us-east-1".to_string());
+        let access_key_id = std::env::var("MOQENTRA_S3_ACCESS_KEY_ID").unwrap_or_default();
+        let secret_access_key = std::env::var("MOQENTRA_S3_SECRET_ACCESS_KEY").unwrap_or_default();
+        let force_path_style =
+            std::env::var("MOQENTRA_S3_FORCE_PATH_STYLE").ok().as_deref() != Some("false");
+        let config = moqentra_object_store::s3::S3Config {
+            bucket,
+            endpoint,
+            region,
+            access_key_id: moqentra_types::config::SecretString::new(access_key_id),
+            secret_access_key: moqentra_types::config::SecretString::new(secret_access_key),
+            force_path_style,
+        };
+        let store = S3ObjectStore::new(config).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        Ok(Arc::new(store) as Arc<dyn ObjectStorage + Send + Sync>)
+    } else {
+        Ok(Arc::new(InMemoryObjectStore::new()) as Arc<dyn ObjectStorage + Send + Sync>)
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
@@ -334,12 +534,14 @@ async fn main() -> anyhow::Result<()> {
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>();
 
+    let object_store = build_object_store_from_env()?;
     let state = AgentState {
         capabilities: Arc::new(caps),
         replicas: Arc::new(Mutex::new(HashMap::new())),
         sandbox_root,
         production_keys: Arc::new(production_keys),
         dev_keys: Arc::new(dev_keys),
+        object_store,
     };
 
     let listen =
@@ -349,6 +551,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/healthz", get(healthz))
         .route("/v1/capabilities", get(capabilities))
         .route("/v1/replicas", get(list_replicas).post(create_replica))
+        .route("/v1/replicas/{id}/prepare", post(prepare_replica))
         .route("/v1/replicas/{id}/transition", post(transition_replica))
         .route("/v1/replicas/{id}/heartbeat", post(heartbeat_replica))
         .with_state(state.clone());

@@ -1,9 +1,11 @@
 //! dyun-agent runtime, bundle and replica state machine.
 
-use moqentra_types::{AssetId, DeploymentId, NodeId, ReplicaId, UtcTimestamp};
+use moqentra_types::{DeploymentId, NodeId, ReplicaId, UtcTimestamp};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+
+pub use moqentra_domain::application::ArtifactBinding;
 
 /// dyun graph bundle version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -12,7 +14,7 @@ pub struct DyunGraphBundle {
     pub application_digest: String,
     pub graph_spec: moqentra_domain::application::GraphSpec,
     pub graph_spec_digest: String,
-    pub artifact_bindings: BTreeMap<String, AssetId>,
+    pub artifact_bindings: BTreeMap<String, ArtifactBinding>,
     pub runtime_profile: String,
     pub resource_limits: ResourceLimits,
     pub signature: String,
