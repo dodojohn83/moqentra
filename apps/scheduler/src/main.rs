@@ -273,7 +273,11 @@ async fn main() -> anyhow::Result<()> {
         if dsn.is_empty() {
             None
         } else {
-            PgPool::connect(&dsn).await.ok()
+            Some(
+                PgPool::connect(&dsn)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("MOQENTRA_DATABASE_DSN connection failed: {e}"))?,
+            )
         }
     } else {
         None
@@ -293,7 +297,11 @@ async fn main() -> anyhow::Result<()> {
             "default", tenant, 1024, 256,
         ))),
         db_pool,
-        http: reqwest::Client::new(),
+        http: reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|e| anyhow::anyhow!("failed to build http client: {e}"))?,
         node_url: std::env::var("MOQENTRA_NODE_AGENT_URL").ok().filter(|s| !s.is_empty()),
     };
 

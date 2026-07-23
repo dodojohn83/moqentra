@@ -89,16 +89,21 @@ impl std::fmt::Debug for JwkSetValidator {
 }
 
 impl JwkSetValidator {
-    pub fn new(config: OidcConfig) -> Self {
-        Self {
+    pub fn new(config: OidcConfig) -> Result<Self, Error> {
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|e| Error::internal(format!("failed to build http client: {e}")))?;
+        Ok(Self {
             config,
-            client: reqwest::Client::new(),
+            client,
             cache: Arc::new(RwLock::new(CacheEntry {
                 keys: HashMap::new(),
                 expires_at: Instant::now() - Duration::from_secs(1),
             })),
             last_failed: Arc::new(RwLock::new(Instant::now())),
-        }
+        })
     }
 
     pub fn is_configured(&self) -> bool {

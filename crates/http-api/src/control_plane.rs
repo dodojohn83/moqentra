@@ -2525,6 +2525,7 @@ mod tests {
     use moqentra_observability::LivenessCheck;
     use moqentra_types::UserId;
     use std::collections::BTreeMap;
+    use std::time::Duration;
     use tower::ServiceExt;
 
     fn empty_regs(
@@ -2565,7 +2566,11 @@ mod tests {
             db_pool: None,
             scheduler_url: None,
             node_agent_url: None,
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(5))
+                .timeout(Duration::from_secs(30))
+                .build()
+                .expect("test http client"),
         }
     }
 
