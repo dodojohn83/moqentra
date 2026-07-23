@@ -205,6 +205,12 @@ mod tests {
                 topology: None,
             },
             distributed: DistributedConfig::Single,
+            processes_per_replica: 1,
+            checkpoint_policy: Default::default(),
+            queue_ref: None,
+            priority_class_ref: None,
+            preemption_policy: Default::default(),
+            resource_class_ref: None,
             max_attempts: 1,
             deadline_seconds: 3600,
         }

@@ -173,8 +173,13 @@ impl InMemoryEvaluationRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use moqentra_domain::conversion::{ConversionJobState, ConversionProfile, ConversionTarget};
-    use moqentra_types::{ConversionJobId, ModelVersionId, ProjectId, TenantId};
+    use moqentra_domain::conversion::{
+        ConversionJobState, ConversionProfile, ConversionSupportTier, ConversionTarget,
+    };
+    use moqentra_types::{
+        ConversionJobId, ConversionProfileId, ModelVersionId, ProjectId, RandomIdGenerator,
+        TenantId, UtcTimestamp,
+    };
 
     fn ids() -> (TenantId, ProjectId, ModelVersionId, ConversionJobId) {
         let g = moqentra_types::RandomIdGenerator;
@@ -188,6 +193,8 @@ mod tests {
 
     fn profile() -> ConversionProfile {
         ConversionProfile {
+            id: ConversionProfileId::new_v7(&RandomIdGenerator),
+            name: "onnx-default".to_string(),
             target: ConversionTarget::Onnx,
             sdk_version: "1.16.3".to_string(),
             toolchain_image_digest:
@@ -198,6 +205,10 @@ mod tests {
             dynamic_shapes: false,
             capabilities: vec![],
             postprocess: None,
+            parameter_schema: std::collections::BTreeMap::new(),
+            support_tier: ConversionSupportTier::Verified,
+            revision: 1,
+            created_at: UtcTimestamp::now(),
         }
     }
 

@@ -6,7 +6,7 @@
 //! same `K8sExecutor` trait.
 
 use async_trait::async_trait;
-use moqentra_domain::training::{Attempt, DistributedConfig, TrainingJob};
+use moqentra_domain::training::{Attempt, TrainingJob};
 use moqentra_types::{AttemptId, ProjectId, TenantId, TrainingJobId};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -268,10 +268,9 @@ impl JobCompiler {
         let image = format!("moqentra/executor@{}", &spec.image_digest);
         let labels = labels(job, attempt);
         let deadline_seconds = spec.deadline_seconds as i64;
-        let replicas = match spec.distributed {
-            DistributedConfig::Single => 1,
-            DistributedConfig::Ddp { world_size } => world_size.max(1),
-        };
+        let replicas = spec.resources.replicas.max(1);
+        let world_size = spec.world_size();
+        let processes_per_replica = spec.processes_per_replica.max(1);
 
         let mut env: Vec<serde_json::Value> = spec
             .hyperparameters
@@ -287,6 +286,11 @@ impl JobCompiler {
         env.push(json!({"name": "MOQENTRA_TENANT_ID", "value": job.tenant_id.to_string()}));
         env.push(json!({"name": "MOQENTRA_PROJECT_ID", "value": job.project_id.to_string()}));
         env.push(json!({"name": "MOQENTRA_SEED", "value": spec.seed.to_string()}));
+        env.push(json!({"name": "MOQENTRA_WORLD_SIZE", "value": world_size.to_string()}));
+        env.push(json!({"name": "MOQENTRA_NNODES", "value": replicas.to_string()}));
+        env.push(
+            json!({"name": "MOQENTRA_NPROC_PER_NODE", "value": processes_per_replica.to_string()}),
+        );
 
         let command = if spec.hyperparameters.argv.is_empty() {
             vec![
@@ -635,7 +639,7 @@ pub async fn watch_workloads<E: K8sExecutor>(
 mod tests {
     use super::*;
     use moqentra_domain::training::{
-        ParameterSchema, Rank, RankState, ResourceRequest, TrainingJobSpec,
+        DistributedConfig, ParameterSchema, Rank, RankState, ResourceRequest, TrainingJobSpec,
     };
     use moqentra_types::{
         AttemptId, DatasetVersionId, ExperimentId, ProjectId, RandomIdGenerator, RankId, TenantId,
@@ -666,10 +670,7 @@ mod tests {
 
     fn make_attempt(job: &TrainingJob, token: u64) -> Attempt {
         let (_, _, _, _, _, id, _) = gen_ids();
-        let world_size = match job.spec.distributed {
-            DistributedConfig::Single => 1,
-            DistributedConfig::Ddp { world_size } => world_size.max(1),
-        };
+        let world_size = job.spec.world_size();
         let mut ranks = Vec::with_capacity(world_size as usize);
         for _ in 0..world_size {
             let (_, _, _, _, _, _, rank_id) = gen_ids();
@@ -716,6 +717,12 @@ mod tests {
                     topology: None,
                 },
                 distributed: DistributedConfig::Single,
+                processes_per_replica: 1,
+                checkpoint_policy: Default::default(),
+                queue_ref: None,
+                priority_class_ref: None,
+                preemption_policy: Default::default(),
+                resource_class_ref: None,
                 max_attempts: 3,
                 deadline_seconds: 3600,
             },
@@ -745,9 +752,10 @@ mod tests {
     #[test]
     fn compile_volcano_job_for_ddp() {
         let mut job = test_job();
+        job.spec.resources.replicas = 2;
+        job.spec.distributed = DistributedConfig::Ddp { world_size: 2 };
         job.submit().unwrap();
         job.admit().unwrap();
-        job.spec.distributed = DistributedConfig::Ddp { world_size: 2 };
         let attempt = make_attempt(&job, 1);
         job.start_attempt(attempt.clone()).unwrap();
         let manifest = JobCompiler::compile_volcano_job(&job, &attempt, "moqentra");

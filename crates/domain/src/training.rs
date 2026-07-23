@@ -73,6 +73,26 @@ impl OutputManifest {
     }
 }
 
+/// R2 checkpoint retention policy.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckpointPolicy {
+    Disabled,
+    #[default]
+    Full,
+    Sharded,
+}
+
+/// R2 preemption behaviour for a training job.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreemptionPolicy {
+    #[default]
+    Never,
+    LowPriority,
+    Any,
+}
+
 /// Training job specification; immutable after creation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TrainingJobSpec {
@@ -83,8 +103,21 @@ pub struct TrainingJobSpec {
     pub seed: u64,
     pub resources: ResourceRequest,
     pub distributed: DistributedConfig,
+    #[serde(default = "default_processes_per_replica")]
+    pub processes_per_replica: u32,
     pub max_attempts: u32,
     pub deadline_seconds: u64,
+    #[serde(default)]
+    pub checkpoint_policy: CheckpointPolicy,
+    pub queue_ref: Option<String>,
+    pub priority_class_ref: Option<String>,
+    #[serde(default)]
+    pub preemption_policy: PreemptionPolicy,
+    pub resource_class_ref: Option<String>,
+}
+
+fn default_processes_per_replica() -> u32 {
+    1
 }
 
 impl TrainingJobSpec {
@@ -134,22 +167,58 @@ impl TrainingJobSpec {
                 "hyperparameters.argv must not be empty",
             ));
         }
-        match self.distributed {
-            DistributedConfig::Single => {}
-            DistributedConfig::Ddp { world_size } => {
-                if world_size == 0 {
-                    return Err(moqentra_types::Error::invalid_argument(
-                        "ddp world_size must be greater than zero",
-                    ));
-                }
-                if world_size != self.resources.replicas {
-                    return Err(moqentra_types::Error::invalid_argument(
-                        "ddp world_size must equal resources.replicas",
-                    ));
-                }
+        let world_size = self.world_size();
+        if world_size == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "computed world_size must be greater than zero",
+            ));
+        }
+        const MAX_WORLD_SIZE: u32 = 10_000;
+        if world_size > MAX_WORLD_SIZE {
+            return Err(moqentra_types::Error::invalid_argument(
+                "world_size exceeds maximum allowed",
+            ));
+        }
+        if let DistributedConfig::Ddp { world_size: stored } = self.distributed {
+            if stored != world_size {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "distributed.world_size must equal resources.replicas * processes_per_replica",
+                ));
             }
         }
         Ok(())
+    }
+
+    /// Total number of training ranks: `replicas * processes_per_replica` for DDP, or `1` for single.
+    pub fn world_size(&self) -> u32 {
+        match self.distributed {
+            DistributedConfig::Single => 1,
+            DistributedConfig::Ddp { world_size } => world_size,
+        }
+    }
+
+    /// R1-compatible canonicalization: missing R2 fields default to single replica, single process,
+    /// no preemption, and the default checkpoint policy.
+    pub fn canonicalize(&mut self) {
+        if self.processes_per_replica == 0 {
+            self.processes_per_replica = 1;
+        }
+        if matches!(self.distributed, DistributedConfig::Single) {
+            self.processes_per_replica = 1;
+            self.resources.replicas = 1;
+        }
+        match self.distributed {
+            DistributedConfig::Single => {}
+            DistributedConfig::Ddp { ref mut world_size } => {
+                *world_size = self.resources.replicas.saturating_mul(self.processes_per_replica);
+            }
+        }
+        if self.max_attempts == 0 {
+            self.max_attempts = 1;
+        }
+        if self.deadline_seconds == 0 {
+            self.deadline_seconds = 3600;
+        }
     }
 }
 
@@ -374,10 +443,7 @@ impl TrainingJob {
         if self.attempts.len() >= max_attempts {
             return Err(moqentra_types::Error::unavailable("max attempts reached"));
         }
-        let world_size = match self.spec.distributed {
-            DistributedConfig::Single => 1u32,
-            DistributedConfig::Ddp { world_size } => world_size,
-        };
+        let world_size = self.spec.world_size();
         let expected_ranks = usize::try_from(world_size)
             .map_err(|_| moqentra_types::Error::internal("world_size too large"))?;
         if attempt.ranks.len() != expected_ranks {
@@ -615,6 +681,12 @@ mod tests {
                 topology: None,
             },
             distributed: DistributedConfig::Single,
+            processes_per_replica: 1,
+            checkpoint_policy: Default::default(),
+            queue_ref: None,
+            priority_class_ref: None,
+            preemption_policy: Default::default(),
+            resource_class_ref: None,
             max_attempts: 3,
             deadline_seconds: 3600,
         };

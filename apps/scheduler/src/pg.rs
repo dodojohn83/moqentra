@@ -175,10 +175,7 @@ impl PgScheduler {
         // Create an attempt and transition the job to Starting.
         let attempt_id = AttemptId::new_v7(&gen);
         let fencing_token = self.fencing_counter.fetch_add(1, Ordering::SeqCst) + 1;
-        let world_size = match job.spec.distributed {
-            moqentra_domain::training::DistributedConfig::Single => 1,
-            moqentra_domain::training::DistributedConfig::Ddp { world_size } => world_size,
-        };
+        let world_size = job.spec.world_size();
         if world_size == 0 {
             return Err("distributed world_size must be greater than zero".into());
         }

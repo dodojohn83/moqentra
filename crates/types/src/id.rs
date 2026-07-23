@@ -158,6 +158,18 @@ define_id!(ClusterId, "Inference cluster.");
 define_id!(EndpointId, "Inference endpoint.");
 define_id!(OperationId, "Long-running operation.");
 define_id!(ArtifactDigest, "Content digest of an artifact.");
+define_id!(QuotaPolicyId, "Resource quota policy.");
+define_id!(QuotaReservationId, "Reserved quota allocation.");
+define_id!(UsageLedgerId, "Immutable usage ledger entry.");
+define_id!(
+    ApprovalRequestId,
+    "Approval request for quota or promotion."
+);
+define_id!(QueuePolicyId, "Fair scheduling queue policy.");
+define_id!(PriorityClassId, "Scheduling priority class.");
+define_id!(ResourceClassId, "Hardware/resource class definition.");
+define_id!(ConversionProfileId, "Model conversion target profile.");
+define_id!(CheckpointManifestId, "Distributed checkpoint manifest.");
 
 #[cfg(test)]
 mod tests {
