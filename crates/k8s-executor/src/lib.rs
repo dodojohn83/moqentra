@@ -244,7 +244,7 @@ impl JobCompiler {
         job: &TrainingJob,
         attempt: &Attempt,
         namespace: &str,
-    ) -> serde_json::Value {
+    ) -> Result<serde_json::Value, moqentra_types::Error> {
         Self::compile(job, attempt, namespace, "Job", false)
     }
 
@@ -253,7 +253,7 @@ impl JobCompiler {
         job: &TrainingJob,
         attempt: &Attempt,
         namespace: &str,
-    ) -> serde_json::Value {
+    ) -> Result<serde_json::Value, moqentra_types::Error> {
         Self::compile(job, attempt, namespace, "VolcanoJob", true)
     }
 
@@ -263,7 +263,7 @@ impl JobCompiler {
         namespace: &str,
         _kind: &str,
         is_volcano: bool,
-    ) -> serde_json::Value {
+    ) -> Result<serde_json::Value, moqentra_types::Error> {
         let spec = &job.spec;
         let image = format!("moqentra/executor@{}", &spec.image_digest);
         let labels = labels(job, attempt);
@@ -292,15 +292,34 @@ impl JobCompiler {
             json!({"name": "MOQENTRA_NPROC_PER_NODE", "value": processes_per_replica.to_string()}),
         );
 
-        let command = if spec.hyperparameters.argv.is_empty() {
-            vec![
-                "python".to_string(),
-                "-m".to_string(),
-                "moqentra_worker".to_string(),
-            ]
+        let command;
+        if is_volcano && world_size > 1 {
+            // DDP/Elastic: compile to torchrun argv and environment. Each pod receives the same
+            // launcher env; torchrun assigns per-process RANK/LOCAL_RANK at runtime.
+            let rdzv_endpoint = format!("moqentra-{}-rdzv:29500", sanitize(&job.id.to_string()));
+            let launcher =
+                moqentra_scheduler::distributed::DdpLauncher::new(job, attempt, &rdzv_endpoint, 0)
+                    .map_err(|e| {
+                        moqentra_types::Error::invalid_argument(format!("ddp launcher: {e}"))
+                    })?;
+            command = launcher.torchrun_argv();
+            env = launcher
+                .environment_for_rank(job, attempt, 0, 0, "node-0", &spec.hyperparameters.env)
+                .into_iter()
+                .filter(|(k, _)| k != "RANK" && k != "LOCAL_RANK")
+                .map(|(k, v)| json!({"name": k, "value": v}))
+                .collect();
         } else {
-            spec.hyperparameters.argv.clone()
-        };
+            command = if spec.hyperparameters.argv.is_empty() {
+                vec![
+                    "python".to_string(),
+                    "-m".to_string(),
+                    "moqentra_worker".to_string(),
+                ]
+            } else {
+                spec.hyperparameters.argv.clone()
+            };
+        }
 
         let mut requests = serde_json::Map::new();
         requests.insert(
@@ -360,7 +379,7 @@ impl JobCompiler {
             ]
         });
 
-        if is_volcano {
+        let manifest = if is_volcano {
             json!({
                 "apiVersion": "batch.volcano.sh/v1alpha1",
                 "kind": "Job",
@@ -407,7 +426,8 @@ impl JobCompiler {
                     }
                 }
             })
-        }
+        };
+        Ok(manifest)
     }
 }
 
@@ -737,7 +757,7 @@ mod tests {
         job.admit().unwrap();
         let attempt = make_attempt(&job, 1);
         job.start_attempt(attempt.clone()).unwrap();
-        let manifest = JobCompiler::compile_k8s_job(&job, &attempt, "moqentra");
+        let manifest = JobCompiler::compile_k8s_job(&job, &attempt, "moqentra").unwrap();
         assert_eq!(manifest["apiVersion"], "batch/v1");
         assert_eq!(manifest["kind"], "Job");
         assert_eq!(manifest["metadata"]["namespace"], "moqentra");
@@ -758,7 +778,7 @@ mod tests {
         job.admit().unwrap();
         let attempt = make_attempt(&job, 1);
         job.start_attempt(attempt.clone()).unwrap();
-        let manifest = JobCompiler::compile_volcano_job(&job, &attempt, "moqentra");
+        let manifest = JobCompiler::compile_volcano_job(&job, &attempt, "moqentra").unwrap();
         assert_eq!(manifest["apiVersion"], "batch.volcano.sh/v1alpha1");
         assert_eq!(manifest["kind"], "Job");
         let tasks = manifest["spec"]["tasks"].as_array().unwrap();
@@ -792,7 +812,7 @@ mod tests {
         job.admit().unwrap();
         let attempt = make_attempt(&job, 1);
         job.start_attempt(attempt.clone()).unwrap();
-        let manifest = JobCompiler::compile_k8s_job(&job, &attempt, "moqentra");
+        let manifest = JobCompiler::compile_k8s_job(&job, &attempt, "moqentra").unwrap();
         let workload = K8sWorkload {
             tenant_id: job.tenant_id,
             project_id: job.project_id,
