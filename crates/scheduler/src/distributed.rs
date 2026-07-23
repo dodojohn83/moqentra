@@ -245,10 +245,6 @@ impl FailureClassifier {
             1 | 2 | 126 | 127 => FailureClass::UserCode,
             124 => FailureClass::Scheduler,      // timeout
             125 | 64 | 65 => FailureClass::Data, // data / assertion errors
-            134 => FailureClass::Oom,            // SIGABRT without 128 offset
-            137 => FailureClass::Oom,
-            139 => FailureClass::Device,
-            143 => FailureClass::Scheduler,
             _ => FailureClass::Unknown,
         }
     }
