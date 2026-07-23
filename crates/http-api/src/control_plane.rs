@@ -334,7 +334,7 @@ pub(crate) async fn audit_write(
     resource_type: Resource,
     resource_id: Option<&str>,
     outcome: AuditOutcome,
-) {
+) -> Result<(), moqentra_types::Error> {
     let mut resource = format!("{resource_type:?}");
     if let Some(id) = resource_id {
         resource.push(':');
@@ -353,9 +353,11 @@ pub(crate) async fn audit_write(
         correlation_id: ctx.request_id.clone(),
         occurred_at: UtcTimestamp::now(),
     };
-    if let Err(e) = state.audit.record(event).await {
-        tracing::warn!("failed to record write audit event: {}", e);
-    }
+    state
+        .audit
+        .record(event)
+        .await
+        .map_err(|e| moqentra_types::Error::internal(format!("audit failed: {e}")))
 }
 
 async fn healthz() -> Json<HealthResponse> {
@@ -555,7 +557,7 @@ async fn compile_application(
         Some(&result.digest),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok(Json(result))
 }
 
@@ -664,7 +666,7 @@ async fn create_dataset(
         Some(&created.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(DatasetResponse {
@@ -911,7 +913,7 @@ async fn create_experiment(
         Some(&created.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(ExperimentResponse {
@@ -1007,7 +1009,7 @@ async fn create_training_job(
         Some(&created.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     emit_event(
         &state,
         ctx.tenant_id,
@@ -1084,7 +1086,7 @@ async fn admit_training_job(
         Some(&job.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     emit_event(
         &state,
         ctx.tenant_id,
@@ -1128,7 +1130,7 @@ async fn cancel_training_job(
         Some(&job.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok(Json(TrainingJobResponse {
         id: job.id.to_string(),
         experiment_id: job.experiment_id.to_string(),
@@ -1204,7 +1206,7 @@ async fn create_dataset_version(
         Some(&created.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(DatasetVersionResponse {
@@ -1250,7 +1252,7 @@ async fn add_dataset_version_asset(
         Some(&updated.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::OK,
         Json(DatasetVersionResponse {
@@ -1292,7 +1294,7 @@ async fn generate_dataset_version_splits(
         Some(&updated.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::OK,
         Json(DatasetVersionResponse {
@@ -1374,7 +1376,7 @@ async fn publish_dataset_version(
         Some(&updated.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::OK,
         Json(DatasetVersionResponse {
@@ -1531,7 +1533,7 @@ async fn create_upload_session(
         Some(&session.id),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(UploadSessionResponse::from(&session)),
@@ -1669,7 +1671,7 @@ async fn upload_part(
         Some(&session.id),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1714,7 +1716,7 @@ async fn complete_upload_session(
         Some(&session.id),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok(Json(UploadSessionResponse::from(&session)))
 }
 
@@ -1750,7 +1752,7 @@ async fn abort_upload_session(
         Some(&session_id),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1844,7 +1846,7 @@ async fn create_import_job(
         Some(&id),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((StatusCode::CREATED, Json(ImportJobResponse::from(&job))))
 }
 
@@ -1894,7 +1896,7 @@ async fn cancel_import_job(
         Some(&job_id),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1922,7 +1924,7 @@ async fn create_model(
         Some(&created.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(ModelResponse {
@@ -2003,7 +2005,7 @@ async fn approve_model_version(
         Some(&version.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok(Json(ModelVersionResponse::from_version(&version)))
 }
 
@@ -2130,7 +2132,7 @@ async fn create_annotation_project(
         Some(&created.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(AnnotationProjectResponse {
@@ -2163,7 +2165,7 @@ async fn activate_annotation_project(
         Some(&p.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok(Json(AnnotationProjectResponse {
         id: p.id.to_string(),
         name: p.name.clone(),
