@@ -56,6 +56,9 @@ pub struct CompileResult {
     pub runtime_profiles: Vec<String>,
     /// Resolved model/resource bindings keyed by `node_id:slot`.
     pub artifact_bindings: BTreeMap<String, moqentra_domain::application::ResourceRef>,
+    /// Concrete object-key/digest bindings for artifact slots.
+    #[serde(default)]
+    pub resolved_artifact_bindings: BTreeMap<String, moqentra_domain::application::ArtifactBinding>,
     /// Canonical dg/v1 graph representation.
     pub graph_spec: GraphSpec,
     /// Canonical digest of the graph spec.
@@ -214,6 +217,7 @@ impl ApplicationCompiler {
             capabilities: capabilities.into_iter().collect(),
             runtime_profiles: runtime_profiles.into_iter().collect(),
             artifact_bindings,
+            resolved_artifact_bindings: BTreeMap::new(),
             graph_spec,
             graph_spec_digest,
         })

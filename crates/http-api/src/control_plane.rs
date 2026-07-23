@@ -23,7 +23,7 @@ use moqentra_auth::{
     Resource, Role, RoleStore, Scope,
 };
 use moqentra_domain::annotation::{AnnotationProject, Ontology, TaskType};
-use moqentra_domain::application::ApplicationSpec;
+use moqentra_domain::application::{ApplicationSpec, ArtifactBinding};
 use moqentra_domain::conversion::{ConversionJob, ConversionProfile, EvaluationRun};
 use moqentra_domain::dataset::{AssetRef, Dataset, DatasetVersion};
 use moqentra_domain::import::ImportJob;
@@ -388,7 +388,12 @@ async fn compile_application(
     let ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Create, Resource::ApplicationVersion).await?;
-    let result = state.compiler.compile(req.spec)?;
+    let mut result = state.compiler.compile(req.spec)?;
+    let project_id = ctx.project_id.ok_or_else(|| {
+        Error::invalid_argument("project context required to compile application")
+    })?;
+    result.resolved_artifact_bindings =
+        resolve_artifact_bindings(&state, ctx.tenant_id, project_id, &result.artifact_bindings)?;
     audit_write(
         &state,
         &ctx,
@@ -400,6 +405,77 @@ async fn compile_application(
     )
     .await;
     Ok(Json(result))
+}
+
+fn resolve_artifact_bindings(
+    state: &AppState,
+    tenant_id: moqentra_types::TenantId,
+    project_id: moqentra_types::ProjectId,
+    bindings: &std::collections::BTreeMap<String, moqentra_domain::application::ResourceRef>,
+) -> Result<std::collections::BTreeMap<String, ArtifactBinding>, moqentra_types::Error> {
+    use moqentra_domain::application::ResourceRef;
+    use moqentra_domain::model_registry::ModelVersion;
+
+    let mut resolved = std::collections::BTreeMap::new();
+    for (slot, resource) in bindings {
+        let binding = match resource {
+            ResourceRef::Model(version_id) => {
+                let version: ModelVersion = {
+                    let models = state.models.lock().unwrap_or_else(|e| e.into_inner());
+                    models.get_version(tenant_id, *version_id)?.clone()
+                };
+                let artifact = version
+                    .artifacts
+                    .iter()
+                    .find(|a| a.media_type.contains("onnx"))
+                    .or_else(|| version.artifacts.first())
+                    .ok_or_else(|| {
+                        moqentra_types::Error::invalid_argument(format!(
+                            "model version {version_id} has no artifacts"
+                        ))
+                    })?;
+                let object_key = ObjectKey::asset(
+                    tenant_id,
+                    project_id,
+                    "models",
+                    &version.model_id.to_string(),
+                    &version.version,
+                    &artifact.asset_id.to_string(),
+                )?;
+                ArtifactBinding {
+                    object_key: object_key.to_string(),
+                    digest: artifact.digest.clone(),
+                    media_type: artifact.media_type.clone(),
+                    size_bytes: artifact.size_bytes,
+                }
+            }
+            ResourceRef::Dataset(version_id) => {
+                let version = {
+                    let datasets = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
+                    datasets.get_version(tenant_id, *version_id)?.clone()
+                };
+                let asset = version.assets.first().ok_or_else(|| {
+                    moqentra_types::Error::invalid_argument(format!(
+                        "dataset version {version_id} has no assets"
+                    ))
+                })?;
+                ArtifactBinding {
+                    object_key: asset.object_key.clone(),
+                    digest: asset.digest.clone(),
+                    media_type: asset.media_type.clone(),
+                    size_bytes: asset.size,
+                }
+            }
+            ResourceRef::Secret { .. }
+            | ResourceRef::Stream { .. }
+            | ResourceRef::Device { .. } => {
+                // Secrets and streams are resolved at runner start, not materialized here.
+                continue;
+            }
+        };
+        resolved.insert(slot.clone(), binding);
+    }
+    Ok(resolved)
 }
 
 async fn create_dataset(
