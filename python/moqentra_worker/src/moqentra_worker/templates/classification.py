@@ -15,11 +15,11 @@ try:
     from torchvision import transforms
 except ImportError:  # pragma: no cover - optional heavy deps
     torch = None  # type: ignore[assignment]
-    nn = None  # type: ignore[assignment]
+    nn = type("NnStub", (), {"Module": object})()  # type: ignore[assignment]
     torchvision = None  # type: ignore[assignment]
     Image = None  # type: ignore[assignment, misc]
     DataLoader = None  # type: ignore[assignment, misc]
-    Dataset = None  # type: ignore[assignment, misc]
+    Dataset = object  # type: ignore[assignment, misc]
     transforms = None  # type: ignore[assignment]
 
 from moqentra_worker.onnx_validation import (

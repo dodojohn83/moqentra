@@ -17,12 +17,12 @@ try:
 except ImportError:  # pragma: no cover - optional heavy deps
     np = None  # type: ignore[assignment]
     torch = None  # type: ignore[assignment]
-    nn = None  # type: ignore[assignment]
+    nn = type("NnStub", (), {"Module": object})()  # type: ignore[assignment]
     F = None  # type: ignore[assignment]
     torchvision = None  # type: ignore[assignment]
     Image = None  # type: ignore[assignment, misc]
     DataLoader = None  # type: ignore[assignment, misc]
-    Dataset = None  # type: ignore[assignment, misc]
+    Dataset = object  # type: ignore[assignment, misc]
     transforms = None  # type: ignore[assignment]
 
 from moqentra_worker.onnx_validation import (

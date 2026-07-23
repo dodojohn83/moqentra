@@ -196,6 +196,7 @@ impl PlanCompiler {
         labels.insert("attempt".to_string(), attempt_id.to_string());
 
         let replicas = spec.resources.replicas;
+        let world_size = spec.world_size();
         let gang = match spec.distributed {
             moqentra_domain::training::DistributedConfig::Single => GangGroup {
                 name: format!("gang-{}", attempt_id),
@@ -203,7 +204,7 @@ impl PlanCompiler {
                 total_members: 1,
                 topology: "none".to_string(),
             },
-            moqentra_domain::training::DistributedConfig::Ddp { world_size } => {
+            moqentra_domain::training::DistributedConfig::Ddp { .. } => {
                 if world_size == 0 {
                     return Err(moqentra_types::Error::invalid_argument(
                         "ddp world_size must be > 0",
@@ -344,6 +345,12 @@ mod tests {
             } else {
                 DistributedConfig::Single
             },
+            processes_per_replica: 1,
+            checkpoint_policy: Default::default(),
+            queue_ref: None,
+            priority_class_ref: None,
+            preemption_policy: Default::default(),
+            resource_class_ref: None,
             max_attempts: 1,
             deadline_seconds: 3600,
         };

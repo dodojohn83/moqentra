@@ -4,6 +4,8 @@
 
 pub mod annotation;
 pub mod application;
+pub mod approval;
+pub mod checkpoint_manifest;
 pub mod conversion;
 pub mod dataset;
 pub mod export;
@@ -12,6 +14,9 @@ pub mod inference;
 pub mod model_registry;
 pub mod pipeline;
 pub mod quality;
+pub mod queue;
+pub mod quota;
+pub mod resource_class;
 pub mod training;
 
 pub use annotation::{
@@ -21,6 +26,10 @@ pub use annotation::{
 pub use application::{
     Application, ApplicationNode, ApplicationSpec, ApplicationVersion, ApplicationVersionState,
     Binding, Port, ResourceRef,
+};
+pub use approval::{ApprovalDecision, ApprovalKind, ApprovalRequest, ApprovalState};
+pub use checkpoint_manifest::{
+    CheckpointHold, CheckpointManifest, CheckpointShard, CheckpointState,
 };
 pub use conversion::{
     ConversionJob, ConversionJobState, ConversionProfile, ConversionTarget, EvaluationMetric,
@@ -47,6 +56,12 @@ pub use quality::{
     QualityReport, QualityRule, QualityRun, QualityRunState, QualityViolation, ReviewDecision,
     ReviewItem, Severity,
 };
+pub use queue::{PriorityClass, QueueDecision, QueuePolicy};
+pub use quota::{
+    DimensionLimit, QuotaPolicy, QuotaReservation, QuotaScope, ReservationState, ResourceDimension,
+    UsageLedgerEntry, UsageRollup,
+};
+pub use resource_class::{ResourceClass, SharingMode, SupportTier};
 pub use training::{
     Attempt, Checkpoint, DistributedConfig, Experiment, MetricPoint, OutputManifest, Rank,
     RankState, ResourceRequest, TrainingJob, TrainingJobSpec, TrainingJobState,

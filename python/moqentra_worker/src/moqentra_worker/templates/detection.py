@@ -17,7 +17,7 @@ except ImportError:  # pragma: no cover - optional heavy deps
     torchvision = None  # type: ignore[assignment]
     Image = None  # type: ignore[assignment, misc]
     DataLoader = None  # type: ignore[assignment, misc]
-    Dataset = None  # type: ignore[assignment, misc]
+    Dataset = object  # type: ignore[assignment, misc]
     transforms = None  # type: ignore[assignment]
     box_iou = None  # type: ignore[assignment]
 

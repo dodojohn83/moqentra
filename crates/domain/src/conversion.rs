@@ -2,8 +2,8 @@
 
 use crate::model_registry::{Artifact, ModelSignature};
 use moqentra_types::{
-    ConversionJobId, DatasetVersionId, EvaluationRunId, ModelVersionId, ProjectId, TenantId,
-    UtcTimestamp,
+    ConversionJobId, ConversionProfileId, DatasetVersionId, EvaluationRunId, ModelVersionId,
+    ProjectId, TenantId, UtcTimestamp,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -59,9 +59,11 @@ impl FromStr for ConversionTarget {
 /// * `CompileOnly` - a toolchain can compile the model, but runtime
 ///   verification is not yet available in this worker.
 /// * `Unsupported` - no conversion path is implemented.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ConversionSupportTier {
     Verified,
+    #[default]
     CompileOnly,
     Unsupported,
 }
@@ -91,6 +93,8 @@ pub struct PostprocessContract {
 /// Toolchain and hardware profile for a conversion target.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConversionProfile {
+    pub id: ConversionProfileId,
+    pub name: String,
     pub target: ConversionTarget,
     pub sdk_version: String,
     pub toolchain_image_digest: String,
@@ -99,6 +103,10 @@ pub struct ConversionProfile {
     pub dynamic_shapes: bool,
     pub capabilities: Vec<String>,
     pub postprocess: Option<PostprocessContract>,
+    pub parameter_schema: BTreeMap<String, String>,
+    pub support_tier: ConversionSupportTier,
+    pub revision: u64,
+    pub created_at: UtcTimestamp,
 }
 
 /// Conversion job state.
@@ -528,6 +536,8 @@ mod tests {
 
     fn make_profile() -> ConversionProfile {
         ConversionProfile {
+            id: ConversionProfileId::new_v7(&RandomIdGenerator),
+            name: "onnx-default".to_string(),
             target: ConversionTarget::Onnx,
             sdk_version: "1.16".to_string(),
             toolchain_image_digest:
@@ -538,6 +548,10 @@ mod tests {
             dynamic_shapes: false,
             capabilities: vec!["opset17".to_string()],
             postprocess: None,
+            parameter_schema: BTreeMap::new(),
+            support_tier: ConversionSupportTier::Verified,
+            revision: 1,
+            created_at: UtcTimestamp::now(),
         }
     }
 
