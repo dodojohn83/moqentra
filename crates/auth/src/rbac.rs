@@ -2,6 +2,7 @@
 
 use moqentra_types::{ProjectId, RequestContext, TenantId, UserId};
 use std::collections::HashSet;
+use std::str::FromStr;
 
 /// Core roles in the platform.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -314,6 +315,25 @@ impl Authorizer {
         }
     }
 
+    fn parsed_roles(&self, ctx: &RequestContext, tenant: TenantId) -> Vec<Role> {
+        if !ctx.roles.is_empty() {
+            return ctx.roles.iter().filter_map(|s| Role::from_str(s.as_str()).ok()).collect();
+        }
+        self.roles_for_principal(&ctx.principal, tenant)
+    }
+
+    fn is_project_member(&self, ctx: &RequestContext, project_id: ProjectId) -> bool {
+        if !ctx.project_ids.is_empty() {
+            return ctx.project_ids.contains(&project_id);
+        }
+        match &ctx.principal {
+            moqentra_types::Principal::User { id } => {
+                self.project_members.contains(&(*id, ctx.tenant_id, project_id))
+            }
+            _ => false,
+        }
+    }
+
     /// Returns `Ok(())` if the caller is allowed to perform `action` on `resource`
     /// within `scope`. Denies if there is no tenant context, the principal has no
     /// role, or the role does not grant the required permission. Project-scoped
@@ -342,7 +362,7 @@ impl Authorizer {
             return Err(deny());
         }
 
-        let roles = self.roles_for_principal(&ctx.principal, scope.tenant_id);
+        let roles = self.parsed_roles(ctx, scope.tenant_id);
         let allowed = roles
             .iter()
             .any(|role| role_permissions(*role).contains(&Permission::new(resource, action)));
@@ -357,12 +377,10 @@ impl Authorizer {
                 moqentra_types::Principal::Service { .. } => {
                     // Workload identities are not project members; role is enough.
                 }
-                moqentra_types::Principal::User { id } => {
+                moqentra_types::Principal::User { .. } => {
                     let is_admin =
                         roles.iter().any(|r| matches!(r, Role::TenantAdmin | Role::SystemAdmin));
-                    if !is_admin
-                        && !self.project_members.contains(&(*id, scope.tenant_id, project_id))
-                    {
+                    if !is_admin && !self.is_project_member(ctx, project_id) {
                         return Err(deny());
                     }
                 }
@@ -382,21 +400,16 @@ impl Authorizer {
         resource: Resource,
         target_tenant: TenantId,
     ) -> Result<(), AuthorizationError> {
-        let user = match &ctx.principal {
-            moqentra_types::Principal::User { id } => *id,
-            _ => {
-                return Err(AuthorizationError {
-                    action,
-                    resource,
-                    tenant: target_tenant,
-                })
-            }
-        };
+        if !matches!(ctx.principal, moqentra_types::Principal::User { .. }) {
+            return Err(AuthorizationError {
+                action,
+                resource,
+                tenant: target_tenant,
+            });
+        }
 
-        let has_system_admin = self
-            .role_assignments
-            .iter()
-            .any(|(u, _, r)| *u == user && matches!(r, Role::SystemAdmin));
+        let roles = self.parsed_roles(ctx, ctx.tenant_id);
+        let has_system_admin = roles.iter().any(|r| matches!(r, Role::SystemAdmin));
 
         if !has_system_admin {
             return Err(AuthorizationError {

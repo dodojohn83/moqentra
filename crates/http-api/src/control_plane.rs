@@ -170,7 +170,7 @@ pub(crate) async fn resolve_context(
         None => None,
     };
 
-    let principal = if let Some(token) = bearer_token(headers) {
+    let (principal, roles, project_ids) = if let Some(token) = bearer_token(headers) {
         let session = state.tokens.validate_session(&token).await?;
         if let Principal::User { id } = session.principal {
             // Resolve roles from DB membership when available; JWT claim roles are ignored in
@@ -184,34 +184,32 @@ pub(crate) async fn resolve_context(
             } else {
                 session.roles
             };
-            let mut authz = state.authorizer.lock().unwrap_or_else(|e| e.into_inner());
-            for role in roles {
-                authz.assign_role(id, tenant_id, role);
-            }
-            // Optional project membership bootstrap for development.
-            if let Some(project_id) = project_header {
-                authz.add_project_member(id, tenant_id, project_id);
-            }
+            let role_strings: Vec<String> = roles.iter().map(|r| r.as_str().to_string()).collect();
+            let project_ids: Vec<ProjectId> = project_header.into_iter().collect();
+            (session.principal, role_strings, project_ids)
+        } else if let Principal::Service { .. } = session.principal {
+            (
+                session.principal,
+                vec![Role::Operator.as_str().to_string()],
+                Vec::new(),
+            )
+        } else {
+            (session.principal, Vec::new(), Vec::new())
         }
-        if let Principal::Service { name } = &session.principal {
-            let mut authz = state.authorizer.lock().unwrap_or_else(|e| e.into_inner());
-            // Default operator grant for known services unless already assigned.
-            authz.assign_service_role(name.clone(), tenant_id, Role::Operator);
-        }
-        session.principal
     } else if state.require_auth {
         return Err(Error::unauthenticated(
             "Authorization bearer token required",
         ));
     } else {
         // Dev open mode: anonymous principal for local tooling.
-        Principal::Anonymous
+        (Principal::Anonymous, Vec::new(), Vec::new())
     };
 
-    let mut ctx = RequestContext::new(tenant_id, principal, request_id);
+    let mut ctx = RequestContext::new(tenant_id, principal, request_id).with_roles(roles);
     if let Some(project_id) = project_header {
         ctx = ctx.with_project(project_id);
     }
+    ctx.project_ids = project_ids;
     Ok(ctx)
 }
 
