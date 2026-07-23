@@ -1,17 +1,20 @@
 //! dyun-agent runtime, bundle and replica state machine.
 
-use moqentra_types::{AssetId, DeploymentId, NodeId, ReplicaId, UtcTimestamp};
+use moqentra_types::{DeploymentId, NodeId, ReplicaId, UtcTimestamp};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+
+pub use moqentra_domain::application::ArtifactBinding;
 
 /// dyun graph bundle version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DyunGraphBundle {
     pub version: String,
     pub application_digest: String,
+    pub graph_spec: moqentra_domain::application::GraphSpec,
     pub graph_spec_digest: String,
-    pub artifact_bindings: BTreeMap<String, AssetId>,
+    pub artifact_bindings: BTreeMap<String, ArtifactBinding>,
     pub runtime_profile: String,
     pub resource_limits: ResourceLimits,
     pub signature: String,
@@ -29,9 +32,13 @@ pub struct ResourceLimits {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentCapabilities {
     pub node_id: NodeId,
+    pub agent_version: String,
     pub dg_versions: Vec<String>,
     pub codecs: Vec<String>,
     pub accelerators: Vec<String>,
+    pub element_schemas: Vec<String>,
+    pub backends: Vec<String>,
+    pub build_features: Vec<String>,
     pub max_replicas: u32,
 }
 
@@ -48,7 +55,7 @@ pub enum ReplicaState {
 }
 
 /// A running replica managed by dyun-agent.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Replica {
     pub id: ReplicaId,
     pub deployment_id: DeploymentId,
@@ -58,10 +65,16 @@ pub struct Replica {
     pub bundle: DyunGraphBundle,
     pub node_id: NodeId,
     pub runner_pid: Option<u32>,
+    pub runner_id: Option<String>,
     pub last_heartbeat: Option<UtcTimestamp>,
     pub desired_state: ReplicaState,
+    /// Last generation reported by the runner (may lag behind desired).
+    pub observed_generation: u64,
+    /// Recent error messages (bounded in practice by agent truncation).
+    pub errors: Vec<String>,
     pub created_at: UtcTimestamp,
     pub updated_at: UtcTimestamp,
+    pub drain_deadline: Option<UtcTimestamp>,
 }
 
 impl Replica {
@@ -83,22 +96,41 @@ impl Replica {
             bundle,
             node_id,
             runner_pid: None,
+            runner_id: None,
             last_heartbeat: None,
             desired_state: ReplicaState::Running,
+            observed_generation: generation,
+            errors: Vec::new(),
             created_at: now,
             updated_at: now,
+            drain_deadline: None,
         }
     }
 
-    pub fn verify_bundle(&self, trusted_keys: &[String]) -> Result<(), moqentra_types::Error> {
-        let valid_keys: Vec<&String> = trusted_keys.iter().filter(|k| !k.is_empty()).collect();
-        let trusted = valid_keys.iter().any(|k| {
-            self.bundle.signature == k.as_str()
-                || (k.ends_with(':')
-                    && self.bundle.signature.starts_with(k.as_str())
-                    && self.bundle.signature.len() > k.len())
+    pub fn verify_bundle(
+        &self,
+        production_keys: &[String],
+        dev_keys: &[String],
+    ) -> Result<(), moqentra_types::Error> {
+        let prod: Vec<&String> = production_keys.iter().filter(|k| !k.is_empty()).collect();
+        let dev: Vec<&String> = dev_keys.iter().filter(|k| !k.is_empty()).collect();
+
+        // Production signatures must match a trusted key exactly.
+        let prod_trusted = prod.iter().any(|k| self.bundle.signature == k.as_str());
+        // Development signatures may use a namespace prefix (e.g. "trusted:") but
+        // only when a development key explicitly allows that namespace.
+        let dev_trusted = dev.iter().any(|k| {
+            k.ends_with(':')
+                && self.bundle.signature.starts_with(k.as_str())
+                && self.bundle.signature.len() > k.len()
         });
-        if valid_keys.is_empty() || !trusted {
+
+        if prod.is_empty() && dev.is_empty() {
+            return Err(moqentra_types::Error::permission_denied(
+                "no trusted keys configured",
+            ));
+        }
+        if !prod_trusted && !dev_trusted {
             return Err(moqentra_types::Error::permission_denied(
                 "bundle signature not trusted",
             ));
@@ -108,6 +140,12 @@ impl Replica {
         {
             return Err(moqentra_types::Error::invalid_argument(
                 "bundle digests must be valid content digests",
+            ));
+        }
+        let computed = self.bundle.graph_spec.canonical_digest()?;
+        if computed != self.bundle.graph_spec_digest {
+            return Err(moqentra_types::Error::invalid_argument(
+                "graph spec digest mismatch",
             ));
         }
         Ok(())
@@ -132,23 +170,69 @@ impl Replica {
         Ok(())
     }
 
+    pub fn set_runner(&mut self, runner_id: impl Into<String>, pid: u32) {
+        self.runner_id = Some(runner_id.into());
+        self.runner_pid = Some(pid);
+        self.updated_at = UtcTimestamp::now();
+    }
+
+    pub fn record_error(&mut self, message: impl Into<String>) {
+        self.errors.push(message.into());
+        if self.errors.len() > 64 {
+            self.errors.remove(0);
+        }
+        self.updated_at = UtcTimestamp::now();
+    }
+
+    pub fn observe_generation(&mut self, observed: u64) {
+        if observed > self.observed_generation {
+            self.observed_generation = observed;
+            self.updated_at = UtcTimestamp::now();
+        }
+    }
+
     pub fn heartbeat(
         &mut self,
         generation: u64,
         fencing_token: u64,
+        observed_generation: u64,
     ) -> Result<(), moqentra_types::Error> {
         if generation != self.generation || fencing_token != self.fencing_token {
             return Err(moqentra_types::Error::conflict("stale heartbeat"));
         }
         self.last_heartbeat = Some(UtcTimestamp::now());
+        self.observe_generation(observed_generation);
         self.updated_at = UtcTimestamp::now();
         Ok(())
     }
 
-    pub fn drain(&mut self) {
+    pub fn drain(&mut self, timeout: std::time::Duration) {
         self.desired_state = ReplicaState::Stopped;
         self.state = ReplicaState::Draining;
+        self.drain_deadline = UtcTimestamp::now().add_std_duration(timeout);
         self.updated_at = UtcTimestamp::now();
+    }
+
+    pub fn reconcile(&mut self, now: UtcTimestamp, heartbeat_timeout: std::time::Duration) {
+        if self.state == ReplicaState::Draining {
+            if let Some(deadline) = self.drain_deadline {
+                if now >= deadline {
+                    self.state = ReplicaState::Stopped;
+                    self.updated_at = now;
+                }
+            }
+        }
+        if matches!(self.state, ReplicaState::Running | ReplicaState::Starting) {
+            if let Some(last) = self.last_heartbeat {
+                if now.unix_millis().saturating_sub(last.unix_millis())
+                    > heartbeat_timeout.as_millis() as i64
+                {
+                    self.state = ReplicaState::Failed;
+                    self.errors.push("heartbeat timed out".to_string());
+                    self.updated_at = now;
+                }
+            }
+        }
     }
 }
 
@@ -235,14 +319,19 @@ mod tests {
     use moqentra_types::RandomIdGenerator;
 
     fn make_bundle() -> DyunGraphBundle {
+        let graph_spec = moqentra_domain::application::GraphSpec {
+            version: "dg/v1".to_string(),
+            elements: BTreeMap::new(),
+            connections: Vec::new(),
+        };
+        let graph_spec_digest = graph_spec.canonical_digest().unwrap();
         DyunGraphBundle {
             version: "DyunGraphBundle/v1".to_string(),
             application_digest:
                 "sha256:a172cedcae47474b615c54d510a5d84a8dea3032e958587430b413538be3f333"
                     .to_string(),
-            graph_spec_digest:
-                "sha256:eef93e1d14482804277fca0172464032d1a4fdbcc338524059fa1e861454ad4d"
-                    .to_string(),
+            graph_spec,
+            graph_spec_digest,
             artifact_bindings: BTreeMap::new(),
             runtime_profile: "rtsp-track-rtmp".to_string(),
             resource_limits: ResourceLimits {
@@ -267,8 +356,10 @@ mod tests {
             bundle,
             NodeId::new_v7(&gen),
         );
-        assert!(replica.verify_bundle(&["other".to_string()]).is_err());
-        assert!(replica.verify_bundle(&["trusted:".to_string()]).is_ok());
+        assert!(replica.verify_bundle(&["other".to_string()], &[]).is_err());
+        assert!(replica.verify_bundle(&[], &["trusted:".to_string()]).is_ok());
+        // Production keys require an exact signature match.
+        assert!(replica.verify_bundle(&["trusted:abc".to_string()], &[]).is_ok());
     }
 
     #[test]
@@ -285,6 +376,14 @@ mod tests {
         replica.transition(1, 7, ReplicaState::Running).unwrap();
         assert!(replica.transition(0, 7, ReplicaState::Running).is_err());
         assert!(replica.transition(1, 99, ReplicaState::Running).is_err());
+
+        // Heartbeat advances observed generation but never moves backwards.
+        assert!(replica.heartbeat(1, 7, 1).is_ok());
+        assert_eq!(replica.observed_generation, 1);
+        replica.observe_generation(3);
+        assert_eq!(replica.observed_generation, 3);
+        replica.observe_generation(2);
+        assert_eq!(replica.observed_generation, 3);
     }
 
     #[test]

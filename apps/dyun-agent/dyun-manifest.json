@@ -1,0 +1,29 @@
+{
+  "version": "dg/v1",
+  "commit": "r1-dyun-0000000000000000000000000000000000000000",
+  "schemas": [
+    "rtsp-source",
+    "decode",
+    "preprocess",
+    "inference",
+    "postprocess",
+    "tracker",
+    "osd",
+    "encode",
+    "rtmp-sink"
+  ],
+  "elements": [
+    "moqentra.dyun.v1.RTSPSource",
+    "moqentra.dyun.v1.Decode",
+    "moqentra.dyun.v1.Preprocess",
+    "moqentra.dyun.v1.Inference",
+    "moqentra.dyun.v1.Postprocess",
+    "moqentra.dyun.v1.Tracker",
+    "moqentra.dyun.v1.OSD",
+    "moqentra.dyun.v1.Encode",
+    "moqentra.dyun.v1.RTMPSink"
+  ],
+  "codecs": ["h264", "hevc", "aac"],
+  "backends": ["onnxruntime", "opencv", "ffmpeg"],
+  "build_features": ["cpu", "cuda"]
+}
