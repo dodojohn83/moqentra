@@ -130,59 +130,64 @@ impl WebhookSubscription {
     }
 
     pub fn validate_url(&self) -> Result<(), Error> {
-        let parsed =
-            url::Url::parse(&self.url).map_err(|_| Error::invalid_argument("invalid url"))?;
-        if parsed.scheme() != "http" && parsed.scheme() != "https" {
-            return Err(Error::invalid_argument("url scheme must be http or https"));
-        }
-        if !parsed.username().is_empty() || parsed.password().is_some() {
-            return Err(Error::invalid_argument("url must not contain credentials"));
-        }
-
-        match parsed.host() {
-            Some(url::Host::Domain(domain)) => {
-                let lower = domain.to_lowercase();
-                // Ignore a trailing dot so `metadata.google.internal.` is also blocked.
-                let lower = lower.trim_end_matches('.');
-                if lower.is_empty()
-                    || lower == "localhost"
-                    || lower.ends_with(".localhost")
-                    || lower == "metadata.google.internal"
-                {
-                    return Err(Error::invalid_argument(
-                        "SSRF: internal address not allowed",
-                    ));
-                }
-                // Reject domain-looking IPs such as 127.1 or 0x7f.0.0.1 that the
-                // url crate does not parse as an address literal.
-                if lower.parse::<IpAddr>().is_ok()
-                    || Ipv4Addr::from_str(lower).is_ok()
-                    || parse_ipv4_like(lower).is_some_and(is_internal_ipv4)
-                {
-                    return Err(Error::invalid_argument(
-                        "SSRF: internal address not allowed",
-                    ));
-                }
-            }
-            Some(url::Host::Ipv4(ip)) => {
-                if is_internal_ipv4(ip) {
-                    return Err(Error::invalid_argument(
-                        "SSRF: internal address not allowed",
-                    ));
-                }
-            }
-            Some(url::Host::Ipv6(ip)) => {
-                if is_internal_ipv6(ip) {
-                    return Err(Error::invalid_argument(
-                        "SSRF: internal address not allowed",
-                    ));
-                }
-            }
-            None => return Err(Error::invalid_argument("url missing host")),
-        }
-
-        Ok(())
+        validate_url(&self.url)
     }
+}
+
+/// Validates a URL for outbound HTTP(S) calls. Blocks internal/private hosts,
+/// localhost, link-local, and metadata endpoints to mitigate SSRF.
+pub(crate) fn validate_url(url: &str) -> Result<(), Error> {
+    let parsed = url::Url::parse(url).map_err(|_| Error::invalid_argument("invalid url"))?;
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return Err(Error::invalid_argument("url scheme must be http or https"));
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(Error::invalid_argument("url must not contain credentials"));
+    }
+
+    match parsed.host() {
+        Some(url::Host::Domain(domain)) => {
+            let lower = domain.to_lowercase();
+            // Ignore a trailing dot so `metadata.google.internal.` is also blocked.
+            let lower = lower.trim_end_matches('.');
+            if lower.is_empty()
+                || lower == "localhost"
+                || lower.ends_with(".localhost")
+                || lower == "metadata.google.internal"
+            {
+                return Err(Error::invalid_argument(
+                    "SSRF: internal address not allowed",
+                ));
+            }
+            // Reject domain-looking IPs such as 127.1 or 0x7f.0.0.1 that the
+            // url crate does not parse as an address literal.
+            if lower.parse::<IpAddr>().is_ok()
+                || Ipv4Addr::from_str(lower).is_ok()
+                || parse_ipv4_like(lower).is_some_and(is_internal_ipv4)
+            {
+                return Err(Error::invalid_argument(
+                    "SSRF: internal address not allowed",
+                ));
+            }
+        }
+        Some(url::Host::Ipv4(ip)) => {
+            if is_internal_ipv4(ip) {
+                return Err(Error::invalid_argument(
+                    "SSRF: internal address not allowed",
+                ));
+            }
+        }
+        Some(url::Host::Ipv6(ip)) => {
+            if is_internal_ipv6(ip) {
+                return Err(Error::invalid_argument(
+                    "SSRF: internal address not allowed",
+                ));
+            }
+        }
+        None => return Err(Error::invalid_argument("url missing host")),
+    }
+
+    Ok(())
 }
 
 fn is_internal_ipv4(ip: Ipv4Addr) -> bool {

@@ -164,8 +164,10 @@ pub(crate) async fn resolve_context(
         .ok_or_else(|| Error::invalid_argument("X-Tenant-Id header is required"))?;
     let tenant_id = TenantId::try_from(tenant_raw.as_str())?;
 
-    let project_header =
-        header_str(headers, "x-project-id").and_then(|p| ProjectId::try_from(p.as_str()).ok());
+    let project_header = match header_str(headers, "x-project-id") {
+        Some(p) => Some(ProjectId::try_from(p.as_str())?),
+        None => None,
+    };
 
     let principal = if let Some(token) = bearer_token(headers) {
         let session = state.tokens.validate_session(&token).await?;
@@ -703,7 +705,7 @@ async fn list_datasets(
 
     let total = items.len() as u64;
     let limit = page.bounded_limit() as usize;
-    let offset = page.offset as usize;
+    let offset = (page.offset as usize).min(items.len());
     let end = (offset + limit).min(items.len());
     let page_items = items[offset..end]
         .iter()
@@ -925,7 +927,7 @@ async fn list_experiments(
     });
     let total = items.len() as u64;
     let limit = page.bounded_limit() as usize;
-    let offset = page.offset as usize;
+    let offset = (page.offset as usize).min(items.len());
     let end = (offset + limit).min(items.len());
     let page_items = items[offset..end]
         .iter()
@@ -1033,7 +1035,7 @@ async fn list_training_jobs(
     });
     let total = items.len() as u64;
     let limit = page.bounded_limit() as usize;
-    let offset = page.offset as usize;
+    let offset = (page.offset as usize).min(items.len());
     let end = (offset + limit).min(items.len());
     let page_items = items[offset..end]
         .iter()
@@ -1805,6 +1807,7 @@ async fn create_import_job(
         Error::invalid_argument("X-Project-Id is required when creating an import job")
     })?;
     ObjectKey::from_str(ctx.tenant_id, project_id, &req.target_key)?;
+    crate::northbound::validate_url(&req.source_url)?;
     let id = Uuid::new_v4().to_string();
     let job = ImportJob::new_v1(
         id.clone(),
@@ -1931,7 +1934,7 @@ async fn list_models(
     });
     let total = items.len() as u64;
     let limit = page.bounded_limit() as usize;
-    let offset = page.offset as usize;
+    let offset = (page.offset as usize).min(items.len());
     let end = (offset + limit).min(items.len());
     let page_items = items[offset..end].iter().map(ModelResponse::from_model).collect();
     Ok(Json(Page::new(page_items, total, page)))
@@ -2169,7 +2172,7 @@ async fn list_outbox(
         b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
     });
     let total = pending.len() as u64;
-    let offset = page.offset as usize;
+    let offset = (page.offset as usize).min(pending.len());
     let end = (offset + page.bounded_limit() as usize).min(pending.len());
     let items = pending[offset..end]
         .iter()
