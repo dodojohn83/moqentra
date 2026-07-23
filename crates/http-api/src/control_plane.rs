@@ -175,15 +175,18 @@ pub(crate) async fn resolve_context(
         if let Principal::User { id } = session.principal {
             // Resolve roles from DB membership when available; JWT claim roles are ignored in
             // production to enforce re-auth on tenant/project switch.
-            let roles = if let Some(pool) = &state.db_pool {
+            let mut roles = if let Some(pool) = &state.db_pool {
                 let store = PgRoleStore::new(pool.clone());
-                match project_header {
-                    Some(pid) => store.project_roles(id, tenant_id, pid).await?,
-                    None => store.tenant_roles(id, tenant_id).await?,
+                let mut roles = store.tenant_roles(id, tenant_id).await?;
+                if let Some(pid) = project_header {
+                    roles.extend(store.project_roles(id, tenant_id, pid).await?);
                 }
+                roles
             } else {
                 session.roles
             };
+            roles.sort_unstable();
+            roles.dedup();
             let role_strings: Vec<String> = roles.iter().map(|r| r.as_str().to_string()).collect();
             let project_ids: Vec<ProjectId> = project_header.into_iter().collect();
             (session.principal, role_strings, project_ids)

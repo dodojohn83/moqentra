@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::str::FromStr;
 
 /// Core roles in the platform.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Role {
     Viewer,
     Labeler,
