@@ -2,9 +2,9 @@
 
 ## 1. 配额模型
 
-- [ ] `R2-QUOTA-001` 支持 tenant 默认策略和 project override，限制并发训练/转换、设备数、GPU/NPU 小时、存储字节和队列深度。
-- [ ] `R2-QUOTA-002` policy 使用 revision 和 effective period；策略变更不追溯改变已创建 reservation。
-- [ ] `R2-QUOTA-003` 提交训练时按 `accelerator count × replicas × max duration` 原子创建 reservation；无可用额度时不进入队列。
+- [x] `R2-QUOTA-001` 支持 tenant 默认策略和 project override，限制并发训练/转换、设备数、GPU/NPU 小时、存储字节和队列深度。
+- [~] `R2-QUOTA-002` policy 使用 revision 和 effective period；策略变更不追溯改变已创建 reservation。revision 已跟踪；effective period 校验待 scheduler 集成时补齐。
+- [~] `R2-QUOTA-003` 提交训练时按 `accelerator count × replicas × max duration` 原子创建 reservation；无可用额度时不进入队列。`QuotaService::admit` 已实现基于 policy 的 reservation 创建；与 training service 的原子提交和 duration 计算待后续补齐。
 - [ ] `R2-QUOTA-004` 实际 start/stop、设备绑定和 Artifact 写入生成不可变 usage ledger；失败重放以 source event id 去重。
 - [ ] `R2-QUOTA-005` job 终结后结算实际用量并释放未使用 reservation；lost job 由 reconciler 在 lease 过期后结算。
 - [ ] `R2-QUOTA-006` 存储用量按租户对象引用计费，去重对象只计一次物理占用，同时保留各项目逻辑引用统计。
@@ -12,9 +12,9 @@
 
 ## 2. 审批边界
 
-- [ ] `R2-APPROVAL-001` 配额超限、模型发布和 production deployment 创建 ApprovalRequest，保存发起时的资源、策略和风险快照。
-- [ ] `R2-APPROVAL-002` 申请人不能审批自己的请求；审批者必须在相同 tenant/project 范围拥有明确权限。
-- [ ] `R2-APPROVAL-003` 决定包含 approve/reject、理由、有效期、限制值和 decision revision；决定不可修改，只能撤销或新建请求。
+- [x] `R2-APPROVAL-001` 配额超限、模型发布和 production deployment 创建 ApprovalRequest，保存发起时的资源、策略和风险快照。
+- [x] `R2-APPROVAL-002` 申请人不能审批自己的请求；审批者必须在相同 tenant/project 范围拥有明确权限。
+- [x] `R2-APPROVAL-003` 决定包含 approve/reject、理由、有效期、限制值和 decision revision；决定不可修改，只能撤销或新建请求。
 - [ ] `R2-APPROVAL-004` 审批通过后创建有作用域和到期时间的 override，不永久修改基础 quota policy。
 - [ ] `R2-APPROVAL-005` 重复审批、过期批准、策略变更和资源 revision 变化必须拒绝或要求重新申请。
 - [ ] `R2-APPROVAL-006` 每次申请、查看敏感详情、决定、撤销和 override 使用都写入企业审计。

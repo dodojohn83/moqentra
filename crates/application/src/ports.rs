@@ -11,16 +11,19 @@ use async_trait::async_trait;
 use moqentra_domain::{
     annotation::{AnnotationProject, AnnotationTask},
     application::{Application, ApplicationVersion},
+    approval::ApprovalRequest,
     conversion::{ConversionJob, EvaluationRun},
     dataset::{Dataset, DatasetVersion},
     inference::Deployment,
     model_registry::{Model, ModelVersion},
+    quota::{QuotaPolicy, QuotaReservation},
     training::TrainingJob,
 };
 use moqentra_types::{
-    AnnotationProjectId, AnnotationTaskId, ApplicationId, ApplicationVersionId, ConversionJobId,
-    DatasetId, DatasetVersionId, DeploymentId, Error, EvaluationRunId, ModelId, ModelVersionId,
-    Page, PageRequest, ProjectId, RequestContext, Revision, TrainingJobId,
+    AnnotationProjectId, AnnotationTaskId, ApplicationId, ApplicationVersionId, ApprovalRequestId,
+    ConversionJobId, DatasetId, DatasetVersionId, DeploymentId, Error, EvaluationRunId, ModelId,
+    ModelVersionId, Page, PageRequest, ProjectId, QuotaPolicyId, QuotaReservationId,
+    RequestContext, Revision, TrainingJobId,
 };
 
 /// A value paired with its optimistic-concurrency metadata.
@@ -426,4 +429,85 @@ pub trait EvaluationRepository: Send + Sync {
         id: EvaluationRunId,
         expected: Revision,
     ) -> Result<(), Error>;
+}
+
+/// Repository for quota policies and reservations.
+#[async_trait]
+pub trait QuotaRepository: Send + Sync {
+    async fn create_policy(
+        &self,
+        ctx: &RequestContext,
+        policy: QuotaPolicy,
+    ) -> Result<Versioned<QuotaPolicy>, Error>;
+
+    async fn get_policy(
+        &self,
+        ctx: &RequestContext,
+        id: QuotaPolicyId,
+    ) -> Result<Versioned<QuotaPolicy>, Error>;
+
+    async fn list_policies(
+        &self,
+        ctx: &RequestContext,
+        filter: ResourceListFilter,
+        page: PageRequest,
+    ) -> Result<Page<Versioned<QuotaPolicy>>, Error>;
+
+    async fn create_reservation(
+        &self,
+        ctx: &RequestContext,
+        reservation: QuotaReservation,
+    ) -> Result<Versioned<QuotaReservation>, Error>;
+
+    async fn get_reservation(
+        &self,
+        ctx: &RequestContext,
+        id: QuotaReservationId,
+    ) -> Result<Versioned<QuotaReservation>, Error>;
+
+    /// Return active (non-expired and non-terminal) reservations for a dimension.
+    async fn active_reservations(
+        &self,
+        ctx: &RequestContext,
+        dimension: moqentra_domain::quota::ResourceDimension,
+    ) -> Result<Vec<QuotaReservation>, Error>;
+
+    async fn update_reservation(
+        &self,
+        ctx: &RequestContext,
+        id: QuotaReservationId,
+        reservation: QuotaReservation,
+        expected: Revision,
+    ) -> Result<Versioned<QuotaReservation>, Error>;
+}
+
+/// Repository for approval requests and decisions.
+#[async_trait]
+pub trait ApprovalRepository: Send + Sync {
+    async fn create_request(
+        &self,
+        ctx: &RequestContext,
+        request: ApprovalRequest,
+    ) -> Result<Versioned<ApprovalRequest>, Error>;
+
+    async fn get_request(
+        &self,
+        ctx: &RequestContext,
+        id: ApprovalRequestId,
+    ) -> Result<Versioned<ApprovalRequest>, Error>;
+
+    async fn list_requests(
+        &self,
+        ctx: &RequestContext,
+        filter: ResourceListFilter,
+        page: PageRequest,
+    ) -> Result<Page<Versioned<ApprovalRequest>>, Error>;
+
+    async fn update_request(
+        &self,
+        ctx: &RequestContext,
+        id: ApprovalRequestId,
+        request: ApprovalRequest,
+        expected: Revision,
+    ) -> Result<Versioned<ApprovalRequest>, Error>;
 }
