@@ -1,0 +1,42 @@
+# syntax=docker/dockerfile:1
+FROM rust:1.94.1-bookworm AS builder
+
+ARG BIN
+ARG PORT=8080
+
+WORKDIR /build
+
+# Install protoc and SSL headers required by tonic/sqlx builds.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       protobuf-compiler \
+       libssl-dev \
+       pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY . .
+
+RUN cargo build --release -p "${BIN}"
+
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r moqentra \
+    && useradd -r -g moqentra moqentra
+
+ARG BIN
+ARG PORT=8080
+ENV PORT=${PORT}
+
+COPY --from=builder /build/target/release/${BIN} /usr/local/bin/${BIN}
+
+USER moqentra
+EXPOSE ${PORT}
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -fs "http://localhost:${PORT}/healthz" >/dev/null || exit 1
+
+ENTRYPOINT ["/usr/local/bin/${BIN}"]

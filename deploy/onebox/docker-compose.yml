@@ -26,6 +26,11 @@ services:
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - miniodata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   oidc:
     image: ghcr.io/dexidp/dex:v2.41.1
@@ -36,48 +41,143 @@ services:
       - .env
     volumes:
       - ./oidc-config.yaml:/etc/dex/config.yaml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5556/dex/.well-known/openid-configuration"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  control-plane:
-    image: ${MOQENTRA_IMAGE:-moqentra/control-plane:latest}
+  migration:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.rust
+      args:
+        - BIN=moqentra-migrate
+        - PORT=8080
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-moqentra}:${POSTGRES_PASSWORD:-moqentra}@postgres:5432/${POSTGRES_DB:-moqentra}
-      OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      OBJECT_STORE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
-      OIDC_ISSUER_URL: http://oidc:5556/dex
-    ports:
-      - "${CONTROL_PLANE_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
+    restart: "no"
+
+  control-plane:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.rust
+      args:
+        - BIN=moqentra-control-plane
+        - PORT=8080
+    environment:
+      MOQENTRA_LISTEN_ADDR: 0.0.0.0:8080
+      MOQENTRA_DATABASE_DSN: postgres://${POSTGRES_USER:-moqentra}:${POSTGRES_PASSWORD:-moqentra}@postgres:5432/${POSTGRES_DB:-moqentra}
+      MOQENTRA_OBJECT_STORE_ENDPOINT: http://minio:9000
+      MOQENTRA_OBJECT_STORE_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MOQENTRA_OBJECT_STORE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MOQENTRA_OIDC_ISSUER: http://oidc:5556/dex
+      MOQENTRA_REQUIRE_AUTH: "false"
+    ports:
+      - "${CONTROL_PLANE_PORT:-8080}:8080"
+    depends_on:
+      migration:
+        condition: service_completed_successfully
       minio:
-        condition: service_started
+        condition: service_healthy
+      oidc:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  scheduler:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.rust
+      args:
+        - BIN=moqentra-scheduler-agent
+        - PORT=8082
+    environment:
+      MOQENTRA_SCHEDULER_ADDR: 0.0.0.0:8082
+      MOQENTRA_DATABASE_DSN: postgres://${POSTGRES_USER:-moqentra}:${POSTGRES_PASSWORD:-moqentra}@postgres:5432/${POSTGRES_DB:-moqentra}
+      MOQENTRA_CONTROL_PLANE_URL: http://control-plane:8080
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      control-plane:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8082/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   web:
-    image: ${MOQENTRA_IMAGE:-moqentra/web:latest}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.web
     ports:
       - "${WEB_PORT:-3000}:80"
     environment:
       VITE_API_BASE_URL: http://localhost:${CONTROL_PLANE_PORT:-8080}
       VITE_OIDC_ISSUER: http://localhost:${OIDC_PORT:-5556}/dex
+    depends_on:
+      control-plane:
+        condition: service_healthy
 
   node-agent:
-    image: ${MOQENTRA_IMAGE:-moqentra/node-agent:latest}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.rust
+      args:
+        - BIN=moqentra-node-agent
+        - PORT=8081
     environment:
-      CONTROL_PLANE_URL: http://control-plane:8080
-      NODE_LABELS: "local=true"
+      MOQENTRA_NODE_AGENT_ADDR: 0.0.0.0:8081
+      MOQENTRA_CONTROL_PLANE_URL: http://control-plane:8080
+      MOQENTRA_WORKSPACE_ROOT: /var/lib/moqentra
+      MOQENTRA_CONTAINER_RUNTIME: ${MOQENTRA_CONTAINER_RUNTIME:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    deploy:
-      resources:
-        reservations:
-          devices: []
+      - nodeagent-data:/var/lib/moqentra
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8081/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   dyun-agent:
-    image: ${MOQENTRA_IMAGE:-moqentra/dyun-agent:latest}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.rust
+      args:
+        - BIN=moqentra-dyun-agent
+        - PORT=8083
     environment:
-      CONTROL_PLANE_URL: http://control-plane:8080
+      MOQENTRA_DYUN_AGENT_ADDR: 0.0.0.0:8083
+      MOQENTRA_DYUN_SANDBOX: /var/lib/moqentra-dyun
+      MOQENTRA_S3_BUCKET: moqentra
+      MOQENTRA_S3_ENDPOINT: http://minio:9000
+      MOQENTRA_S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      MOQENTRA_S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MOQENTRA_S3_FORCE_PATH_STYLE: "true"
+    volumes:
+      - dyun-data:/var/lib/moqentra-dyun
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8083/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   pgdata:
   miniodata:
+  nodeagent-data:
+  dyun-data:

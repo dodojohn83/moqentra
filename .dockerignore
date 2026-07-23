@@ -1,0 +1,28 @@
+# Build artifacts
+/target/
+/dist/
+
+# Node
+node_modules/
+.pnpm-store/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+
+# IDEs and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# Docs and tests not needed in images
+dev-docs/
+artifacts/
+*.md
