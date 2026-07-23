@@ -30,6 +30,7 @@ on:
       - "pyproject.toml"
       - ".github/workflows/**"
       - "baseline/**"
+      - "tools/**"
   pull_request:
     branches: [main]
     paths:
@@ -46,6 +47,7 @@ on:
       - "pyproject.toml"
       - ".github/workflows/**"
       - "baseline/**"
+      - "tools/**"
   workflow_dispatch:
 
 jobs:
@@ -53,14 +55,25 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Buf setup
         uses: bufbuild/buf-action@v1
         with:
           setup_only: true
-      - name: Buf lint
-        run: buf lint proto
       - name: Buf format check
         run: buf format --diff proto
+      - name: Buf lint
+        run: buf lint proto
+      - name: Buf breaking
+        run: buf breaking proto --against '.git#branch=origin/main'
+      - name: Upload contract reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-reports
+          path: /tmp/buf-*.log
+          retention-days: 14
 
   openapi:
     runs-on: ubuntu-24.04
@@ -76,6 +89,13 @@ jobs:
         run: cargo install --locked openapi-to-rust
       - name: Verify generated clients match OpenAPI spec
         run: ./tools/verify-api-clients.sh
+      - name: Upload OpenAPI reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-reports
+          path: target/test-reports/
+          retention-days: 14
 
   web:
     if: github.event_name == 'workflow_dispatch'
@@ -99,6 +119,15 @@ jobs:
         run: pnpm typecheck
       - name: Test
         run: pnpm test
+      - name: Build
+        run: pnpm build
+      - name: Upload web reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-reports
+          path: apps/web/test-results/
+          retention-days: 14
 
   python:
     if: github.event_name == 'workflow_dispatch'
@@ -115,6 +144,15 @@ jobs:
         run: uv run --package moqentra-worker mypy python/moqentra_worker
       - name: Test
         run: uv run --package moqentra-worker pytest python/moqentra_worker
+      - name: Wheel build
+        run: uv build python/moqentra_worker
+      - name: Upload Python reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-reports
+          path: python/moqentra_worker/reports/
+          retention-days: 14
 
   supply-chain:
     if: github.event_name == 'workflow_dispatch'
