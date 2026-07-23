@@ -7,12 +7,14 @@
 
 use crate::import::ImportJobStore;
 use crate::northbound::{ProblemDetails, TokenBucketLimiter};
-use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
+use async_trait::async_trait;
+use axum::extract::{DefaultBodyLimit, MatchedPath, Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{middleware, Json, Router};
+use bytes::Bytes;
 use moqentra_application::{
     plan_dispatch, ApplicationCompiler, ArtifactReconciler, CompileResult, DispatchAction,
     InMemoryAnnotationRegistry, InMemoryConversionRegistry, InMemoryDatasetRegistry,
@@ -34,6 +36,7 @@ use moqentra_domain::training::{
 use moqentra_object_store::{
     upload_session::part_digest, ObjectKey, ObjectStorage, UploadSession, UploadSessionStore,
 };
+use moqentra_observability::{CompositeHealthCheck, HealthCheck, HealthReport, MetricsRegistry};
 use moqentra_storage::{InMemoryOutbox, OutboxEvent, OutboxStatus, OutboxStore, PgRoleStore};
 use moqentra_types::{
     AnnotationProjectId, AssetId, ConversionJobId, DatasetId, DatasetVersionId, Error,
@@ -42,20 +45,20 @@ use moqentra_types::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 /// Application state shared by all control-plane handlers.
 #[derive(Clone)]
 pub struct AppState {
-    pub ready: Arc<AtomicBool>,
     pub compiler: ApplicationCompiler,
     pub tokens: CompositeTokenValidator,
     /// When true, protected routes require a valid bearer token.
     pub require_auth: bool,
     pub authorizer: Arc<Mutex<Authorizer>>,
     pub rate_limiters: Arc<Mutex<HashMap<TenantId, TokenBucketLimiter>>>,
+    pub metrics: Arc<MetricsRegistry>,
+    pub health: Arc<CompositeHealthCheck>,
     pub datasets: Arc<Mutex<InMemoryDatasetRegistry>>,
     pub training: Arc<Mutex<InMemoryTrainingRegistry>>,
     pub models: Arc<Mutex<InMemoryModelRegistry>>,
@@ -87,12 +90,6 @@ struct HealthResponse {
     status: &'static str,
     service: &'static str,
     version: &'static str,
-}
-
-#[derive(Serialize)]
-struct ReadyResponse {
-    status: &'static str,
-    ready: bool,
 }
 
 #[derive(Deserialize)]
@@ -354,17 +351,151 @@ async fn healthz() -> Json<HealthResponse> {
 }
 
 async fn readyz(State(state): State<AppState>) -> impl IntoResponse {
-    let ready = state.ready.load(Ordering::Relaxed);
-    let body = ReadyResponse {
-        status: if ready { "ready" } else { "not_ready" },
-        ready,
-    };
-    let status = if ready {
+    let report = state.health.ready().await;
+    let status = if report.ready {
         StatusCode::OK
     } else {
         StatusCode::SERVICE_UNAVAILABLE
     };
-    (status, Json(body))
+    (status, Json(report))
+}
+
+async fn livez() -> impl IntoResponse {
+    Json(HealthReport {
+        status: "ok",
+        ready: true,
+        checks: vec![],
+    })
+}
+
+async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
+    let body = state.metrics.prometheus();
+    (
+        StatusCode::OK,
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4",
+        )],
+        body,
+    )
+}
+
+/// Middleware that records request latency and counter metrics and propagates
+/// trace/correlation/request IDs.  Resource IDs are never used as metric labels.
+async fn observability_middleware(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next,
+) -> Response {
+    let start = std::time::Instant::now();
+    let method = req.method().to_string();
+    let matched_path = req.extensions().get::<MatchedPath>().map(|p| p.as_str().to_string());
+    let route = matched_path.unwrap_or_else(|| "unknown".to_string());
+    let request_id = header_str(req.headers(), "x-request-id")
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("req-{}", UtcTimestamp::now()));
+    let correlation_id = header_str(req.headers(), "x-correlation-id");
+    let trace_id = req
+        .headers()
+        .get("traceparent")
+        .and_then(|v| v.to_str().ok())
+        .and_then(parse_traceparent);
+
+    let _span = tracing::info_span!(
+        "request",
+        request_id = %request_id,
+        correlation_id = %correlation_id.as_deref().unwrap_or(""),
+        trace_id = %trace_id.as_deref().unwrap_or(""),
+        route = %route,
+    );
+
+    let response = next.run(req).await;
+    let status = response.status().as_u16().to_string();
+    let duration = start.elapsed().as_secs_f64();
+    let labels = &[
+        ("method", method.as_str()),
+        ("route", route.as_str()),
+        ("status", status.as_str()),
+    ];
+    state.metrics.counter_inc("moqentra_http_requests_total", labels, 1);
+    state
+        .metrics
+        .histogram_record("moqentra_http_request_duration_seconds", labels, duration);
+
+    tracing::debug!(
+        method = %method,
+        route = %route,
+        status = %status,
+        duration_seconds = %duration,
+        "handled request"
+    );
+    response
+}
+
+fn parse_traceparent(header: &str) -> Option<String> {
+    let parts: Vec<&str> = header.split('-').collect();
+    if parts.len() >= 2 && parts[0] == "00" {
+        Some(parts[1].to_string())
+    } else {
+        None
+    }
+}
+
+/// Health check for the configured object storage backend.
+#[derive(Clone)]
+pub struct ObjectStorageHealthCheck {
+    pub store: Arc<dyn ObjectStorage + Send + Sync>,
+}
+
+#[async_trait]
+impl HealthCheck for ObjectStorageHealthCheck {
+    fn name(&self) -> &str {
+        "object_store"
+    }
+
+    fn required(&self) -> bool {
+        true
+    }
+
+    async fn check(&self) -> Result<(), String> {
+        let key = format!("moqentra/healthz-probe/{}", Uuid::new_v4());
+        let data = Bytes::from_static(b"healthz");
+        let _ = self
+            .store
+            .put_object(&key, data, None)
+            .await
+            .map_err(|e| format!("object store probe write failed: {e}"))?;
+        self.store
+            .delete_object(&key)
+            .await
+            .map_err(|e| format!("object store probe cleanup failed: {e}"))?;
+        Ok(())
+    }
+}
+
+/// Health check for the PostgreSQL connection pool when configured.
+#[derive(Clone)]
+pub struct DatabaseHealthCheck {
+    pub pool: sqlx::PgPool,
+}
+
+#[async_trait]
+impl HealthCheck for DatabaseHealthCheck {
+    fn name(&self) -> &str {
+        "database"
+    }
+
+    fn required(&self) -> bool {
+        true
+    }
+
+    async fn check(&self) -> Result<(), String> {
+        sqlx::query("SELECT 1")
+            .fetch_one(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(|e| format!("database probe failed: {e}"))
+    }
 }
 
 async fn whoami(
@@ -2077,7 +2208,7 @@ async fn require_auth_middleware(
 ) -> Response {
     let path = req.uri().path();
     if state.require_auth
-        && !matches!(path, "/healthz" | "/readyz")
+        && !matches!(path, "/healthz" | "/readyz" | "/livez" | "/metrics")
         && bearer_token(req.headers()).is_none()
     {
         return (
@@ -2096,6 +2227,8 @@ pub fn app_router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
+        .route("/livez", get(livez))
+        .route("/metrics", get(metrics))
         .route("/v1/whoami", get(whoami))
         .route("/v1/applications:compile", post(compile_application))
         .route("/v1/datasets", post(create_dataset).get(list_datasets))
@@ -2236,8 +2369,12 @@ pub fn app_router(state: AppState) -> Router {
         .layer(DefaultBodyLimit::max(1024 * 1024))
         .layer(middleware::from_fn(security_headers))
         .layer(middleware::from_fn_with_state(
-            state,
+            state.clone(),
             require_auth_middleware,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state,
+            observability_middleware,
         ))
 }
 
@@ -2369,6 +2506,7 @@ async fn apply_dispatch(state: &AppState, action: DispatchAction) -> Result<(), 
 
 #[cfg(test)]
 mod tests {
+    use super::ObjectStorageHealthCheck;
     use super::*;
     use crate::import::InMemoryImportJobStore;
     use axum::body::Body;
@@ -2376,6 +2514,7 @@ mod tests {
     use moqentra_auth::{HmacValidator, InMemoryAuditLog, ServiceAccountValidator};
     use moqentra_domain::application::{ApplicationNode, Port};
     use moqentra_object_store::{InMemoryObjectStore, InMemoryUploadSessionStore};
+    use moqentra_observability::LivenessCheck;
     use moqentra_types::UserId;
     use std::collections::BTreeMap;
     use tower::ServiceExt;
@@ -2385,13 +2524,23 @@ mod tests {
         require_auth: bool,
         authorizer: Authorizer,
     ) -> AppState {
+        let object_store: Arc<dyn ObjectStorage + Send + Sync> =
+            Arc::new(InMemoryObjectStore::new());
+        let metrics = Arc::new(MetricsRegistry::default());
+        let mut health = CompositeHealthCheck::new();
+        health.add(Arc::new(LivenessCheck));
+        health.add(Arc::new(ObjectStorageHealthCheck {
+            store: object_store.clone(),
+        }));
+        let health = Arc::new(health);
         AppState {
-            ready: Arc::new(AtomicBool::new(true)),
             compiler: ApplicationCompiler::new(),
             tokens,
             require_auth,
             authorizer: Arc::new(Mutex::new(authorizer)),
             rate_limiters: Arc::new(Mutex::new(HashMap::new())),
+            metrics,
+            health,
             datasets: Arc::new(Mutex::new(InMemoryDatasetRegistry::new())),
             training: Arc::new(Mutex::new(InMemoryTrainingRegistry::new())),
             models: Arc::new(Mutex::new(InMemoryModelRegistry::new())),
@@ -2400,7 +2549,7 @@ mod tests {
             annotations: Arc::new(Mutex::new(InMemoryAnnotationRegistry::new())),
             outbox: Arc::new(InMemoryOutbox::new()),
             audit: Arc::new(InMemoryAuditLog::new()),
-            object_store: Arc::new(InMemoryObjectStore::new()),
+            object_store,
             upload_sessions: Arc::new(InMemoryUploadSessionStore::new()),
             upload_sig_secret: "test-upload-secret".to_string(),
             import_jobs: Arc::new(InMemoryImportJobStore::new()),
