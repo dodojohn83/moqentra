@@ -240,7 +240,7 @@ async fn emit_event(
 }
 
 pub(crate) fn resolve_project_id(
-    ctx: &RequestContext,
+    ctx: &mut RequestContext,
     body_project_id: &str,
 ) -> Result<ProjectId, Error> {
     if let Some(p) = ctx.project_id {
@@ -254,7 +254,10 @@ pub(crate) fn resolve_project_id(
         }
         Ok(p)
     } else {
-        ProjectId::try_from(body_project_id)
+        let p = ProjectId::try_from(body_project_id)?;
+        ctx.project_id = Some(p);
+        ctx.project_ids = vec![p];
+        Ok(p)
     }
 }
 
@@ -637,10 +640,10 @@ async fn create_dataset(
     headers: HeaderMap,
     Json(req): Json<CreateDatasetRequest>,
 ) -> Result<(StatusCode, Json<DatasetResponse>), ApiError> {
-    let ctx = resolve_context(&state, &headers).await?;
+    let mut ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
+    let project_id = resolve_project_id(&mut ctx, &req.project_id)?;
     authorize(&state, &ctx, Action::Create, Resource::Dataset).await?;
-    let project_id = resolve_project_id(&ctx, &req.project_id)?;
 
     let gen = RandomIdGenerator;
     let dataset = Dataset::new(DatasetId::new_v7(&gen), ctx.tenant_id, project_id, req.name)?;
@@ -887,10 +890,10 @@ async fn create_experiment(
     headers: HeaderMap,
     Json(req): Json<CreateExperimentRequest>,
 ) -> Result<(StatusCode, Json<ExperimentResponse>), ApiError> {
-    let ctx = resolve_context(&state, &headers).await?;
+    let mut ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
+    let project_id = resolve_project_id(&mut ctx, &req.project_id)?;
     authorize(&state, &ctx, Action::Create, Resource::TrainingJob).await?;
-    let project_id = resolve_project_id(&ctx, &req.project_id)?;
     let gen = RandomIdGenerator;
     let exp = Experiment::new(
         ExperimentId::new_v7(&gen),
@@ -961,10 +964,10 @@ async fn create_training_job(
     headers: HeaderMap,
     Json(req): Json<CreateTrainingJobRequest>,
 ) -> Result<(StatusCode, Json<TrainingJobResponse>), ApiError> {
-    let ctx = resolve_context(&state, &headers).await?;
+    let mut ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
+    let project_id = resolve_project_id(&mut ctx, &req.project_id)?;
     authorize(&state, &ctx, Action::Create, Resource::TrainingJob).await?;
-    let project_id = resolve_project_id(&ctx, &req.project_id)?;
     let gen = RandomIdGenerator;
     let spec = TrainingJobSpec {
         code_digest: req.code_digest,
@@ -1905,10 +1908,10 @@ async fn create_model(
     headers: HeaderMap,
     Json(req): Json<CreateModelRequest>,
 ) -> Result<(StatusCode, Json<ModelResponse>), ApiError> {
-    let ctx = resolve_context(&state, &headers).await?;
+    let mut ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
+    let project_id = resolve_project_id(&mut ctx, &req.project_id)?;
     authorize(&state, &ctx, Action::Create, Resource::ModelVersion).await?;
-    let project_id = resolve_project_id(&ctx, &req.project_id)?;
     let gen = RandomIdGenerator;
     let model = Model::new(ModelId::new_v7(&gen), ctx.tenant_id, project_id, req.name)?;
     let created = {
@@ -2099,10 +2102,10 @@ async fn create_annotation_project(
     headers: HeaderMap,
     Json(req): Json<CreateAnnotationProjectRequest>,
 ) -> Result<(StatusCode, Json<AnnotationProjectResponse>), ApiError> {
-    let ctx = resolve_context(&state, &headers).await?;
+    let mut ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
+    let project_id = resolve_project_id(&mut ctx, &req.project_id)?;
     authorize(&state, &ctx, Action::Create, Resource::AnnotationTask).await?;
-    let project_id = resolve_project_id(&ctx, &req.project_id)?;
     let task_type = match req.task_type.as_str() {
         "boundingBox" | "rectTool" => TaskType::BoundingBox,
         "polygon" | "polygonTool" => TaskType::Polygon,
