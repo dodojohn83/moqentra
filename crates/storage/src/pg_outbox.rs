@@ -162,9 +162,12 @@ impl OutboxStore for PgOutboxStore {
             "WITH candidates AS (
                 SELECT id
                 FROM outbox_events
-                WHERE status = 'pending'
-                  AND (next_retry_at IS NULL OR next_retry_at <= now())
-                  AND (lease_expires_at IS NULL OR lease_expires_at < now())
+                WHERE (
+                        status = 'pending'
+                        AND (next_retry_at IS NULL OR next_retry_at <= now())
+                        AND (lease_expires_at IS NULL OR lease_expires_at < now())
+                      )
+                      OR (status = 'processing' AND lease_expires_at < now())
                 ORDER BY tenant_id, created_at
                 FOR UPDATE SKIP LOCKED
                 LIMIT $1

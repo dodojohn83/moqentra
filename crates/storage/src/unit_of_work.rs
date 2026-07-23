@@ -1,7 +1,8 @@
 //! Unit-of-work and cursor-based pagination helpers.
 
 use crate::{
-    IdempotencyResult, IdempotencyScope, OutboxEvent, PgAuditLog, PgIdempotencyStore, PgOutboxStore,
+    IdempotencyEntry, IdempotencyResult, IdempotencyScope, OutboxEvent, PgAuditLog,
+    PgIdempotencyStore, PgOutboxStore,
 };
 use moqentra_auth::AuditEvent;
 use moqentra_types::{Error, OperationId, PageRequest, ProjectId, TenantId, UtcTimestamp};
@@ -154,19 +155,9 @@ impl PgUnitOfWork {
     /// Complete an idempotency scope within the transaction.
     pub async fn idempotency_complete(
         &mut self,
-        scope: IdempotencyScope,
+        entry: &IdempotencyEntry,
         response: serde_json::Value,
     ) -> Result<(), Error> {
-        let result = self
-            .idempotency
-            .begin_with_conn(&mut *self.tx, scope.clone(), Duration::from_secs(3600))
-            .await?;
-        let entry = match result {
-            IdempotencyResult::New(entry) => entry,
-            IdempotencyResult::Completed(_) => {
-                return Err(Error::conflict("idempotency scope already completed"))
-            }
-        };
         self.idempotency
             .complete_with_conn(&mut *self.tx, entry.scope.tenant_id, entry.id, response)
             .await
