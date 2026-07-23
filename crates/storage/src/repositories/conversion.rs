@@ -544,6 +544,188 @@ impl EvaluationRepository for PgEvaluationRepository {
     }
 }
 
+impl PgConversionRepository {
+    async fn set_admin(&self) -> Result<(), Error> {
+        sqlx::query("SELECT set_config('app.is_admin', 'true', true)")
+            .execute(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("failed to set admin context: {e}")))?;
+        Ok(())
+    }
+
+    pub async fn ensure_tenant_project(
+        &self,
+        tenant_id: TenantId,
+        project_id: ProjectId,
+    ) -> Result<(), Error> {
+        self.set_admin().await?;
+        let tenant_str = tenant_id.to_string();
+        sqlx::query("INSERT INTO tenants (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING")
+            .bind(tenant_id.as_uuid())
+            .bind(format!("tenant-{tenant_str}"))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("failed to ensure tenant: {e}")))?;
+        sqlx::query(
+            "INSERT INTO projects (id, tenant_id, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+        )
+        .bind(project_id.as_uuid())
+        .bind(tenant_id.as_uuid())
+        .bind(format!("project-{project_id}"))
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to ensure project: {e}")))?;
+        Ok(())
+    }
+
+    pub async fn upsert_job(&self, job: &ConversionJob) -> Result<(), Error> {
+        self.set_tenant(job.tenant_id).await?;
+        let (profile, parameters, output_artifacts, target) = conversion_job_to_values(job)?;
+        sqlx::query(
+            "INSERT INTO conversion_jobs (id, tenant_id, project_id, source_model_version_id, target, state, revision, profile, parameters, output_artifacts, cache_key, log_digest, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10, $11, $12, $13)
+             ON CONFLICT (id) DO UPDATE SET
+                target = EXCLUDED.target,
+                state = EXCLUDED.state,
+                profile = EXCLUDED.profile,
+                parameters = EXCLUDED.parameters,
+                output_artifacts = EXCLUDED.output_artifacts,
+                cache_key = EXCLUDED.cache_key,
+                log_digest = EXCLUDED.log_digest,
+                updated_at = EXCLUDED.updated_at,
+                revision = conversion_jobs.revision + 1",
+        )
+        .bind(job.id.as_uuid())
+        .bind(job.tenant_id.as_uuid())
+        .bind(job.project_id.as_uuid())
+        .bind(job.source_model_version_id.as_uuid())
+        .bind(target)
+        .bind(job.state.to_string())
+        .bind(profile)
+        .bind(parameters)
+        .bind(output_artifacts)
+        .bind(&job.cache_key)
+        .bind(job.log_digest.as_ref())
+        .bind(job.created_at.as_offset())
+        .bind(job.updated_at.as_offset())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to upsert conversion job: {e}")))?;
+        Ok(())
+    }
+
+    pub async fn load_all_for_recovery(&self) -> Result<Vec<ConversionJob>, Error> {
+        self.set_admin().await?;
+        let rows: Vec<ConversionJobRow> = sqlx::query_as(
+            "SELECT id, tenant_id, project_id, source_model_version_id, target, state, revision, profile, parameters, output_artifacts, cache_key, log_digest, created_at, updated_at
+             FROM conversion_jobs
+             ORDER BY created_at",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to load conversion jobs: {e}")))?;
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            match conversion_row_to_domain(&row) {
+                Ok(j) => out.push(j),
+                Err(e) => tracing::warn!(error = %e, "skipping corrupt conversion job"),
+            }
+        }
+        Ok(out)
+    }
+}
+
+impl PgEvaluationRepository {
+    async fn set_admin(&self) -> Result<(), Error> {
+        sqlx::query("SELECT set_config('app.is_admin', 'true', true)")
+            .execute(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("failed to set admin context: {e}")))?;
+        Ok(())
+    }
+
+    pub async fn ensure_tenant_project(
+        &self,
+        tenant_id: TenantId,
+        project_id: ProjectId,
+    ) -> Result<(), Error> {
+        self.set_admin().await?;
+        let tenant_str = tenant_id.to_string();
+        sqlx::query("INSERT INTO tenants (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING")
+            .bind(tenant_id.as_uuid())
+            .bind(format!("tenant-{tenant_str}"))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("failed to ensure tenant: {e}")))?;
+        sqlx::query(
+            "INSERT INTO projects (id, tenant_id, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+        )
+        .bind(project_id.as_uuid())
+        .bind(tenant_id.as_uuid())
+        .bind(format!("project-{project_id}"))
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to ensure project: {e}")))?;
+        Ok(())
+    }
+
+    pub async fn upsert_run(&self, run: &EvaluationRun) -> Result<(), Error> {
+        self.set_tenant(run.tenant_id).await?;
+        let (metrics, reference_outputs, state) = evaluation_run_to_values(run)?;
+        sqlx::query(
+            "INSERT INTO evaluation_runs (id, tenant_id, project_id, model_version_id, dataset_version_id, seed, state, revision, metrics, hardware_profile, preprocess_version, postprocess_version, reference_outputs, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, $10, $11, $12, $13, $14)
+             ON CONFLICT (id) DO UPDATE SET
+                state = EXCLUDED.state,
+                metrics = EXCLUDED.metrics,
+                hardware_profile = EXCLUDED.hardware_profile,
+                preprocess_version = EXCLUDED.preprocess_version,
+                postprocess_version = EXCLUDED.postprocess_version,
+                reference_outputs = EXCLUDED.reference_outputs,
+                updated_at = EXCLUDED.updated_at,
+                revision = evaluation_runs.revision + 1",
+        )
+        .bind(run.id.as_uuid())
+        .bind(run.tenant_id.as_uuid())
+        .bind(run.project_id.as_uuid())
+        .bind(run.model_version_id.as_uuid())
+        .bind(run.dataset_version_id.as_uuid())
+        .bind(run.seed as i64)
+        .bind(state)
+        .bind(metrics)
+        .bind(&run.hardware_profile)
+        .bind(&run.preprocess_version)
+        .bind(&run.postprocess_version)
+        .bind(reference_outputs)
+        .bind(run.created_at.as_offset())
+        .bind(run.updated_at.as_offset())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to upsert evaluation run: {e}")))?;
+        Ok(())
+    }
+
+    pub async fn load_all_for_recovery(&self) -> Result<Vec<EvaluationRun>, Error> {
+        self.set_admin().await?;
+        let rows: Vec<EvaluationRunRow> = sqlx::query_as(
+            "SELECT id, tenant_id, project_id, model_version_id, dataset_version_id, seed, state, revision, metrics, hardware_profile, preprocess_version, postprocess_version, reference_outputs, created_at, updated_at
+             FROM evaluation_runs
+             ORDER BY created_at",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to load evaluation runs: {e}")))?;
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            match evaluation_row_to_domain(&row) {
+                Ok(r) => out.push(r),
+                Err(e) => tracing::warn!(error = %e, "skipping corrupt evaluation run"),
+            }
+        }
+        Ok(out)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

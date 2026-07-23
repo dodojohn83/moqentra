@@ -20,12 +20,12 @@ pub use idempotency::{
 pub use outbox::{InMemoryOutbox, OutboxEvent, OutboxStatus, OutboxStore};
 pub use pg_audit::PgAuditLog;
 pub use pg_idempotency::PgIdempotencyStore;
-pub use pg_outbox::PgOutboxStore;
+pub use pg_outbox::{MultiTenantPgOutbox, PgOutboxStore};
 pub use pg_role_store::PgRoleStore;
 pub use pool::{ConnectionPool, ScopedConnection};
 pub use repositories::{
-    PgAnnotationRepository, PgApplicationRepository, PgDatasetRepository, PgDeploymentRepository,
-    PgModelRepository, PgTrainingJobRepository,
+    PgAnnotationRepository, PgApplicationRepository, PgConversionRepository, PgDatasetRepository,
+    PgDeploymentRepository, PgEvaluationRepository, PgModelRepository, PgTrainingJobRepository,
 };
 pub use unit_of_work::{pagination_clause, Cursor, Paginated, UnitOfWork};
 

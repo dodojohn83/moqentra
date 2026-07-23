@@ -1,0 +1,96 @@
+{{- include "moqentra.requireProduction" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "moqentra.fullname" . }}-control-plane
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "moqentra.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: control-plane
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: control-plane
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      serviceAccountName: {{ include "moqentra.fullname" . }}-control-plane
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: control-plane
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+          env:
+            - name: MOQENTRA_LISTEN_ADDR
+              value: "0.0.0.0:{{ .Values.service.port }}"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.dbSecretName | default "moqentra-db" }}
+                  key: url
+            - name: MOQENTRA_UPLOAD_SIG_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.appSecretName | default "moqentra-app" }}
+                  key: uploadSigSecret
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "moqentra.fullname" . }}-control-plane
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "moqentra.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+{{- if .Values.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "moqentra.fullname" . }}-control-plane
+  namespace: {{ .Release.Namespace }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: control-plane
+      app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

@@ -70,12 +70,18 @@ services:
         - PORT=8080
     environment:
       MOQENTRA_LISTEN_ADDR: 0.0.0.0:8080
-      MOQENTRA_DATABASE_DSN: postgres://${POSTGRES_USER:-moqentra}:${POSTGRES_PASSWORD:-moqentra}@postgres:5432/${POSTGRES_DB:-moqentra}
-      MOQENTRA_OBJECT_STORE_ENDPOINT: http://minio:9000
-      MOQENTRA_OBJECT_STORE_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      MOQENTRA_OBJECT_STORE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      DATABASE_URL: postgres://${POSTGRES_USER:-moqentra}:${POSTGRES_PASSWORD:-moqentra}@postgres:5432/${POSTGRES_DB:-moqentra}
+      MOQENTRA_S3_ENDPOINT: http://minio:9000
+      MOQENTRA_S3_BUCKET: ${MOQENTRA_S3_BUCKET:-moqentra}
+      MOQENTRA_S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      MOQENTRA_S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MOQENTRA_S3_FORCE_PATH_STYLE: "true"
       MOQENTRA_OIDC_ISSUER: http://oidc:5556/dex
-      MOQENTRA_REQUIRE_AUTH: "false"
+      MOQENTRA_OIDC_AUDIENCE: moqentra
+      MOQENTRA_REQUIRE_AUTH: ${MOQENTRA_REQUIRE_AUTH:-false}
+      MOQENTRA_UPLOAD_SIG_SECRET: ${MOQENTRA_UPLOAD_SIG_SECRET:-onebox-dev-upload-secret-change-me}
+      MOQENTRA_SCHEDULER_URL: http://scheduler:8082
+      MOQENTRA_NODE_AGENT_URL: http://node-agent:8081
     ports:
       - "${CONTROL_PLANE_PORT:-8080}:8080"
     depends_on:
@@ -86,10 +92,11 @@ services:
       oidc:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8080/healthz"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/readyz || curl -fs http://localhost:8080/healthz"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
   scheduler:
     build:

@@ -1,18 +1,19 @@
+productionMode: true
+tls:
+  enabled: true
 external:
   db: true
   s3: true
   oidc: true
-
 networkPolicy:
   enabled: true
-
 podDisruptionBudget:
   enabled: true
   minAvailable: 1
-
-upgrade:
-  hooks: true
-
+image:
+  pullPolicy: IfNotPresent
+  # Pin digests in real releases, e.g. repository@sha256:...
+  tag: "0.1.0"
 resources:
   limits:
     cpu: 4000m

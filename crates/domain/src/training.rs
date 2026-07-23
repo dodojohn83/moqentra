@@ -517,7 +517,7 @@ impl TrainingJob {
 }
 
 /// Experiment grouping training jobs.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Experiment {
     pub id: ExperimentId,
     pub tenant_id: TenantId,

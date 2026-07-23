@@ -507,6 +507,156 @@ impl AnnotationRepository for PgAnnotationRepository {
     }
 }
 
+impl PgAnnotationRepository {
+    async fn set_admin(&self) -> Result<(), Error> {
+        sqlx::query("SELECT set_config('app.is_admin', 'true', true)")
+            .execute(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("failed to set admin context: {e}")))?;
+        Ok(())
+    }
+
+    pub async fn ensure_tenant_project(
+        &self,
+        tenant_id: TenantId,
+        project_id: ProjectId,
+    ) -> Result<(), Error> {
+        self.set_admin().await?;
+        let tenant_str = tenant_id.to_string();
+        sqlx::query("INSERT INTO tenants (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING")
+            .bind(tenant_id.as_uuid())
+            .bind(format!("tenant-{tenant_str}"))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("failed to ensure tenant: {e}")))?;
+        sqlx::query(
+            "INSERT INTO projects (id, tenant_id, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+        )
+        .bind(project_id.as_uuid())
+        .bind(tenant_id.as_uuid())
+        .bind(format!("project-{project_id}"))
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to ensure project: {e}")))?;
+        Ok(())
+    }
+
+    pub async fn upsert_project(&self, project: &AnnotationProject) -> Result<(), Error> {
+        self.set_tenant(project.tenant_id).await?;
+        let ontology =
+            serde_json::to_value(&project.ontology).map_err(|e| Error::internal(e.to_string()))?;
+        sqlx::query(
+            "INSERT INTO annotation_projects
+             (id, tenant_id, project_id, dataset_version_id, name, task_type, ontology, state, revision, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, $9, $10)
+             ON CONFLICT (id) DO UPDATE SET
+                dataset_version_id = EXCLUDED.dataset_version_id,
+                name = EXCLUDED.name,
+                task_type = EXCLUDED.task_type,
+                ontology = EXCLUDED.ontology,
+                state = EXCLUDED.state,
+                updated_at = EXCLUDED.updated_at,
+                revision = annotation_projects.revision + 1",
+        )
+        .bind(project.id.as_uuid())
+        .bind(project.tenant_id.as_uuid())
+        .bind(project.project_id.as_uuid())
+        .bind(project.dataset_version_id.as_uuid())
+        .bind(&project.name)
+        .bind(format!("{:?}", project.task_type))
+        .bind(ontology)
+        .bind(format!("{:?}", project.state))
+        .bind(project.created_at.as_offset())
+        .bind(project.updated_at.as_offset())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to upsert annotation project: {e}")))?;
+        Ok(())
+    }
+
+    pub async fn upsert_task(&self, task: &AnnotationTask) -> Result<(), Error> {
+        self.set_tenant(task.tenant_id).await?;
+        let result = serde_json::to_value(AnnotationTaskResult::from_task(task))
+            .map_err(|e| Error::internal(e.to_string()))?;
+        // Prefer parent project's platform project_id when known; fall back to nil.
+        let platform_project = sqlx::query_scalar::<_, Uuid>(
+            "SELECT project_id FROM annotation_projects WHERE id = $1 AND tenant_id = $2",
+        )
+        .bind(task.project_id.as_uuid())
+        .bind(task.tenant_id.as_uuid())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to resolve annotation project: {e}")))?
+        .unwrap_or_else(Uuid::nil);
+
+        sqlx::query(
+            "INSERT INTO annotation_tasks
+             (id, tenant_id, project_id, annotation_project_id, assignee, state, result, revision, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9)
+             ON CONFLICT (id) DO UPDATE SET
+                assignee = EXCLUDED.assignee,
+                state = EXCLUDED.state,
+                result = EXCLUDED.result,
+                updated_at = EXCLUDED.updated_at,
+                revision = annotation_tasks.revision + 1",
+        )
+        .bind(task.id.as_uuid())
+        .bind(task.tenant_id.as_uuid())
+        .bind(platform_project)
+        .bind(task.project_id.as_uuid())
+        .bind(task.assignee.map(|u| u.as_uuid()))
+        .bind(format!("{:?}", task.state))
+        .bind(result)
+        .bind(task.created_at.as_offset())
+        .bind(task.updated_at.as_offset())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to upsert annotation task: {e}")))?;
+        Ok(())
+    }
+
+    pub async fn load_all_for_recovery(
+        &self,
+    ) -> Result<(Vec<AnnotationProject>, Vec<AnnotationTask>), Error> {
+        self.set_admin().await?;
+        let project_rows: Vec<AnnotationProjectRow> = sqlx::query_as(
+            "SELECT id, tenant_id, dataset_id, project_id, dataset_version_id, name, task_type,
+                    ontology, state, revision, created_at, updated_at
+             FROM annotation_projects
+             ORDER BY created_at",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to load annotation projects: {e}")))?;
+
+        let task_rows: Vec<AnnotationTaskRow> = sqlx::query_as(
+            "SELECT id, tenant_id, project_id, annotation_project_id, dataset_version_id,
+                    assignee, state, result, revision, created_at, updated_at
+             FROM annotation_tasks
+             ORDER BY created_at",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to load annotation tasks: {e}")))?;
+
+        let mut projects = Vec::with_capacity(project_rows.len());
+        for row in project_rows {
+            match project_row_to_domain(&row) {
+                Ok(p) => projects.push(p),
+                Err(e) => tracing::warn!(error = %e, "skipping corrupt annotation project"),
+            }
+        }
+        let mut tasks = Vec::with_capacity(task_rows.len());
+        for row in task_rows {
+            match task_row_to_domain(&row) {
+                Ok(t) => tasks.push(t),
+                Err(e) => tracing::warn!(error = %e, "skipping corrupt annotation task"),
+            }
+        }
+        Ok((projects, tasks))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -16,9 +16,10 @@ use axum::routing::{get, post};
 use axum::{middleware, Json, Router};
 use bytes::Bytes;
 use moqentra_application::{
-    plan_dispatch, ApplicationCompiler, ArtifactReconciler, CompileResult, DispatchAction,
-    InMemoryAnnotationRegistry, InMemoryConversionRegistry, InMemoryDatasetRegistry,
-    InMemoryEvaluationRegistry, InMemoryModelRegistry, InMemoryTrainingRegistry,
+    plan_dispatch, ApplicationCompiler, ArtifactReconciler, CompileResult, DatasetRepository,
+    DispatchAction, InMemoryAnnotationRegistry, InMemoryConversionRegistry,
+    InMemoryDatasetRegistry, InMemoryEvaluationRegistry, InMemoryModelRegistry,
+    InMemoryTrainingRegistry,
 };
 use moqentra_auth::{
     Action, AuditCategory, AuditEvent, AuditLog, AuditOutcome, Authorizer, CompositeTokenValidator,
@@ -37,7 +38,11 @@ use moqentra_object_store::{
     upload_session::part_digest, ObjectKey, ObjectStorage, UploadSession, UploadSessionStore,
 };
 use moqentra_observability::{CompositeHealthCheck, HealthCheck, HealthReport, MetricsRegistry};
-use moqentra_storage::{InMemoryOutbox, OutboxEvent, OutboxStatus, OutboxStore, PgRoleStore};
+use moqentra_storage::{
+    OutboxEvent, OutboxStatus, OutboxStore, PgAnnotationRepository, PgConversionRepository,
+    PgDatasetRepository, PgEvaluationRepository, PgModelRepository, PgRoleStore,
+    PgTrainingJobRepository,
+};
 use moqentra_types::{
     AnnotationProjectId, AssetId, ConversionJobId, DatasetId, DatasetVersionId, Error,
     EvaluationRunId, ExperimentId, ModelId, ModelVersionId, Page, PageRequest, Principal,
@@ -67,7 +72,7 @@ pub struct AppState {
     pub conversions: Arc<Mutex<InMemoryConversionRegistry>>,
     pub evaluations: Arc<Mutex<InMemoryEvaluationRegistry>>,
     pub annotations: Arc<Mutex<InMemoryAnnotationRegistry>>,
-    pub outbox: Arc<InMemoryOutbox>,
+    pub outbox: Arc<dyn OutboxStore + Send + Sync>,
     pub audit: Arc<dyn AuditLog + Send + Sync>,
     /// Object storage backend for artifacts.
     pub object_store: Arc<dyn ObjectStorage + Send + Sync>,
@@ -237,6 +242,205 @@ async fn emit_event(
         created_at: UtcTimestamp::now(),
     };
     let _ = state.outbox.append(event).await;
+}
+
+/// Best-effort write-through of a dataset aggregate when PostgreSQL is configured.
+async fn persist_dataset(state: &AppState, ctx: &RequestContext, dataset: &Dataset) {
+    let Some(pool) = state.db_pool.as_ref() else {
+        return;
+    };
+    let repo = PgDatasetRepository::new(pool.clone());
+    if let Err(e) = repo.ensure_tenant_project(dataset.tenant_id, dataset.project_id).await {
+        tracing::warn!(error = %e, "failed to ensure tenant/project for dataset persist");
+        return;
+    }
+    match repo.create(ctx, dataset.clone()).await {
+        Ok(_) => {}
+        Err(e) => {
+            // create uses ON CONFLICT DO NOTHING; still try update for name/state changes.
+            tracing::debug!(error = %e, "dataset create write-through: {e}");
+            let _ = repo
+                .update(
+                    ctx,
+                    dataset.id,
+                    moqentra_types::Revision::initial(),
+                    dataset.clone(),
+                )
+                .await;
+        }
+    }
+}
+
+/// Best-effort write-through of a dataset version (create or upsert after mutation).
+pub(crate) async fn persist_dataset_version(
+    state: &AppState,
+    ctx: &RequestContext,
+    version: &moqentra_domain::dataset::DatasetVersion,
+) {
+    let Some(pool) = state.db_pool.as_ref() else {
+        return;
+    };
+    let repo = PgDatasetRepository::new(pool.clone());
+    if let Err(e) = repo.ensure_tenant_project(version.tenant_id, version.project_id).await {
+        tracing::warn!(error = %e, "failed to ensure tenant/project for version persist");
+        return;
+    }
+    if let Err(e) = repo.upsert_version(ctx, version).await {
+        tracing::warn!(error = %e, version_id = %version.id, "dataset version write-through failed");
+    }
+    // Keep parent dataset.version_ids / latest_published in sync.
+    let parent = {
+        let reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
+        reg.get_dataset(version.tenant_id, version.dataset_id).ok().cloned()
+    };
+    if let Some(ds) = parent {
+        let _ = repo.create(ctx, ds.clone()).await;
+        let _ = repo.update(ctx, ds.id, moqentra_types::Revision::initial(), ds).await;
+    }
+}
+
+async fn persist_experiment(state: &AppState, experiment: &Experiment) {
+    let Some(pool) = state.db_pool.as_ref() else {
+        return;
+    };
+    let repo = PgTrainingJobRepository::new(pool.clone());
+    if let Err(e) = repo.ensure_tenant_project(experiment.tenant_id, experiment.project_id).await {
+        tracing::warn!(error = %e, "failed to ensure tenant/project for experiment persist");
+        return;
+    }
+    if let Err(e) = repo.upsert_experiment(experiment).await {
+        tracing::warn!(error = %e, experiment_id = %experiment.id, "experiment write-through failed");
+    }
+}
+
+pub(crate) async fn persist_training_job(state: &AppState, job: &TrainingJob) {
+    let Some(pool) = state.db_pool.as_ref() else {
+        return;
+    };
+    let repo = PgTrainingJobRepository::new(pool.clone());
+    if let Err(e) = repo.ensure_tenant_project(job.tenant_id, job.project_id).await {
+        tracing::warn!(error = %e, "failed to ensure tenant/project for training job persist");
+        return;
+    }
+    let exp = {
+        let reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
+        reg.get_experiment(job.tenant_id, job.experiment_id).ok().cloned()
+    };
+    if let Some(exp) = exp {
+        let _ = repo.upsert_experiment(&exp).await;
+    }
+    if let Err(e) = repo.upsert_job(job).await {
+        tracing::warn!(error = %e, job_id = %job.id, "training job write-through failed");
+    }
+}
+
+async fn persist_model(state: &AppState, model: &Model) {
+    let Some(pool) = state.db_pool.as_ref() else {
+        return;
+    };
+    let repo = PgModelRepository::new(pool.clone());
+    if let Err(e) = repo.ensure_tenant_project(model.tenant_id, model.project_id).await {
+        tracing::warn!(error = %e, "failed to ensure tenant/project for model persist");
+        return;
+    }
+    if let Err(e) = repo.upsert_model(model).await {
+        tracing::warn!(error = %e, model_id = %model.id, "model write-through failed");
+    }
+}
+
+pub(crate) async fn persist_model_version(
+    state: &AppState,
+    version: &moqentra_domain::model_registry::ModelVersion,
+) {
+    let Some(pool) = state.db_pool.as_ref() else {
+        return;
+    };
+    let repo = PgModelRepository::new(pool.clone());
+    if let Err(e) = repo.ensure_tenant_project(version.tenant_id, version.project_id).await {
+        tracing::warn!(error = %e, "failed to ensure tenant/project for model version persist");
+        return;
+    }
+    let model = {
+        let reg = state.models.lock().unwrap_or_else(|e| e.into_inner());
+        reg.get_model(version.tenant_id, version.model_id).ok().cloned()
+    };
+    if let Some(model) = model {
+        let _ = repo.upsert_model(&model).await;
+    }
+    if let Err(e) = repo.upsert_version(version).await {
+        tracing::warn!(error = %e, version_id = %version.id, "model version write-through failed");
+    }
+}
+
+pub(crate) async fn persist_annotation_project(
+    state: &AppState,
+    project: &moqentra_domain::annotation::AnnotationProject,
+) {
+    let Some(pool) = state.db_pool.as_ref() else {
+        return;
+    };
+    let repo = PgAnnotationRepository::new(pool.clone());
+    if let Err(e) = repo.ensure_tenant_project(project.tenant_id, project.project_id).await {
+        tracing::warn!(error = %e, "failed to ensure tenant/project for annotation project");
+        return;
+    }
+    if let Err(e) = repo.upsert_project(project).await {
+        tracing::warn!(error = %e, id = %project.id, "annotation project write-through failed");
+    }
+}
+
+pub(crate) async fn persist_annotation_task(
+    state: &AppState,
+    task: &moqentra_domain::annotation::AnnotationTask,
+) {
+    let Some(pool) = state.db_pool.as_ref() else {
+        return;
+    };
+    let repo = PgAnnotationRepository::new(pool.clone());
+    let platform_project = {
+        let reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
+        reg.get_project(task.tenant_id, task.project_id).ok().map(|p| p.project_id)
+    };
+    if let Some(pid) = platform_project {
+        let _ = repo.ensure_tenant_project(task.tenant_id, pid).await;
+    }
+    if let Err(e) = repo.upsert_task(task).await {
+        tracing::warn!(error = %e, id = %task.id, "annotation task write-through failed");
+    }
+}
+
+pub(crate) async fn persist_conversion_job(
+    state: &AppState,
+    job: &moqentra_domain::conversion::ConversionJob,
+) {
+    let Some(pool) = state.db_pool.as_ref() else {
+        return;
+    };
+    let repo = PgConversionRepository::new(pool.clone());
+    if let Err(e) = repo.ensure_tenant_project(job.tenant_id, job.project_id).await {
+        tracing::warn!(error = %e, "failed to ensure tenant/project for conversion job");
+        return;
+    }
+    if let Err(e) = repo.upsert_job(job).await {
+        tracing::warn!(error = %e, id = %job.id, "conversion job write-through failed");
+    }
+}
+
+pub(crate) async fn persist_evaluation_run(
+    state: &AppState,
+    run: &moqentra_domain::conversion::EvaluationRun,
+) {
+    let Some(pool) = state.db_pool.as_ref() else {
+        return;
+    };
+    let repo = PgEvaluationRepository::new(pool.clone());
+    if let Err(e) = repo.ensure_tenant_project(run.tenant_id, run.project_id).await {
+        tracing::warn!(error = %e, "failed to ensure tenant/project for evaluation run");
+        return;
+    }
+    if let Err(e) = repo.upsert_run(run).await {
+        tracing::warn!(error = %e, id = %run.id, "evaluation run write-through failed");
+    }
 }
 
 pub(crate) fn resolve_project_id(
@@ -651,6 +855,7 @@ async fn create_dataset(
         let mut registry = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
         registry.create_dataset(dataset)?
     };
+    persist_dataset(&state, &ctx, &created).await;
     emit_event(
         &state,
         ctx.tenant_id,
@@ -907,6 +1112,7 @@ async fn create_experiment(
         let mut reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
         reg.create_experiment(exp)?
     };
+    persist_experiment(&state, &created).await;
     audit_write(
         &state,
         &ctx,
@@ -1003,6 +1209,7 @@ async fn create_training_job(
         let mut reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
         reg.create_job(job)?
     };
+    persist_training_job(&state, &created).await;
     audit_write(
         &state,
         &ctx,
@@ -1080,6 +1287,7 @@ async fn admit_training_job(
         let mut reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
         reg.admit_job(ctx.tenant_id, job_id)?.clone()
     };
+    persist_training_job(&state, &job).await;
     audit_write(
         &state,
         &ctx,
@@ -1124,6 +1332,7 @@ async fn cancel_training_job(
         let mut reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
         reg.cancel_job(ctx.tenant_id, job_id)?.clone()
     };
+    persist_training_job(&state, &job).await;
     audit_write(
         &state,
         &ctx,
@@ -1200,6 +1409,7 @@ async fn create_dataset_version(
         let mut reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
         reg.create_version(version)?
     };
+    persist_dataset_version(&state, &ctx, &created).await;
     audit_write(
         &state,
         &ctx,
@@ -1246,6 +1456,7 @@ async fn add_dataset_version_asset(
         let mut reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
         reg.add_asset(ctx.tenant_id, version_id, asset)?
     };
+    persist_dataset_version(&state, &ctx, &updated).await;
     audit_write(
         &state,
         &ctx,
@@ -1288,6 +1499,7 @@ async fn generate_dataset_version_splits(
             req.test,
         )?
     };
+    persist_dataset_version(&state, &ctx, &updated).await;
     audit_write(
         &state,
         &ctx,
@@ -1370,6 +1582,15 @@ async fn publish_dataset_version(
         }
         reg.publish_version(tenant_id, version_id)?
     };
+    persist_dataset_version(&state, &ctx, &updated).await;
+    // Parent dataset latest_published may have changed.
+    let parent = {
+        let reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
+        reg.get_dataset(tenant_id, updated.dataset_id).ok().cloned()
+    };
+    if let Some(ds) = parent {
+        persist_dataset(&state, &ctx, &ds).await;
+    }
     audit_write(
         &state,
         &ctx,
@@ -1918,6 +2139,7 @@ async fn create_model(
         let mut reg = state.models.lock().unwrap_or_else(|e| e.into_inner());
         reg.create_model(model)?
     };
+    persist_model(&state, &created).await;
     audit_write(
         &state,
         &ctx,
@@ -1968,13 +2190,15 @@ async fn request_publish_model_version(
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Update, Resource::ModelVersion).await?;
     let version_id = ModelVersionId::try_from(id.as_str())?;
-    let mut reg = state.models.lock().unwrap_or_else(|e| e.into_inner());
-    let version = reg
-        .with_version_mut(ctx.tenant_id, version_id, |v| {
+    let version = {
+        let mut reg = state.models.lock().unwrap_or_else(|e| e.into_inner());
+        reg.with_version_mut(ctx.tenant_id, version_id, |v| {
             ArtifactReconciler::reconcile(v)?;
             Ok(v.clone())
         })
-        .map_err(ApiError::from)?;
+        .map_err(ApiError::from)?
+    };
+    persist_model_version(&state, &version).await;
     Ok(Json(ModelVersionResponse::from_version(&version)))
 }
 
@@ -1999,6 +2223,7 @@ async fn approve_model_version(
         })
         .map_err(ApiError::from)?
     };
+    persist_model_version(&state, &version).await;
     audit_write(
         &state,
         &ctx,
@@ -2048,6 +2273,7 @@ async fn convert_model_version(
         let mut reg = state.conversions.lock().unwrap_or_else(|e| e.into_inner());
         reg.create_job(job)?
     };
+    persist_conversion_job(&state, &created).await;
     Ok((
         StatusCode::CREATED,
         Json(ConversionJobResponse::from_job(&created)),
@@ -2091,6 +2317,7 @@ async fn evaluate_model_version(
         let mut reg = state.evaluations.lock().unwrap_or_else(|e| e.into_inner());
         reg.create_run(run)?
     };
+    persist_evaluation_run(&state, &created).await;
     Ok((
         StatusCode::CREATED,
         Json(EvaluationRunResponse::from_run(&created)),
@@ -2126,6 +2353,7 @@ async fn create_annotation_project(
         let mut reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
         reg.create_project(ap)?
     };
+    persist_annotation_project(&state, &created).await;
     audit_write(
         &state,
         &ctx,
@@ -2159,6 +2387,7 @@ async fn activate_annotation_project(
         let mut reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
         reg.activate(ctx.tenant_id, id)?.clone()
     };
+    persist_annotation_project(&state, &p).await;
     audit_write(
         &state,
         &ctx,
@@ -2185,7 +2414,9 @@ async fn list_outbox(
     check_rate_limit(&state, ctx.tenant_id)?;
     authorize(&state, &ctx, Action::Read, Resource::AuditLog).await?;
     let limit = page.bounded_limit().min(1000);
-    let mut pending = state.outbox.poll_pending(limit).await?;
+    // list_events is non-mutating; poll_pending would steal dispatcher leases.
+    let mut pending =
+        state.outbox.list_events(limit.max(page.offset.saturating_add(limit))).await?;
     pending.retain(|e| e.tenant_id == ctx.tenant_id);
     pending.sort_by(|a, b| {
         b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
@@ -2408,36 +2639,59 @@ pub fn app_router(state: AppState) -> Router {
 /// Background worker: poll outbox and apply side-effects (scheduler enqueue,
 /// local admit/allocate when downstream URLs are configured or local-only).
 pub fn spawn_outbox_dispatcher(state: AppState) {
+    use crate::worker_runtime::{run_loop, ShutdownFlag, WorkerCursor, WorkerLimits};
+    use std::time::Duration;
+
+    let limits = WorkerLimits::from_env(
+        "outbox",
+        "MOQENTRA_OUTBOX",
+        WorkerLimits {
+            name: "outbox",
+            batch_size: 16,
+            max_concurrency: 1,
+            cycle_deadline: Duration::from_secs(30),
+            retry_budget: 3,
+            idle_sleep: Duration::from_millis(250),
+        },
+    );
+    let shutdown = ShutdownFlag::new();
+    let batch = limits.batch_size as u32;
+
     tokio::spawn(async move {
-        loop {
-            let pending = match state.outbox.poll_pending(16).await {
-                Ok(p) => p,
-                Err(e) => {
-                    tracing::warn!(error = %e, "outbox poll failed");
-                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                    continue;
-                }
-            };
-            for event in pending {
-                let action = plan_dispatch(&event.event_type, &event.payload);
-                let result = apply_dispatch(&state, action).await;
-                match result {
-                    Ok(()) => {
-                        let _ = state.outbox.mark_completed(event.id).await;
+        run_loop(shutdown, limits, || {
+            let state = state.clone();
+            async move {
+                let mut cursor = WorkerCursor::default();
+                let pending = match state.outbox.poll_pending(batch).await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "outbox poll failed");
+                        return;
                     }
-                    Err(msg) => {
-                        tracing::warn!(
-                            event_id = %event.id,
-                            event_type = %event.event_type,
-                            error = %msg,
-                            "outbox dispatch failed"
-                        );
-                        let _ = state.outbox.mark_failed(event.id, msg).await;
+                };
+                for event in pending {
+                    // Lease already claimed by poll_pending; record cursor before side effects.
+                    cursor.advance(event.id.to_string());
+                    let action = plan_dispatch(&event.event_type, &event.payload);
+                    let result = apply_dispatch(&state, action).await;
+                    match result {
+                        Ok(()) => {
+                            let _ = state.outbox.mark_completed(event.id).await;
+                        }
+                        Err(msg) => {
+                            tracing::warn!(
+                                event_id = %event.id,
+                                event_type = %event.event_type,
+                                error = %msg,
+                                "outbox dispatch failed"
+                            );
+                            let _ = state.outbox.mark_failed(event.id, msg).await;
+                        }
                     }
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-        }
+        })
+        .await;
     });
 }
 
@@ -2469,10 +2723,11 @@ async fn apply_dispatch(state: &AppState, action: DispatchAction) -> Result<(), 
                 // Local-only path: admit immediately so single-process demos work.
                 let tenant = TenantId::try_from(tenant_id.as_str()).map_err(|e| e.to_string())?;
                 let job = TrainingJobId::try_from(job_id.as_str()).map_err(|e| e.to_string())?;
-                {
+                let admitted = {
                     let mut reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
-                    reg.admit_job(tenant, job).map_err(|e| e.to_string())?;
-                }
+                    reg.admit_job(tenant, job).map_err(|e| e.to_string())?.clone()
+                };
+                persist_training_job(state, &admitted).await;
                 // Chain admitted event for allocate step.
                 emit_event(
                     state,
@@ -2494,12 +2749,22 @@ async fn apply_dispatch(state: &AppState, action: DispatchAction) -> Result<(), 
         DispatchAction::AdmitTrainingJob { job_id, tenant_id } => {
             let tenant = TenantId::try_from(tenant_id.as_str()).map_err(|e| e.to_string())?;
             let job = TrainingJobId::try_from(job_id.as_str()).map_err(|e| e.to_string())?;
-            let mut reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
             // Idempotent: if already admitted, treat as success.
-            match reg.admit_job(tenant, job) {
-                Ok(_) => Ok(()),
-                Err(e) if e.kind == moqentra_types::ErrorKind::Conflict => Ok(()),
-                Err(e) => Err(e.to_string()),
+            let result = {
+                let mut reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
+                match reg.admit_job(tenant, job) {
+                    Ok(j) => Ok(Some(j.clone())),
+                    Err(e) if e.kind == moqentra_types::ErrorKind::Conflict => Ok(None),
+                    Err(e) => Err(e.to_string()),
+                }
+            };
+            match result {
+                Ok(Some(admitted)) => {
+                    persist_training_job(state, &admitted).await;
+                    Ok(())
+                }
+                Ok(None) => Ok(()),
+                Err(e) => Err(e),
             }
         }
         DispatchAction::AllocateNode {
@@ -2542,6 +2807,7 @@ mod tests {
     use moqentra_domain::application::{ApplicationNode, Port};
     use moqentra_object_store::{InMemoryObjectStore, InMemoryUploadSessionStore};
     use moqentra_observability::LivenessCheck;
+    use moqentra_storage::InMemoryOutbox;
     use moqentra_types::UserId;
     use std::collections::BTreeMap;
     use tower::ServiceExt;

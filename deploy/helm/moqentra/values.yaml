@@ -1,9 +1,31 @@
+nameOverride: ""
 replicaCount: 2
+productionMode: false
+tls:
+  enabled: false
+controlPlaneUrl: "http://moqentra-control-plane:8080"
 
 image:
   repository: moqentra/control-plane
-  tag: latest
+  tag: "0.1.0"
   pullPolicy: IfNotPresent
+
+migration:
+  image:
+    repository: moqentra/migrate
+    tag: ""
+
+nodeAgent:
+  image:
+    repository: moqentra/node-agent
+    tag: ""
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
 
 service:
   type: ClusterIP
@@ -13,6 +35,10 @@ external:
   db: false
   s3: false
   oidc: false
+
+secrets:
+  dbSecretName: moqentra-db
+  appSecretName: moqentra-app
 
 resources:
   limits:
@@ -26,8 +52,11 @@ networkPolicy:
   enabled: false
 
 podDisruptionBudget:
-  enabled: false
+  enabled: true
   minAvailable: 1
 
-upgrade:
-  hooks: true
+# Third-party prerequisites (document only; chart does not install them).
+prerequisites:
+  nvidiaDevicePlugin: "Install NVIDIA device plugin separately when GPU nodes are used."
+  volcano: "Install Volcano CRDs/controllers separately for VolcanoJob scheduling."
+  storage: "Provide CSI volumes or external S3; chart does not provision object storage."

@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useState } from "react";
+import { clearTenant } from "./queryCache";
 
 export interface TenantScope {
   tenantId: string;
@@ -25,7 +26,11 @@ export function TenantProvider({
   const value = useMemo(
     () => ({
       scope,
-      setTenant: (tenantId: string) => setScope({ tenantId }),
+      setTenant: (tenantId: string) => {
+        // Cancel cached work and isolate the next tenant (R1-WEB-003).
+        clearTenant(scope.tenantId);
+        setScope({ tenantId });
+      },
       setProject: (projectId: string | undefined) =>
         setScope((prev) => ({ ...prev, projectId })),
     }),

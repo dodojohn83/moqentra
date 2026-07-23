@@ -73,33 +73,57 @@ impl ImportJobStore for InMemoryImportJobStore {
 /// Background import worker. Polls pending jobs and executes server-side
 /// transfer with bounded retries.
 pub fn spawn_import_worker(state: AppState) {
+    use crate::worker_runtime::{run_loop, ShutdownFlag, WorkerCursor, WorkerLimits};
+
+    let limits = WorkerLimits::from_env(
+        "import",
+        "MOQENTRA_IMPORT",
+        WorkerLimits {
+            name: "import",
+            batch_size: 8,
+            max_concurrency: 2,
+            cycle_deadline: Duration::from_secs(120),
+            retry_budget: 3,
+            idle_sleep: Duration::from_millis(250),
+        },
+    );
+    let shutdown = ShutdownFlag::new();
+    let batch = limits.batch_size;
+    let retry_budget = limits.retry_budget;
+
     tokio::spawn(async move {
-        loop {
-            let ids = match state.import_jobs.pending_ids().await {
-                Ok(ids) => ids,
-                Err(e) => {
-                    tracing::warn!(error = %e, "import job poll failed");
-                    tokio::time::sleep(Duration::from_millis(500)).await;
-                    continue;
-                }
-            };
-            for id in ids {
-                if let Ok(Some(job)) = state.import_jobs.get(&id).await {
-                    let result = execute_import(&state, &job).await;
-                    let mut job = job;
-                    if let Err((reason, retryable)) = result {
-                        let _ = job.fail(reason);
-                        if retryable && job.retry_count < 3 {
-                            let _ = job.retry();
-                        }
-                    } else {
-                        let _ = job.complete();
+        run_loop(shutdown, limits, || {
+            let state = state.clone();
+            async move {
+                let mut cursor = WorkerCursor::default();
+                let mut ids = match state.import_jobs.pending_ids().await {
+                    Ok(ids) => ids,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "import job poll failed");
+                        return;
                     }
-                    let _ = state.import_jobs.save(&job).await;
+                };
+                ids.truncate(batch);
+                for id in ids {
+                    // Cursor before external transfer side effects.
+                    cursor.advance(id.clone());
+                    if let Ok(Some(job)) = state.import_jobs.get(&id).await {
+                        let result = execute_import(&state, &job).await;
+                        let mut job = job;
+                        if let Err((reason, retryable)) = result {
+                            let _ = job.fail(reason);
+                            if retryable && job.retry_count < retry_budget {
+                                let _ = job.retry();
+                            }
+                        } else {
+                            let _ = job.complete();
+                        }
+                        let _ = state.import_jobs.save(&job).await;
+                    }
                 }
             }
-            tokio::time::sleep(Duration::from_millis(250)).await;
-        }
+        })
+        .await;
     });
 }
 

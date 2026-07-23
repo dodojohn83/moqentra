@@ -1,0 +1,16 @@
+Moqentra Helm release {{ .Release.Name }}
+
+Prerequisites (not installed by this chart):
+- External PostgreSQL when productionMode=true
+- S3-compatible object store
+- OIDC issuer (e.g. Dex/Keycloak)
+- Optional: NVIDIA device plugin, Volcano CRDs — install separately
+
+Upgrade order (N/N+1 expand-first):
+1. Helm pre-install/pre-upgrade hook runs migration Job
+2. Control-plane Deployment rolls out with new code
+3. Old binary versions remain able to read expanded schema
+
+Verify:
+  kubectl -n {{ .Release.Namespace }} get pods,job
+  kubectl -n {{ .Release.Namespace }} logs job/{{ include "moqentra.fullname" . }}-migrate-{{ .Release.Revision }}

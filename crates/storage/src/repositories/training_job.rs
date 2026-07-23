@@ -3,7 +3,8 @@
 use async_trait::async_trait;
 use moqentra_application::ports::{ResourceListFilter, TrainingJobRepository, Versioned};
 use moqentra_domain::training::{
-    Attempt, MetricPoint, OutputManifest, TrainingJob, TrainingJobSpec, TrainingJobState,
+    Attempt, Experiment, MetricPoint, OutputManifest, TrainingJob, TrainingJobSpec,
+    TrainingJobState,
 };
 use moqentra_types::{
     AttemptId, Error, ExperimentId, Page, PageRequest, ProjectId, RequestContext, Revision,
@@ -358,6 +359,136 @@ impl TrainingJobRepository for PgTrainingJobRepository {
         }
 
         Ok(())
+    }
+}
+
+impl PgTrainingJobRepository {
+    /// Ensure tenant/project FK rows exist for write-through inserts.
+    pub async fn ensure_tenant_project(
+        &self,
+        tenant_id: TenantId,
+        project_id: ProjectId,
+    ) -> Result<(), Error> {
+        self.set_admin().await?;
+        let tenant_str = tenant_id.to_string();
+        sqlx::query("INSERT INTO tenants (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING")
+            .bind(tenant_id.as_uuid())
+            .bind(format!("tenant-{tenant_str}"))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("failed to ensure tenant: {e}")))?;
+        sqlx::query(
+            "INSERT INTO projects (id, tenant_id, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+        )
+        .bind(project_id.as_uuid())
+        .bind(tenant_id.as_uuid())
+        .bind(format!("project-{project_id}"))
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to ensure project: {e}")))?;
+        Ok(())
+    }
+
+    /// Best-effort upsert of a training job (write-through from control-plane registry).
+    pub async fn upsert_job(&self, job: &TrainingJob) -> Result<(), Error> {
+        job.spec.validate().map_err(|e| Error::invalid_argument(e.to_string()))?;
+        self.set_tenant(job.tenant_id).await?;
+        let metadata = serde_json::to_value(job_to_metadata(job)).map_err(|e| {
+            Error::internal(format!("failed to serialize training job metadata: {e}"))
+        })?;
+        let spec = serde_json::to_value(&job.spec)
+            .map_err(|e| Error::internal(format!("failed to serialize training job spec: {e}")))?;
+
+        sqlx::query(
+            "INSERT INTO training_jobs
+             (id, tenant_id, project_id, experiment_id, dataset_version_id, model_id, name, spec, state, revision, metadata, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10, $11, $12)
+             ON CONFLICT (id) DO UPDATE SET
+                experiment_id = EXCLUDED.experiment_id,
+                dataset_version_id = EXCLUDED.dataset_version_id,
+                spec = EXCLUDED.spec,
+                state = EXCLUDED.state,
+                metadata = EXCLUDED.metadata,
+                updated_at = EXCLUDED.updated_at,
+                revision = training_jobs.revision + 1",
+        )
+        .bind(job.id.as_uuid())
+        .bind(job.tenant_id.as_uuid())
+        .bind(job.project_id.as_uuid())
+        .bind(job.experiment_id.as_uuid())
+        .bind(job.spec.dataset_version_id.as_uuid())
+        .bind(Option::<Uuid>::None)
+        .bind(job.id.to_string())
+        .bind(spec)
+        .bind(format!("{:?}", job.state))
+        .bind(metadata)
+        .bind(job.created_at.as_offset())
+        .bind(job.updated_at.as_offset())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to upsert training job: {e}")))?;
+        Ok(())
+    }
+
+    /// Persist experiment aggregate for restart recovery.
+    pub async fn upsert_experiment(&self, experiment: &Experiment) -> Result<(), Error> {
+        self.set_tenant(experiment.tenant_id).await?;
+        let payload = serde_json::to_value(experiment)
+            .map_err(|e| Error::internal(format!("failed to serialize experiment: {e}")))?;
+        sqlx::query(
+            "INSERT INTO experiments (id, tenant_id, project_id, name, payload, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             ON CONFLICT (id) DO UPDATE SET
+                name = EXCLUDED.name,
+                payload = EXCLUDED.payload,
+                updated_at = EXCLUDED.updated_at",
+        )
+        .bind(experiment.id.as_uuid())
+        .bind(experiment.tenant_id.as_uuid())
+        .bind(experiment.project_id.as_uuid())
+        .bind(&experiment.name)
+        .bind(payload)
+        .bind(experiment.created_at.as_offset())
+        .bind(experiment.updated_at.as_offset())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to upsert experiment: {e}")))?;
+        Ok(())
+    }
+
+    /// Load all experiments and jobs for process restart recovery (admin).
+    pub async fn load_all_for_recovery(
+        &self,
+    ) -> Result<(Vec<Experiment>, Vec<TrainingJob>), Error> {
+        self.set_admin().await?;
+        let exp_rows: Vec<(Uuid, Value)> =
+            sqlx::query_as("SELECT id, payload FROM experiments ORDER BY created_at")
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| Error::internal(format!("failed to load experiments: {e}")))?;
+
+        let mut experiments = Vec::with_capacity(exp_rows.len());
+        for (_id, payload) in exp_rows {
+            let exp: Experiment = serde_json::from_value(payload)
+                .map_err(|e| Error::internal(format!("failed to deserialize experiment: {e}")))?;
+            experiments.push(exp);
+        }
+
+        let job_rows: Vec<TrainingJobRow> = sqlx::query_as(
+            "SELECT id, tenant_id, project_id, experiment_id, dataset_version_id, model_id, name,
+                    spec, state, revision, metadata, created_at, updated_at
+             FROM training_jobs
+             ORDER BY created_at",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to load training jobs: {e}")))?;
+
+        let mut jobs = Vec::with_capacity(job_rows.len());
+        for row in job_rows {
+            jobs.push(row_to_domain(&row)?);
+        }
+        Ok((experiments, jobs))
     }
 }
 

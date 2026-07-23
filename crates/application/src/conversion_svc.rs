@@ -16,6 +16,14 @@ impl InMemoryConversionRegistry {
         Self::default()
     }
 
+    /// Replace in-memory state from durable storage (restart recovery).
+    pub fn hydrate(&mut self, jobs: Vec<ConversionJob>) {
+        self.jobs.clear();
+        for j in jobs {
+            self.jobs.insert(j.id, j);
+        }
+    }
+
     /// Create a conversion job with tenant isolation.
     pub fn create_job(&mut self, job: ConversionJob) -> Result<ConversionJob, Error> {
         if self.jobs.contains_key(&job.id) {
@@ -89,6 +97,14 @@ impl InMemoryEvaluationRegistry {
     /// Create an empty registry.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Replace in-memory state from durable storage (restart recovery).
+    pub fn hydrate(&mut self, runs: Vec<EvaluationRun>) {
+        self.runs.clear();
+        for r in runs {
+            self.runs.insert(r.id, r);
+        }
     }
 
     /// Create an evaluation run with tenant/project isolation.

@@ -42,6 +42,7 @@ PY
 )
   # Docker Compose .env files interpolate $VAR; escape literal $ as $$.
   ADMIN_PASSWORD_HASH_ESCAPED=$(printf '%s' "$ADMIN_PASSWORD_HASH" | sed 's/\$/$$/g')
+  UPLOAD_SIG_SECRET=$(openssl rand -hex 32)
   {
     echo "POSTGRES_USER=${POSTGRES_USER:-moqentra}"
     echo "POSTGRES_PASSWORD=$POSTGRES_PASSWORD"
@@ -57,9 +58,22 @@ PY
     echo "OIDC_CLIENT_SECRET=$OIDC_CLIENT_SECRET"
     echo "MOQENTRA_ADMIN_PASSWORD=$ADMIN_PASSWORD"
     echo "MOQENTRA_ADMIN_PASSWORD_HASH=$ADMIN_PASSWORD_HASH_ESCAPED"
+    echo "MOQENTRA_UPLOAD_SIG_SECRET=$UPLOAD_SIG_SECRET"
+    echo "MOQENTRA_S3_BUCKET=moqentra"
+    echo "MOQENTRA_REQUIRE_AUTH=false"
   } > "$ENV_FILE"
   chmod 600 "$ENV_FILE"
+  # Never print plaintext secrets beyond the admin password once for bootstrap.
   echo "Generated $ENV_FILE with random passwords."
+  echo "Bootstrap admin password (store securely, shown once): $ADMIN_PASSWORD"
+else
+  echo "Existing $ENV_FILE preserved (idempotent; secrets not rotated)."
 fi
 
-echo "One-box initialization complete. Run './preflight.sh' then 'docker compose up -d'."
+# Ensure TLS key permissions stay minimal on every run.
+if [[ -f "${SCRIPT_DIR}/certs/tls.key" ]]; then
+  chmod 600 "${SCRIPT_DIR}/certs/tls.key"
+fi
+chmod 700 "${SCRIPT_DIR}/secrets" 2>/dev/null || true
+
+echo "One-box initialization complete. Run './preflight.sh' then 'docker compose up -d' or './smoke.sh'."

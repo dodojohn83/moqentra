@@ -447,6 +447,170 @@ impl ModelRepository for PgModelRepository {
     }
 }
 
+impl PgModelRepository {
+    async fn set_admin(&self) -> Result<(), Error> {
+        sqlx::query("SELECT set_config('app.is_admin', 'true', true)")
+            .execute(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("failed to set admin context: {e}")))?;
+        Ok(())
+    }
+
+    /// Ensure tenant/project FK rows exist for write-through inserts.
+    pub async fn ensure_tenant_project(
+        &self,
+        tenant_id: TenantId,
+        project_id: ProjectId,
+    ) -> Result<(), Error> {
+        self.set_admin().await?;
+        let tenant_str = tenant_id.to_string();
+        sqlx::query("INSERT INTO tenants (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING")
+            .bind(tenant_id.as_uuid())
+            .bind(format!("tenant-{tenant_str}"))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("failed to ensure tenant: {e}")))?;
+        sqlx::query(
+            "INSERT INTO projects (id, tenant_id, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+        )
+        .bind(project_id.as_uuid())
+        .bind(tenant_id.as_uuid())
+        .bind(format!("project-{project_id}"))
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to ensure project: {e}")))?;
+        Ok(())
+    }
+
+    /// Best-effort upsert of a model family.
+    pub async fn upsert_model(&self, model: &Model) -> Result<(), Error> {
+        self.set_tenant(model.tenant_id).await?;
+        let metadata = serde_json::to_value(model_metadata(model))
+            .map_err(|e| Error::internal(e.to_string()))?;
+        sqlx::query(
+            "INSERT INTO models (id, tenant_id, project_id, name, state, revision, metadata, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8)
+             ON CONFLICT (id) DO UPDATE SET
+                name = EXCLUDED.name,
+                metadata = EXCLUDED.metadata,
+                updated_at = EXCLUDED.updated_at,
+                revision = models.revision + 1",
+        )
+        .bind(model.id.as_uuid())
+        .bind(model.tenant_id.as_uuid())
+        .bind(model.project_id.as_uuid())
+        .bind(&model.name)
+        .bind("Active")
+        .bind(metadata)
+        .bind(model.created_at.as_offset())
+        .bind(model.updated_at.as_offset())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to upsert model: {e}")))?;
+        Ok(())
+    }
+
+    /// Best-effort upsert of a model version (manifest + state).
+    pub async fn upsert_version(&self, version: &ModelVersion) -> Result<(), Error> {
+        self.set_tenant(version.tenant_id).await?;
+        let manifest = version_manifest(version)?;
+        let artifact_digest =
+            version.artifacts.first().map(|a| a.digest.clone()).unwrap_or_default();
+        let created_by = version.approved_by.map(|u| u.as_uuid()).unwrap_or_else(Uuid::nil);
+
+        let updated = sqlx::query(
+            "UPDATE model_versions
+             SET artifact_digest = $3, manifest = $4, state = $5, updated_at = $6
+             WHERE id = $1 AND tenant_id = $2",
+        )
+        .bind(version.id.as_uuid())
+        .bind(version.tenant_id.as_uuid())
+        .bind(&artifact_digest)
+        .bind(&manifest)
+        .bind(format!("{:?}", version.state))
+        .bind(version.updated_at.as_offset())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to update model version: {e}")))?;
+
+        if updated.rows_affected() == 0 {
+            let next_version_number: i64 = sqlx::query_scalar(
+                "SELECT COALESCE(MAX(version_number), 0) + 1 FROM model_versions
+                 WHERE model_id = $1 AND tenant_id = $2",
+            )
+            .bind(version.model_id.as_uuid())
+            .bind(version.tenant_id.as_uuid())
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("failed to compute model version number: {e}")))?;
+
+            sqlx::query(
+                "INSERT INTO model_versions
+                 (id, tenant_id, project_id, model_id, version_number, artifact_digest, manifest, created_by, state, updated_at, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                 ON CONFLICT (id) DO UPDATE SET
+                    artifact_digest = EXCLUDED.artifact_digest,
+                    manifest = EXCLUDED.manifest,
+                    state = EXCLUDED.state,
+                    updated_at = EXCLUDED.updated_at",
+            )
+            .bind(version.id.as_uuid())
+            .bind(version.tenant_id.as_uuid())
+            .bind(version.project_id.as_uuid())
+            .bind(version.model_id.as_uuid())
+            .bind(next_version_number)
+            .bind(artifact_digest)
+            .bind(manifest)
+            .bind(created_by)
+            .bind(format!("{:?}", version.state))
+            .bind(version.updated_at.as_offset())
+            .bind(version.created_at.as_offset())
+            .execute(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("failed to insert model version: {e}")))?;
+        }
+        Ok(())
+    }
+
+    /// Load all models and versions for process restart recovery (admin).
+    pub async fn load_all_for_recovery(&self) -> Result<(Vec<Model>, Vec<ModelVersion>), Error> {
+        self.set_admin().await?;
+        let model_rows: Vec<ModelRow> = sqlx::query_as(
+            "SELECT id, tenant_id, project_id, name, state, revision, metadata, created_at, updated_at
+             FROM models
+             ORDER BY created_at",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to load models: {e}")))?;
+
+        let version_rows: Vec<ModelVersionRow> = sqlx::query_as(
+            "SELECT id, tenant_id, project_id, model_id, version_number, artifact_digest,
+                    manifest, created_by, state, updated_at, created_at
+             FROM model_versions
+             ORDER BY created_at",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to load model versions: {e}")))?;
+
+        let mut versions = Vec::with_capacity(version_rows.len());
+        for row in version_rows {
+            // Skip corrupt versions rather than failing full hydrate.
+            match version_row_to_domain(&row) {
+                Ok(v) => versions.push(v),
+                Err(e) => tracing::warn!(error = %e, "skipping corrupt model version on hydrate"),
+            }
+        }
+
+        let mut models = Vec::with_capacity(model_rows.len());
+        for row in model_rows {
+            models.push(model_row_to_domain(&row)?);
+        }
+        Ok((models, versions))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

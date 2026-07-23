@@ -1,0 +1,72 @@
+# Prometheus alert rules for R1 (R1-OBS-005). Load into Prometheus/Mimir.
+groups:
+  - name: moqentra-r1
+    rules:
+      - alert: MoqentraServiceDown
+        expr: up{job=~"moqentra-.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Moqentra service {{ $labels.job }} is down"
+
+      - alert: MoqentraOutboxBacklog
+        expr: moqentra_outbox_pending > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox backlog high ({{ $value }})"
+
+      - alert: MoqentraLeaseLost
+        expr: increase(moqentra_lease_expired_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Training/agent lease expirations observed"
+
+      - alert: MoqentraTrainingFailureRate
+        expr: |
+          (
+            sum(rate(moqentra_training_jobs_failed_total[15m]))
+            /
+            clamp_min(sum(rate(moqentra_training_jobs_total[15m])), 1)
+          ) > 0.25
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Training failure rate > 25%"
+
+      - alert: MoqentraObjectStoreErrors
+        expr: increase(moqentra_object_store_errors_total[10m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Object store errors elevated"
+
+      - alert: MoqentraGpuUnavailable
+        expr: moqentra_gpu_available == 0 and moqentra_gpu_requested > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU requested but none available"
+
+      - alert: MoqentraDeploymentNotConverged
+        expr: moqentra_deployment_generation_lag > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Deployment desired/observed generation lag"
+
+      - alert: MoqentraMediaStreamDown
+        expr: moqentra_stream_connected == 0 and moqentra_stream_desired == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Media stream disconnected"

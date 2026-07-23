@@ -191,6 +191,31 @@ impl OutboxStore for PgOutboxStore {
         rows.into_iter().map(OutboxEvent::try_from).collect::<Result<Vec<_>, _>>()
     }
 
+    async fn list_events(&self, limit: u32) -> Result<Vec<OutboxEvent>, Error> {
+        let tenant_str = self.tenant_id.to_string();
+        let mut conn = self
+            .pool
+            .acquire()
+            .await
+            .map_err(|e| Error::internal(format!("outbox acquire failed: {e}")))?;
+        let _ = sqlx::query("SELECT set_config('app.current_tenant', $1, true)")
+            .bind(&tenant_str)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| Error::internal(format!("failed to set tenant context: {e}")))?;
+        let rows: Vec<OutboxRow> = sqlx::query_as(
+            "SELECT * FROM outbox_events
+             WHERE status IN ('pending', 'processing', 'failed')
+             ORDER BY created_at DESC
+             LIMIT $1",
+        )
+        .bind(i64::from(limit))
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(|e| Error::internal(format!("outbox list failed: {e}")))?;
+        rows.into_iter().map(OutboxEvent::try_from).collect::<Result<Vec<_>, _>>()
+    }
+
     async fn mark_completed(&self, event_id: Uuid) -> Result<(), Error> {
         let tenant_str = self.tenant_id.to_string();
         let mut conn = self
@@ -245,6 +270,161 @@ impl OutboxStore for PgOutboxStore {
                  END, \
                  lease_owner = NULL, lease_expires_at = NULL \
                  WHERE id = $1",
+        )
+        .bind(event_id)
+        .bind(&reason)
+        .execute(&mut *conn)
+        .await
+        .map_err(|e| Error::internal(format!("outbox mark failed failed: {e}")))?;
+        if result.rows_affected() == 0 {
+            return Err(Error::not_found("outbox event"));
+        }
+        Ok(())
+    }
+}
+
+/// Multi-tenant outbox used by the control-plane dispatcher.
+///
+/// Appends under the event's tenant context; polls and completes under
+/// `app.is_admin` so a single worker can drain all tenants safely.
+#[derive(Debug, Clone)]
+pub struct MultiTenantPgOutbox {
+    pool: PgPool,
+    owner: String,
+}
+
+impl MultiTenantPgOutbox {
+    pub fn new(pool: PgPool, owner: impl Into<String>) -> Self {
+        Self {
+            pool,
+            owner: owner.into(),
+        }
+    }
+
+    async fn set_admin(conn: &mut sqlx::PgConnection) -> Result<(), Error> {
+        sqlx::query("SELECT set_config('app.is_admin', 'true', true)")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| Error::internal(format!("failed to set admin context: {e}")))?;
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl OutboxStore for MultiTenantPgOutbox {
+    async fn append(&self, event: OutboxEvent) -> Result<OutboxEvent, Error> {
+        let store = PgOutboxStore::new(self.pool.clone(), event.tenant_id, self.owner.clone());
+        store.append(event).await
+    }
+
+    async fn poll_pending(&self, limit: u32) -> Result<Vec<OutboxEvent>, Error> {
+        let limit = i64::from(limit);
+        let owner = &self.owner;
+        let lease_seconds: i32 = 30;
+
+        let mut conn = self
+            .pool
+            .acquire()
+            .await
+            .map_err(|e| Error::internal(format!("outbox acquire failed: {e}")))?;
+        Self::set_admin(&mut conn).await?;
+        let rows: Vec<OutboxRow> = sqlx::query_as(
+            "WITH candidates AS (
+                SELECT id
+                FROM outbox_events
+                WHERE (
+                        status = 'pending'
+                        AND (next_retry_at IS NULL OR next_retry_at <= now())
+                        AND (lease_expires_at IS NULL OR lease_expires_at < now())
+                      )
+                      OR (status = 'processing' AND lease_expires_at < now())
+                ORDER BY tenant_id, created_at
+                FOR UPDATE SKIP LOCKED
+                LIMIT $1
+            )
+            UPDATE outbox_events
+            SET status = 'processing',
+                lease_owner = $2,
+                lease_expires_at = now() + make_interval(secs => $3),
+                retry_count = retry_count + 1,
+                updated_at = now()
+            FROM candidates
+            WHERE outbox_events.id = candidates.id
+            RETURNING outbox_events.*",
+        )
+        .bind(limit)
+        .bind(owner)
+        .bind(lease_seconds)
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(|e| Error::internal(format!("outbox poll failed: {e}")))?;
+        rows.into_iter().map(OutboxEvent::try_from).collect::<Result<Vec<_>, _>>()
+    }
+
+    async fn list_events(&self, limit: u32) -> Result<Vec<OutboxEvent>, Error> {
+        let mut conn = self
+            .pool
+            .acquire()
+            .await
+            .map_err(|e| Error::internal(format!("outbox acquire failed: {e}")))?;
+        Self::set_admin(&mut conn).await?;
+        let rows: Vec<OutboxRow> = sqlx::query_as(
+            "SELECT * FROM outbox_events
+             WHERE status IN ('pending', 'processing', 'failed')
+             ORDER BY created_at DESC
+             LIMIT $1",
+        )
+        .bind(i64::from(limit))
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(|e| Error::internal(format!("outbox list failed: {e}")))?;
+        rows.into_iter().map(OutboxEvent::try_from).collect::<Result<Vec<_>, _>>()
+    }
+
+    async fn mark_completed(&self, event_id: Uuid) -> Result<(), Error> {
+        let mut conn = self
+            .pool
+            .acquire()
+            .await
+            .map_err(|e| Error::internal(format!("outbox acquire failed: {e}")))?;
+        Self::set_admin(&mut conn).await?;
+        let result = sqlx::query(
+            "UPDATE outbox_events \
+             SET status = 'completed', lease_owner = NULL, lease_expires_at = NULL, \
+                 next_retry_at = NULL, updated_at = now() \
+             WHERE id = $1",
+        )
+        .bind(event_id)
+        .execute(&mut *conn)
+        .await
+        .map_err(|e| Error::internal(format!("outbox mark completed failed: {e}")))?;
+        if result.rows_affected() == 0 {
+            return Err(Error::not_found("outbox event"));
+        }
+        Ok(())
+    }
+
+    async fn mark_failed(&self, event_id: Uuid, reason: String) -> Result<(), Error> {
+        let mut conn = self
+            .pool
+            .acquire()
+            .await
+            .map_err(|e| Error::internal(format!("outbox acquire failed: {e}")))?;
+        Self::set_admin(&mut conn).await?;
+        let result = sqlx::query(
+            "UPDATE outbox_events \
+             SET failure_reason = $2, \
+                 updated_at = now(), \
+                 status = CASE \
+                     WHEN retry_count >= max_attempts THEN 'failed' \
+                     ELSE 'pending' \
+                 END, \
+                 next_retry_at = CASE \
+                     WHEN retry_count >= max_attempts THEN NULL \
+                     ELSE now() + make_interval(secs => GREATEST(1, LEAST(300, power(2, retry_count)::int))) \
+                 END, \
+                 lease_owner = NULL, lease_expires_at = NULL \
+             WHERE id = $1",
         )
         .bind(event_id)
         .bind(&reason)

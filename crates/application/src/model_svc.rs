@@ -69,6 +69,18 @@ impl InMemoryModelRegistry {
         Self::default()
     }
 
+    /// Replace in-memory state with durable rows (control-plane restart recovery).
+    pub fn hydrate(&mut self, models: Vec<Model>, versions: Vec<ModelVersion>) {
+        self.models.clear();
+        self.versions.clear();
+        for m in models {
+            self.models.insert(m.id, m);
+        }
+        for v in versions {
+            self.versions.insert(v.id, v);
+        }
+    }
+
     /// Create a model family.
     pub fn create_model(&mut self, model: Model) -> Result<Model, Error> {
         if self.models.contains_key(&model.id) {
@@ -169,6 +181,16 @@ impl InMemoryModelRegistry {
             }
         }
         keys
+    }
+
+    /// List up to `limit` draft model versions (for artifact reconciler recovery).
+    pub fn draft_versions(&self, limit: usize) -> Vec<ModelVersion> {
+        self.versions
+            .values()
+            .filter(|v| matches!(v.state, ModelVersionState::Draft))
+            .take(limit)
+            .cloned()
+            .collect()
     }
 }
 

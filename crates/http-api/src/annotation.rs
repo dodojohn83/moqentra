@@ -1,7 +1,8 @@
 //! Annotation task and review endpoints.
 
 use crate::control_plane::{
-    audit_write, authorize, check_rate_limit, resolve_context, ApiError, AppState,
+    audit_write, authorize, check_rate_limit, persist_annotation_task, resolve_context, ApiError,
+    AppState,
 };
 use axum::{
     extract::{Path, State},
@@ -126,6 +127,9 @@ pub(crate) async fn create_tasks(
         let mut reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
         reg.create_tasks(ctx.tenant_id, project_id, task_ids, asset_ids)?
     };
+    for t in &created {
+        persist_annotation_task(&state, t).await;
+    }
 
     audit_write(
         &state,
@@ -204,6 +208,7 @@ pub(crate) async fn assign_task(
         reg.assign_task(ctx.tenant_id, task_id, user_id, fencing_token, expires_at)?
             .clone()
     };
+    persist_annotation_task(&state, &t).await;
     Ok(Json((&t).into()))
 }
 
@@ -225,6 +230,7 @@ pub(crate) async fn start_task(
         let token = task.lease.as_ref().map(|l| l.fencing_token).unwrap_or(0);
         reg.start_task(ctx.tenant_id, task_id, user_id, token)?.clone()
     };
+    persist_annotation_task(&state, &t).await;
     Ok(Json((&t).into()))
 }
 
@@ -246,6 +252,7 @@ pub(crate) async fn submit_task(
         let token = task.lease.as_ref().map(|l| l.fencing_token).unwrap_or(0);
         reg.submit_task(ctx.tenant_id, task_id, user_id, token)?.clone()
     };
+    persist_annotation_task(&state, &t).await;
 
     audit_write(
         &state,
@@ -276,6 +283,7 @@ pub(crate) async fn return_task(
         let mut reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
         reg.return_task(ctx.tenant_id, task_id)?.clone()
     };
+    persist_annotation_task(&state, &t).await;
     Ok(Json((&t).into()))
 }
 
@@ -294,6 +302,7 @@ pub(crate) async fn approve_task(
         let mut reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
         reg.approve_task(ctx.tenant_id, task_id)?.clone()
     };
+    persist_annotation_task(&state, &t).await;
 
     audit_write(
         &state,

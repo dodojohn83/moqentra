@@ -454,6 +454,22 @@ impl InMemoryDatasetRegistry {
         Self::default()
     }
 
+    /// Replace in-memory state with rows loaded from durable storage (restart recovery).
+    pub fn hydrate(
+        &mut self,
+        datasets: Vec<moqentra_domain::dataset::Dataset>,
+        versions: Vec<moqentra_domain::dataset::DatasetVersion>,
+    ) {
+        self.datasets.clear();
+        self.versions.clear();
+        for ds in datasets {
+            self.datasets.insert(ds.id, ds);
+        }
+        for v in versions {
+            self.versions.insert(v.id, v);
+        }
+    }
+
     /// Find an asset by id across all dataset versions.
     pub fn find_asset(
         &self,

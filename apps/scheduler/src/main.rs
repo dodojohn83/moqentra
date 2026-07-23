@@ -103,13 +103,12 @@ async fn enqueue(
             Json(serde_json::json!({"error": "job_id required"})),
         ));
     }
-    let entry = QueueEntry {
-        job_id: req.job_id.clone(),
-        tenant_id: req.tenant_id,
-        project_id: req.project_id,
-        priority: req.priority,
-        submitted_at: UtcTimestamp::now(),
-    };
+    let entry = QueueEntry::new(
+        req.job_id.clone(),
+        req.tenant_id,
+        req.project_id,
+        req.priority,
+    );
     let mut queue = state.queue.lock().unwrap_or_else(|e| e.into_inner());
     queue.enqueue(entry).map_err(|e| {
         (
@@ -239,10 +238,18 @@ async fn process_in_memory_job(
         };
 
         if !admitted {
-            // Put the job back so a transient network/control-plane failure does not lose it.
+            // Re-enqueue with exponential backoff; drop after max retries (dead-letter).
             let mut queue = state.queue.lock().unwrap_or_else(|e| e.into_inner());
-            if let Err(e) = queue.enqueue(entry) {
-                tracing::warn!(error = %e, "failed to re-enqueue job after failed admit");
+            match queue.requeue_with_backoff(entry) {
+                Ok(true) => {
+                    tracing::info!("re-enqueued job after failed admit with backoff");
+                }
+                Ok(false) => {
+                    tracing::warn!("dropping job after max admit retries (dead-letter)");
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to re-enqueue job after failed admit");
+                }
             }
             return;
         }

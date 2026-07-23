@@ -25,6 +25,29 @@ pub struct QueueEntry {
     pub project_id: String,
     pub priority: u32,
     pub submitted_at: moqentra_types::UtcTimestamp,
+    /// Number of failed admit/dispatch attempts.
+    pub retry_count: u32,
+    /// Earliest instant at which this entry may be popped again after a failure.
+    pub next_attempt_at: Option<moqentra_types::UtcTimestamp>,
+}
+
+impl QueueEntry {
+    pub fn new(
+        job_id: impl Into<String>,
+        tenant_id: impl Into<String>,
+        project_id: impl Into<String>,
+        priority: u32,
+    ) -> Self {
+        Self {
+            job_id: job_id.into(),
+            tenant_id: tenant_id.into(),
+            project_id: project_id.into(),
+            priority,
+            submitted_at: moqentra_types::UtcTimestamp::now(),
+            retry_count: 0,
+            next_attempt_at: None,
+        }
+    }
 }
 
 impl SchedulingQueue {
@@ -65,9 +88,13 @@ impl SchedulingQueue {
     }
 
     pub fn pop(&mut self) -> Option<QueueEntry> {
+        let now = moqentra_types::UtcTimestamp::now();
         let mut best_idx = 0usize;
         let mut best_score = None;
         for (idx, e) in self.entries.iter().enumerate() {
+            if e.next_attempt_at.is_some_and(|t| t > now) {
+                continue;
+            }
             let score = (u64::from(e.priority), std::cmp::Reverse(e.submitted_at));
             if best_score.as_ref().is_none_or(|s: &(u64, _)| score > *s) {
                 best_score = Some(score);
@@ -76,6 +103,25 @@ impl SchedulingQueue {
         }
         best_score?;
         self.entries.remove(best_idx)
+    }
+
+    /// Maximum admit retries before the entry is dropped (dead-letter).
+    pub const MAX_ADMIT_RETRIES: u32 = 8;
+
+    /// Re-enqueue after a failed admit with exponential backoff, or drop when exhausted.
+    pub fn requeue_with_backoff(
+        &mut self,
+        mut entry: QueueEntry,
+    ) -> Result<bool, moqentra_types::Error> {
+        entry.retry_count = entry.retry_count.saturating_add(1);
+        if entry.retry_count > Self::MAX_ADMIT_RETRIES {
+            return Ok(false);
+        }
+        let backoff_secs = 1i64 << entry.retry_count.min(6);
+        entry.next_attempt_at =
+            moqentra_types::UtcTimestamp::now().add_duration(time::Duration::seconds(backoff_secs));
+        self.enqueue(entry)?;
+        Ok(true)
     }
 }
 
@@ -334,29 +380,32 @@ mod tests {
     fn queue_priority_and_quota() {
         let gen = RandomIdGenerator;
         let mut queue = SchedulingQueue::new("default", TenantId::new_v7(&gen), 2, 10);
-        let e1 = QueueEntry {
-            job_id: "job-low".to_string(),
-            tenant_id: "tenant-1".to_string(),
-            project_id: "p1".to_string(),
-            priority: 1,
-            submitted_at: moqentra_types::UtcTimestamp::now(),
-        };
+        let e1 = QueueEntry::new("job-low", "tenant-1", "p1", 1);
         let mut e2 = e1.clone();
         e2.job_id = "job-high".to_string();
         e2.priority = 10;
         queue.enqueue(e1).unwrap();
         queue.enqueue(e2).unwrap();
-        assert!(queue
-            .enqueue(QueueEntry {
-                job_id: "job-full".to_string(),
-                tenant_id: "tenant-1".to_string(),
-                project_id: "p1".to_string(),
-                priority: 5,
-                submitted_at: moqentra_types::UtcTimestamp::now(),
-            })
-            .is_err());
+        assert!(queue.enqueue(QueueEntry::new("job-full", "tenant-1", "p1", 5)).is_err());
         let popped = queue.pop().unwrap();
         assert_eq!(popped.job_id, "job-high");
+    }
+
+    #[test]
+    fn queue_backoff_skips_not_ready_and_dead_letters() {
+        let gen = RandomIdGenerator;
+        let mut queue = SchedulingQueue::new("default", TenantId::new_v7(&gen), 10, 10);
+        let mut entry = QueueEntry::new("job-1", "tenant-1", "p1", 1);
+        entry.next_attempt_at =
+            moqentra_types::UtcTimestamp::now().add_duration(time::Duration::seconds(3600));
+        queue.enqueue(entry).unwrap();
+        assert!(queue.pop().is_none());
+
+        let mut failed = QueueEntry::new("job-2", "tenant-1", "p1", 1);
+        failed.retry_count = SchedulingQueue::MAX_ADMIT_RETRIES;
+        let kept = queue.requeue_with_backoff(failed).unwrap();
+        assert!(!kept);
+        assert!(queue.entries.iter().all(|e| e.job_id != "job-2"));
     }
 
     #[test]

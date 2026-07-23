@@ -25,6 +25,20 @@ impl InMemoryAnnotationRegistry {
         Self::default()
     }
 
+    /// Replace in-memory state from durable storage (restart recovery).
+    pub fn hydrate(&mut self, projects: Vec<AnnotationProject>, tasks: Vec<AnnotationTask>) {
+        self.projects.clear();
+        self.tasks.clear();
+        // Logs are derived from runtime activity; not recovered from PG yet.
+        self.logs.clear();
+        for p in projects {
+            self.projects.insert(p.id, p);
+        }
+        for t in tasks {
+            self.tasks.insert(t.id, t);
+        }
+    }
+
     /// Create an annotation project.
     pub fn create_project(
         &mut self,

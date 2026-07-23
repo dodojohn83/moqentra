@@ -1,12 +1,18 @@
 # syntax=docker/dockerfile:1
-FROM rust:1.94.1-bookworm AS builder
+# R1-PKG-002: multi-stage build, non-root, no compiler in final image, health+version.
+#
+# Optional pin: docker build --build-arg RUST_IMAGE=rust@sha256:... --build-arg RUNTIME_IMAGE=debian@sha256:...
+
+ARG RUST_IMAGE=rust:1.94.1-bookworm
+ARG RUNTIME_IMAGE=debian:bookworm-slim
+
+FROM ${RUST_IMAGE} AS builder
 
 ARG BIN
 ARG PORT=8080
 
 WORKDIR /build
 
-# Install protoc and SSL headers required by tonic/sqlx builds.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        protobuf-compiler \
@@ -17,26 +23,38 @@ RUN apt-get update \
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY . .
 
-RUN cargo build --release -p "${BIN}"
+RUN cargo build --release -p "${BIN}" \
+    && strip "target/release/${BIN}" || true
 
-FROM debian:bookworm-slim
+FROM ${RUNTIME_IMAGE}
 
+# Minimal runtime: ca-certs + curl for healthcheck only (no compilers, no package managers for build).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd -r moqentra \
-    && useradd -r -g moqentra moqentra
+    && groupadd -r -g 10001 moqentra \
+    && useradd -r -u 10001 -g moqentra moqentra \
+    && mkdir -p /etc/moqentra \
+    && chown moqentra:moqentra /etc/moqentra
 
 ARG BIN
 ARG PORT=8080
-ENV PORT=${PORT}
+ARG VERSION=0.1.0
+ENV PORT=${PORT} \
+    MOQENTRA_BIN=${BIN} \
+    MOQENTRA_VERSION=${VERSION}
 
-COPY --from=builder /build/target/release/${BIN} /usr/local/bin/${BIN}
+COPY --from=builder /build/target/release/${BIN} /usr/local/bin/moqentra-service
+RUN ln -sf /usr/local/bin/moqentra-service /usr/local/bin/${BIN} \
+    && printf '%s\n' "${VERSION}" > /etc/moqentra/VERSION \
+    && chown moqentra:moqentra /etc/moqentra/VERSION
 
 USER moqentra
+WORKDIR /
 EXPOSE ${PORT}
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -fs "http://localhost:${PORT}/healthz" >/dev/null || exit 1
 
-ENTRYPOINT ["/usr/local/bin/${BIN}"]
+# Print version then exec the service binary.
+ENTRYPOINT ["/bin/sh", "-c", "echo moqentra version=${MOQENTRA_VERSION} bin=${MOQENTRA_BIN}; exec /usr/local/bin/moqentra-service"]

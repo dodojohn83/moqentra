@@ -22,8 +22,14 @@ export function Shell() {
         <h1 style={{ margin: 0, fontSize: "1.25rem" }}>
           <Link to="/">{t("appName")}</Link>
         </h1>
-        <nav aria-label="Main">
+        <nav aria-label="Main" style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
           <Link to="/projects">{t("projects")}</Link>
+          <Link to="/datasets">Datasets</Link>
+          <Link to="/annotations">Annotations</Link>
+          <Link to="/training">Training</Link>
+          <Link to="/models">Models</Link>
+          <Link to="/applications">Applications</Link>
+          <Link to="/deployments">Deployments</Link>
         </nav>
         <label style={{ marginLeft: "auto" }}>
           {t("tenant")}:

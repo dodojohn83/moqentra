@@ -17,6 +17,18 @@ impl InMemoryTrainingRegistry {
         Self::default()
     }
 
+    /// Replace in-memory state with durable rows (control-plane restart recovery).
+    pub fn hydrate(&mut self, experiments: Vec<Experiment>, jobs: Vec<TrainingJob>) {
+        self.experiments.clear();
+        self.jobs.clear();
+        for exp in experiments {
+            self.experiments.insert(exp.id, exp);
+        }
+        for job in jobs {
+            self.jobs.insert(job.id, job);
+        }
+    }
+
     /// Create an experiment under a tenant/project.
     pub fn create_experiment(&mut self, experiment: Experiment) -> Result<Experiment, Error> {
         if self.experiments.contains_key(&experiment.id) {
@@ -149,6 +161,16 @@ impl InMemoryTrainingRegistry {
         spec: TrainingJobSpec,
     ) -> Result<TrainingJob, Error> {
         TrainingJob::new(id, experiment_id, tenant_id, project_id, spec)
+    }
+
+    /// Snapshot jobs in any of the given states (desired/observed reconciler recovery).
+    pub fn jobs_in_states(&self, states: &[TrainingJobState], limit: usize) -> Vec<TrainingJob> {
+        self.jobs
+            .values()
+            .filter(|j| states.contains(&j.state))
+            .take(limit)
+            .cloned()
+            .collect()
     }
 }
 

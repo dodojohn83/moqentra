@@ -342,6 +342,154 @@ impl DatasetRepository for PgDatasetRepository {
     }
 }
 
+impl PgDatasetRepository {
+    async fn set_admin(&self) -> Result<(), Error> {
+        sqlx::query("SELECT set_config('app.is_admin', 'true', true)")
+            .execute(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("failed to set admin context: {e}")))?;
+        Ok(())
+    }
+
+    /// Ensure the tenant and project rows exist so FK inserts succeed.
+    pub async fn ensure_tenant_project(
+        &self,
+        tenant_id: TenantId,
+        project_id: ProjectId,
+    ) -> Result<(), Error> {
+        self.set_admin().await?;
+        let tenant_str = tenant_id.to_string();
+        sqlx::query("INSERT INTO tenants (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING")
+            .bind(tenant_id.as_uuid())
+            .bind(format!("tenant-{tenant_str}"))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("failed to ensure tenant: {e}")))?;
+
+        sqlx::query(
+            "INSERT INTO projects (id, tenant_id, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+        )
+        .bind(project_id.as_uuid())
+        .bind(tenant_id.as_uuid())
+        .bind(format!("project-{project_id}"))
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to ensure project: {e}")))?;
+        Ok(())
+    }
+
+    /// Upsert a dataset version manifest/state after in-memory mutations (assets, splits, publish).
+    pub async fn upsert_version(
+        &self,
+        ctx: &RequestContext,
+        version: &DatasetVersion,
+    ) -> Result<(), Error> {
+        self.set_tenant(ctx.tenant_id).await?;
+        let manifest = serde_json::json!({
+            "assets": version.assets,
+            "asset_validations": version.asset_validations,
+            "splits": version.splits,
+            "manifest_digest": version.manifest_digest,
+        });
+        let created_by = match &ctx.principal {
+            moqentra_types::Principal::User { id } => id.as_uuid(),
+            _ => Uuid::nil(),
+        };
+
+        let updated = sqlx::query(
+            "UPDATE dataset_versions
+             SET manifest = $3, state = $4, published_at = $5
+             WHERE id = $1 AND tenant_id = $2",
+        )
+        .bind(version.id.as_uuid())
+        .bind(version.tenant_id.as_uuid())
+        .bind(&manifest)
+        .bind(format!("{:?}", version.state))
+        .bind(version.published_at.map(|t: UtcTimestamp| t.as_offset()))
+        .execute(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to update dataset version: {e}")))?;
+
+        if updated.rows_affected() == 0 {
+            // Version may not have been persisted yet (create race); insert with next number.
+            let next_version_number: i64 = sqlx::query(
+                "SELECT COALESCE(MAX(version_number), 0) + 1
+                 FROM dataset_versions
+                 WHERE tenant_id = $1 AND dataset_id = $2",
+            )
+            .bind(version.tenant_id.as_uuid())
+            .bind(version.dataset_id.as_uuid())
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("failed to compute version number: {e}")))?
+            .try_get(0)
+            .map_err(|e| Error::internal(format!("failed to read version number: {e}")))?;
+
+            sqlx::query(
+                "INSERT INTO dataset_versions
+                 (id, tenant_id, project_id, dataset_id, version_number, manifest, state, published_at, created_by, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                 ON CONFLICT (id) DO UPDATE SET
+                    manifest = EXCLUDED.manifest,
+                    state = EXCLUDED.state,
+                    published_at = EXCLUDED.published_at",
+            )
+            .bind(version.id.as_uuid())
+            .bind(version.tenant_id.as_uuid())
+            .bind(version.project_id.as_uuid())
+            .bind(version.dataset_id.as_uuid())
+            .bind(next_version_number)
+            .bind(manifest)
+            .bind(format!("{:?}", version.state))
+            .bind(version.published_at.map(|t: UtcTimestamp| t.as_offset()))
+            .bind(created_by)
+            .bind(version.created_at.as_offset())
+            .execute(&self.pool)
+            .await
+            .map_err(|e| Error::internal(format!("failed to insert dataset version: {e}")))?;
+        }
+        Ok(())
+    }
+
+    /// Load all datasets and versions for process restart recovery (admin).
+    pub async fn load_all_for_recovery(
+        &self,
+    ) -> Result<(Vec<Dataset>, Vec<DatasetVersion>), Error> {
+        self.set_admin().await?;
+        let dataset_rows: Vec<DatasetRow> = sqlx::query_as(
+            "SELECT id, tenant_id, project_id, name, state, revision, metadata, created_at, updated_at
+             FROM datasets
+             ORDER BY created_at",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to load datasets: {e}")))?;
+
+        let version_rows: Vec<DatasetVersionRow> = sqlx::query_as(
+            "SELECT id, tenant_id, project_id, dataset_id, version_number, manifest, state,
+                    published_at, created_by, created_at
+             FROM dataset_versions
+             ORDER BY created_at",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| Error::internal(format!("failed to load dataset versions: {e}")))?;
+
+        let mut versions = Vec::with_capacity(version_rows.len());
+        for row in version_rows {
+            versions.push(version_row_to_domain(row)?);
+        }
+
+        let mut datasets = Vec::with_capacity(dataset_rows.len());
+        for row in dataset_rows {
+            let related: Vec<DatasetVersion> =
+                versions.iter().filter(|v| v.dataset_id.as_uuid() == row.id).cloned().collect();
+            datasets.push(dataset_row_to_domain(&row, related)?);
+        }
+        Ok((datasets, versions))
+    }
+}
+
 fn dataset_row_to_domain(
     row: &DatasetRow,
     versions: Vec<DatasetVersion>,

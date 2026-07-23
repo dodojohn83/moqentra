@@ -1,0 +1,22 @@
+# R1-SEC-005: baseline Pod Security labels for Moqentra namespaces.
+# Apply after creating the namespace; admission rejects privileged / hostNetwork pods.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: moqentra
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    app.kubernetes.io/name: moqentra
+---
+# Example restricted Pod template constraints (documented for operators).
+# Controllers should set:
+#   securityContext.runAsNonRoot: true
+#   securityContext.seccompProfile.type: RuntimeDefault
+#   containers[].securityContext.allowPrivilegeEscalation: false
+#   containers[].securityContext.readOnlyRootFilesystem: true
+#   containers[].securityContext.capabilities.drop: ["ALL"]
+#   hostNetwork: false
+#   hostPID: false
+#   volumes: no hostPath Docker socket by default

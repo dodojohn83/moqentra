@@ -1,0 +1,38 @@
+{
+  "title": "Moqentra R1 Overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Control-plane up",
+      "targets": [{ "expr": "up{job=\"moqentra-control-plane\"}" }],
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP latency p95",
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"moqentra-control-plane\"}[5m])) by (le))" }],
+      "gridPos": { "h": 8, "w": 12, "x": 4, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Outbox pending",
+      "targets": [{ "expr": "moqentra_outbox_pending" }],
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Training jobs by state",
+      "targets": [{ "expr": "moqentra_training_jobs" }],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Object store errors",
+      "targets": [{ "expr": "rate(moqentra_object_store_errors_total[5m])" }],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }
+    }
+  ]
+}

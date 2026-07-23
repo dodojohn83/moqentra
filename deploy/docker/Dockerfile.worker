@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+# R1 worker image: PyTorch 2.7 / CUDA 12.8 compatible base (preview hardware path).
+# Do not mix CUDA, ROCm, and CANN in the same image (R1-PKG-003).
+
+ARG BASE_IMAGE=pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime
+FROM ${BASE_IMAGE}
+
+LABEL org.opencontainers.image.title="moqentra-worker" \
+      org.opencontainers.image.description="Moqentra training worker (CUDA-only)"
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    MOQENTRA_ACCELERATOR=cuda
+
+WORKDIR /app
+
+# Non-root user
+RUN useradd -m -u 10001 moqentra \
+    && mkdir -p /workspace \
+    && chown -R moqentra:moqentra /app /workspace
+
+COPY python/moqentra_worker /app/moqentra_worker
+
+USER moqentra
+
+# Startup diagnostics for driver/runtime (R1-PKG-003)
+ENTRYPOINT ["python", "-c", "import torch,sys; print(f'torch={torch.__version__} cuda={torch.cuda.is_available()} devices={torch.cuda.device_count()}'); sys.exit(0) if False else None"]
+CMD ["python", "-m", "moqentra_worker"]

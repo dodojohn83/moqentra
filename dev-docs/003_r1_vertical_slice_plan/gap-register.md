@@ -115,67 +115,65 @@
 
 ## 自动代码审查循环剩余风险（2026-07-21）
 
-本轮审查在 PR #48–#50 修复后仍发现以下问题，按严重程度排序。它们无法在一次自动修复轮次内完成，已作为已知风险记录。
+本轮审查在 PR #48–#50 修复后仍发现以下问题，按严重程度排序。
 
-### 1. 高：控制面状态未真正持久化（阻塞循环终止）
+### 2026-07-23 续修（两轮）
 
-- **文件位置**
-  - `apps/control-plane/src/main.rs` 146–160 行：`AppState` 仍实例化 `InMemoryDatasetRegistry`、`InMemoryTrainingRegistry`、`InMemoryModelRegistry`、`InMemoryConversionRegistry`、`InMemoryEvaluationRegistry`、`InMemoryAnnotationRegistry`、`InMemoryOutbox`、`InMemoryUploadSessionStore`、`InMemoryImportJobStore`。
-  - `crates/http-api/src/control_plane.rs` `AppState` 定义与所有写 handler：handler 直接通过 `state.datasets.lock()` 等调用内存 registry 方法，未使用 `crates/storage/src/repositories/*.rs` 中的 `Pg*` 实现。
-- **原因**
-  - `crates/application/src/ports.rs` 已定义 `DatasetRepository`、`TrainingJobRepository`、`ModelRepository`、`AnnotationProjectRepository`、`ConversionRepository`、`EvaluationRepository` 等 trait；`crates/storage` 已实现对应的 PostgreSQL repository 与 `PgUnitOfWork`。
-  - 但 `AppState` 字段类型是 `Arc<Mutex<InMemory*Registry>>`，`build_state_from_env` 即使检测到 `DATABASE_URL` 也忽略 `db_pool` 的 repository 实现。
-  - `DatasetRepository` 等 trait 的方法集与 handler 中使用的内存 registry 方法不完全对齐（缺少 `add_asset`、`generate_splits`、`find_asset`、`pending_validations`、`referenced_object_keys` 等），导致无法直接替换。
-- **影响**
-  - 配置 `DATABASE_URL` 后，控制面重启或横向扩容仍会丢失/不一致 datasets、training jobs、models、annotations、conversions、evaluations、outbox、upload sessions、import jobs。
-  - `R1-API-003`（UnitOfWork 事务边界）和 `R1-DB-002` 未在控制面落地，幂等、审计、outbox 无法保证原子性。
-- **建议修复方式**
-  1. 扩展 repository trait（或在 domain service 中实现 `add_asset`/`generate_splits`/`find_asset` 等操作），使其覆盖 handler 所需的全部操作。
-  2. 将 `AppState` 的 registry 字段改为 `Arc<dyn Repository + Send + Sync>`（或用 enum wrapper）。
-  3. 在 `build_state_from_env` 中根据 `db_pool` 选择 `Pg*` repository 或内存 repository adapter。
-  4. 把所有 handler 改为 async trait 调用，并通过 `PgUnitOfWork` 聚合 `repository + outbox + audit + idempotency` 的提交。
-  5. 实现 `PgUploadSessionStore`、`PgImportJobStore`、多租户 `PgOutbox` 及其 dispatcher。
+| 原风险 | 状态 | 变更摘要 |
+|---|---|---|
+| #3 多租户 PG outbox | **已修** | `MultiTenantPgOutbox` + migration `0015`；`DATABASE_URL` 时控制面用 PG outbox |
+| #4 scheduler 退避/死信 | **已修** | `retry_count` / `next_attempt_at` + `requeue_with_backoff` |
+| #5 上传签名 secret | **已修** | 认证开启时强制 `MOQENTRA_UPLOAD_SIG_SECRET` |
+| #6 InMemoryOutbox lease | **已修** | lease 回收 + `list_events`；列表 API 不再抢租约 |
+| #1 控制面持久化 | **大部分** | Dataset + Training(experiments/jobs) + Model(versions) 写穿与启动 hydrate |
+| #2 upload/import PG | **已修** | migration `0016` + `PgUploadSessionStore` / `PgImportJobStore` |
 
-### 2. 中：`upload_sessions` 与 `import_jobs` 无 PostgreSQL 实现
+### 1. 中：控制面仍为「内存权威 + 写穿恢复」而非 UnitOfWork
 
-- **文件位置**：`crates/object-store/src/upload_session.rs`、`crates/http-api/src/import.rs`、`apps/control-plane/src/main.rs`。
-- **原因**：仅有 `UploadSessionStore`/`ImportJobStore` trait 和内存实现，无 PG adapter。
-- **影响**：上传会话和导入任务在进程重启后丢失。
-- **建议修复方式**：为这两个 trait 新增 `PgUploadSessionStore` 和 `PgImportJobStore`，并在 `build_state_from_env` 中按 `db_pool` 选择。
+- **已落地**
+  - Dataset / Training / Model：写路径 best-effort 写穿 + 启动 `load_all_for_recovery` hydrate。
+  - Outbox / upload sessions / import jobs：有 `DATABASE_URL` 时直接用 PG 实现。
+  - migration `0016`：experiments、upload_sessions、import_jobs 表及 models/training admin bypass。
+- **仍缺**
+  - Annotation / Conversion / Evaluation 未写穿。
+  - 未用 `PgUnitOfWork` 同事务提交（写穿与 outbox/audit 非原子）。
+  - 横向多副本仍可能短暂分叉（内存热路径）。
+- **建议后续**
+  1. AppState 改为 `Arc<dyn Repository>` + UnitOfWork。
+  2. Annotation 与 conversion 写穿/hydrate。
 
-### 3. 中：多租户 PG outbox dispatcher 未实现
-
-- **文件位置**：`crates/storage/src/pg_outbox.rs`、`crates/http-api/src/control_plane.rs` `emit_event`/`spawn_outbox_dispatcher`。
-- **原因**：`PgOutboxStore` 按 tenant 实例化并依赖 `app.current_tenant` RLS；dispatcher 需要跨所有租户轮询，但当前没有超级用户/函数绕过机制。
-- **影响**：配置 DB 后 outbox 事件仍无法持久化、恢复与 lease 回收。
-- **建议修复方式**：实现一个多租户 `PgOutbox`（dispatcher 为每个活跃租户 `set_config` 后 `FOR UPDATE SKIP LOCKED` 领取），或创建 `SECURITY DEFINER` 轮询函数并跳过 RLS。
-
-### 4. 低：scheduler 内存 fallback 无退避/死信
-
-- **文件位置**：`apps/scheduler/src/main.rs` `process_in_memory_job`。
-- **原因**：控制面 `admit` 持续失败时，任务会立即重新入队并再次消费。
-- **影响**：可能形成高频重试循环，消耗 CPU/网络。
-- **建议修复方式**：在 `QueueEntry` 增加 `retry_count` 与 `next_attempt_at` 时间戳；超过最大重试或 deadline 后转入死信或丢弃。
-
-### 5. 低：`MOQENTRA_UPLOAD_SIG_SECRET` 默认硬编码
-
-- **文件位置**：`apps/control-plane/src/main.rs`。
-- **原因**：未设置环境变量时使用固定字符串 `"moqentra-upload-sig-secret"`。
-- **影响**：上传签名 URL 可被预测/伪造。
-- **建议修复方式**：生产环境未配置时启动失败；文档要求随机高熵 secret。
-
-### 6. 低：`InMemoryOutbox` 无 processing 事件 lease 过期回收
-
-- **文件位置**：`crates/http-api/src/control_plane.rs` `spawn_outbox_dispatcher`。
-- **原因**：内存 dispatcher 在 `processing` 状态下 panic 后不会重新派发。
-- **影响**：内存模式时部分 outbox 消息可能 stuck。
-- **建议修复方式**：为内存 dispatcher 增加 TTL/lease 清理，或优先迁移到 PG outbox。
+### 2–6. 已在 2026-07-23 续修中关闭（见上表）
 
 ### 无法验证的环境风险
 
-- 真实 PostgreSQL/S3/MinIO/Kubernetes/Volcano/ONNX Runtime/dyun-gu runner 环境不可用；相关 contract/integration 测试只能跑内存或 mock。
-- PR #50 之后 CI 中 `python`/`web`/`supply-chain` 仍被跳过，未执行前端类型检查、Python template 测试与依赖供应链扫描。
+- 真实 Kubernetes/Volcano/ONNX Runtime/dyun-gu runner / 硬件证据依赖外部环境。
+- CI 中部分 `python`/`web`/`supply-chain` 门禁与 E2E（`R1-E2E-*`）仍未在本环境执行。
 
 ---
 
-**结论**：本轮自动代码审查循环在修复 PR #48–#50 后结束；剩余关键风险主要是控制面 PostgreSQL 持久化接入，需在后续专门 PR/里程碑中处理。
+### 2026-07-23 第三轮
+
+| 项 | 状态 |
+|---|---|
+| Annotation / Conversion / Evaluation 写穿 + hydrate | **已修** |
+| Onebox init 幂等 / smoke / runbook / compose DATABASE_URL | **已修** |
+| Helm templates + production fail-closed values | **已修** |
+| Threat model 边界 + SecretRef + dashboard/alerts | **已修** |
+| Web tenant cache / SSE client / 业务页面骨架 | **已修** |
+| UnitOfWork 全 handler 原子提交 | **未修**（仍 best-effort 写穿） |
+| 真实 E2E / k3s / dyun-gu / GPU 72h | **未修**（需外部环境） |
+| mTLS 全服务 PKI（SEC-002）/ 供应链签名门禁全量 | **部分**（脚本与文档；CI 门禁未强制） |
+
+### 2026-07-23 第四轮
+
+| 项 | 状态 |
+|---|---|
+| Bug：media validation worker 未写穿 PG | **已修** |
+| R1-REC-001 后台 batch/deadline/cursor/shutdown 框架 | **已修**（`worker_runtime`） |
+| R1-REC-002 artifact/training desired 对账 worker | **已修** |
+| R1-REC-003 backup 校验脚本 `verify-backup.sh` | **已修** |
+| R1-PKG-002/004 Docker 非 root + ReleaseManifest 生成器 | **已修** |
+| R1-WEB-016 虚拟列表 + upload/operation 刷新恢复 | **已修** |
+| R1-SEC-005 Pod Security restricted 命名空间清单 | **已修** |
+
+**结论（2026-07-23 第四轮）**：仓库内可关闭的 R1 实现/修复项已基本完成。剩余阻塞项几乎全部是**真实环境验收**（E2E-001…015、K8S-009、DYUN-005…011、72h 混沌）以及 **SEC-002 mTLS PKI** 与 **SEC-006 CI 强制 high/critical 失败**。

@@ -19,12 +19,17 @@ use moqentra_auth::{
 use moqentra_http_api::control_plane::{
     app_router, spawn_outbox_dispatcher, AppState, DatabaseHealthCheck, ObjectStorageHealthCheck,
 };
+use moqentra_http_api::{PgImportJobStore, PgUploadSessionStore};
 use moqentra_object_store::{
     s3::{S3Config, S3ObjectStore},
-    InMemoryObjectStore, InMemoryUploadSessionStore, ObjectStorage,
+    InMemoryObjectStore, InMemoryUploadSessionStore, ObjectStorage, UploadSessionStore,
 };
 use moqentra_observability::{CompositeHealthCheck, LivenessCheck, MetricsRegistry};
-use moqentra_storage::{InMemoryOutbox, PgAuditLog};
+use moqentra_storage::{
+    InMemoryOutbox, MultiTenantPgOutbox, OutboxStore, PgAnnotationRepository, PgAuditLog,
+    PgConversionRepository, PgDatasetRepository, PgEvaluationRepository, PgModelRepository,
+    PgTrainingJobRepository,
+};
 use moqentra_types::config::SecretString;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -158,6 +163,35 @@ fn build_state_from_env() -> anyhow::Result<AppState> {
         .build()
         .map_err(|e| anyhow::anyhow!("failed to build http client: {e}"))?;
 
+    let outbox: Arc<dyn OutboxStore + Send + Sync> = match db_pool.clone() {
+        Some(pool) => Arc::new(MultiTenantPgOutbox::new(pool, "control-plane")),
+        None => Arc::new(InMemoryOutbox::new()),
+    };
+
+    let upload_sessions: Arc<dyn UploadSessionStore + Send + Sync> = match db_pool.clone() {
+        Some(pool) => Arc::new(PgUploadSessionStore::new(pool)),
+        None => Arc::new(InMemoryUploadSessionStore::new()),
+    };
+    let import_jobs: Arc<dyn moqentra_http_api::ImportJobStore + Send + Sync> =
+        match db_pool.clone() {
+            Some(pool) => Arc::new(PgImportJobStore::new(pool)),
+            None => Arc::new(moqentra_http_api::InMemoryImportJobStore::new()),
+        };
+
+    let upload_sig_secret = match std::env::var("MOQENTRA_UPLOAD_SIG_SECRET") {
+        Ok(s) if !s.is_empty() => s,
+        _ if require_auth => {
+            return Err(anyhow::anyhow!(
+                "MOQENTRA_UPLOAD_SIG_SECRET is required when authentication is enabled \
+                 (set a high-entropy secret; do not use the development default)"
+            ));
+        }
+        _ => {
+            tracing::warn!("MOQENTRA_UPLOAD_SIG_SECRET unset; using insecure development default");
+            "moqentra-upload-sig-secret".to_string()
+        }
+    };
+
     Ok(AppState {
         compiler: moqentra_application::ApplicationCompiler::new(),
         tokens,
@@ -172,13 +206,12 @@ fn build_state_from_env() -> anyhow::Result<AppState> {
         conversions: Arc::new(Mutex::new(InMemoryConversionRegistry::new())),
         evaluations: Arc::new(Mutex::new(InMemoryEvaluationRegistry::new())),
         annotations: Arc::new(Mutex::new(InMemoryAnnotationRegistry::new())),
-        outbox: Arc::new(InMemoryOutbox::new()),
+        outbox,
         audit,
         object_store,
-        upload_sessions: Arc::new(InMemoryUploadSessionStore::new()),
-        upload_sig_secret: std::env::var("MOQENTRA_UPLOAD_SIG_SECRET")
-            .unwrap_or_else(|_| "moqentra-upload-sig-secret".to_string()),
-        import_jobs: Arc::new(moqentra_http_api::InMemoryImportJobStore::new()),
+        upload_sessions,
+        upload_sig_secret,
+        import_jobs,
         media_validator: Arc::new(moqentra_object_store::DefaultMediaValidator),
         db_pool,
         scheduler_url: std::env::var("MOQENTRA_SCHEDULER_URL").ok().filter(|s| !s.is_empty()),
@@ -202,6 +235,105 @@ async fn main() -> anyhow::Result<()> {
             .run(pool)
             .await
             .map_err(|e| anyhow::anyhow!("database migration failed: {e}"))?;
+
+        // Hydrate in-memory registries from PostgreSQL so restarts keep R1 state.
+        let ds_repo = PgDatasetRepository::new(pool.clone());
+        match ds_repo.load_all_for_recovery().await {
+            Ok((datasets, versions)) => {
+                let n_ds = datasets.len();
+                let n_ver = versions.len();
+                let mut reg = state.datasets.lock().unwrap_or_else(|e| e.into_inner());
+                reg.hydrate(datasets, versions);
+                tracing::info!(
+                    datasets = n_ds,
+                    versions = n_ver,
+                    "hydrated dataset registry from PostgreSQL"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to hydrate datasets from PostgreSQL");
+            }
+        }
+
+        let train_repo = PgTrainingJobRepository::new(pool.clone());
+        match train_repo.load_all_for_recovery().await {
+            Ok((experiments, jobs)) => {
+                let n_exp = experiments.len();
+                let n_jobs = jobs.len();
+                let mut reg = state.training.lock().unwrap_or_else(|e| e.into_inner());
+                reg.hydrate(experiments, jobs);
+                tracing::info!(
+                    experiments = n_exp,
+                    jobs = n_jobs,
+                    "hydrated training registry from PostgreSQL"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to hydrate training from PostgreSQL");
+            }
+        }
+
+        let model_repo = PgModelRepository::new(pool.clone());
+        match model_repo.load_all_for_recovery().await {
+            Ok((models, versions)) => {
+                let n_m = models.len();
+                let n_v = versions.len();
+                let mut reg = state.models.lock().unwrap_or_else(|e| e.into_inner());
+                reg.hydrate(models, versions);
+                tracing::info!(
+                    models = n_m,
+                    versions = n_v,
+                    "hydrated model registry from PostgreSQL"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to hydrate models from PostgreSQL");
+            }
+        }
+
+        let ann_repo = PgAnnotationRepository::new(pool.clone());
+        match ann_repo.load_all_for_recovery().await {
+            Ok((projects, tasks)) => {
+                let n_p = projects.len();
+                let n_t = tasks.len();
+                let mut reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());
+                reg.hydrate(projects, tasks);
+                tracing::info!(
+                    projects = n_p,
+                    tasks = n_t,
+                    "hydrated annotation registry from PostgreSQL"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to hydrate annotations from PostgreSQL");
+            }
+        }
+
+        let conv_repo = PgConversionRepository::new(pool.clone());
+        match conv_repo.load_all_for_recovery().await {
+            Ok(jobs) => {
+                let n = jobs.len();
+                let mut reg = state.conversions.lock().unwrap_or_else(|e| e.into_inner());
+                reg.hydrate(jobs);
+                tracing::info!(jobs = n, "hydrated conversion registry from PostgreSQL");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to hydrate conversions from PostgreSQL");
+            }
+        }
+
+        let eval_repo = PgEvaluationRepository::new(pool.clone());
+        match eval_repo.load_all_for_recovery().await {
+            Ok(runs) => {
+                let n = runs.len();
+                let mut reg = state.evaluations.lock().unwrap_or_else(|e| e.into_inner());
+                reg.hydrate(runs);
+                tracing::info!(runs = n, "hydrated evaluation registry from PostgreSQL");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to hydrate evaluations from PostgreSQL");
+            }
+        }
     }
 
     tracing::info!(
@@ -215,6 +347,7 @@ async fn main() -> anyhow::Result<()> {
     moqentra_http_api::import::spawn_import_worker(state.clone());
     moqentra_http_api::validation_worker::spawn_media_validation_worker(state.clone());
     moqentra_http_api::gc_worker::spawn_gc_worker(state.clone());
+    moqentra_http_api::spawn_reconciler_worker(state.clone());
 
     let validator = Arc::new(AppArtifactValidator {
         training: state.training.clone(),
