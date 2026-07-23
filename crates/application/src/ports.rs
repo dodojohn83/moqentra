@@ -16,14 +16,16 @@ use moqentra_domain::{
     dataset::{Dataset, DatasetVersion},
     inference::Deployment,
     model_registry::{Model, ModelVersion},
+    queue::{PriorityClass, QueuePolicy},
     quota::{QuotaPolicy, QuotaReservation},
+    resource_class::ResourceClass,
     training::TrainingJob,
 };
 use moqentra_types::{
     AnnotationProjectId, AnnotationTaskId, ApplicationId, ApplicationVersionId, ApprovalRequestId,
     ConversionJobId, DatasetId, DatasetVersionId, DeploymentId, Error, EvaluationRunId, ModelId,
-    ModelVersionId, Page, PageRequest, ProjectId, QuotaPolicyId, QuotaReservationId,
-    RequestContext, Revision, TrainingJobId,
+    ModelVersionId, Page, PageRequest, PriorityClassId, ProjectId, QueuePolicyId, QuotaPolicyId,
+    QuotaReservationId, RequestContext, ResourceClassId, Revision, TrainingJobId,
 };
 
 /// A value paired with its optimistic-concurrency metadata.
@@ -510,4 +512,118 @@ pub trait ApprovalRepository: Send + Sync {
         request: ApprovalRequest,
         expected: Revision,
     ) -> Result<Versioned<ApprovalRequest>, Error>;
+}
+
+/// Repository for queue policies.
+#[async_trait]
+pub trait QueuePolicyRepository: Send + Sync {
+    async fn create_policy(
+        &self,
+        ctx: &RequestContext,
+        policy: QueuePolicy,
+    ) -> Result<Versioned<QueuePolicy>, Error>;
+
+    async fn get_policy(
+        &self,
+        ctx: &RequestContext,
+        id: QueuePolicyId,
+    ) -> Result<Versioned<QueuePolicy>, Error>;
+
+    async fn list_policies(
+        &self,
+        ctx: &RequestContext,
+        filter: ResourceListFilter,
+        page: PageRequest,
+    ) -> Result<Page<Versioned<QueuePolicy>>, Error>;
+
+    async fn update_policy(
+        &self,
+        ctx: &RequestContext,
+        id: QueuePolicyId,
+        policy: QueuePolicy,
+        expected: Revision,
+    ) -> Result<Versioned<QueuePolicy>, Error>;
+
+    async fn delete_policy(
+        &self,
+        ctx: &RequestContext,
+        id: QueuePolicyId,
+        expected: Revision,
+    ) -> Result<(), Error>;
+}
+
+/// Repository for scheduling priority classes.
+#[async_trait]
+pub trait PriorityClassRepository: Send + Sync {
+    async fn create_priority_class(
+        &self,
+        ctx: &RequestContext,
+        class: PriorityClass,
+    ) -> Result<Versioned<PriorityClass>, Error>;
+
+    async fn get_priority_class(
+        &self,
+        ctx: &RequestContext,
+        id: PriorityClassId,
+    ) -> Result<Versioned<PriorityClass>, Error>;
+
+    async fn list_priority_classes(
+        &self,
+        ctx: &RequestContext,
+        filter: ResourceListFilter,
+        page: PageRequest,
+    ) -> Result<Page<Versioned<PriorityClass>>, Error>;
+
+    async fn update_priority_class(
+        &self,
+        ctx: &RequestContext,
+        id: PriorityClassId,
+        class: PriorityClass,
+        expected: Revision,
+    ) -> Result<Versioned<PriorityClass>, Error>;
+
+    async fn delete_priority_class(
+        &self,
+        ctx: &RequestContext,
+        id: PriorityClassId,
+        expected: Revision,
+    ) -> Result<(), Error>;
+}
+
+/// Repository for hardware resource classes.
+#[async_trait]
+pub trait ResourceClassRepository: Send + Sync {
+    async fn create_resource_class(
+        &self,
+        ctx: &RequestContext,
+        class: ResourceClass,
+    ) -> Result<Versioned<ResourceClass>, Error>;
+
+    async fn get_resource_class(
+        &self,
+        ctx: &RequestContext,
+        id: ResourceClassId,
+    ) -> Result<Versioned<ResourceClass>, Error>;
+
+    async fn list_resource_classes(
+        &self,
+        ctx: &RequestContext,
+        filter: ResourceListFilter,
+        page: PageRequest,
+    ) -> Result<Page<Versioned<ResourceClass>>, Error>;
+
+    async fn update_resource_class(
+        &self,
+        ctx: &RequestContext,
+        id: ResourceClassId,
+        class: ResourceClass,
+        expected: Revision,
+    ) -> Result<Versioned<ResourceClass>, Error>;
+
+    async fn delete_resource_class(
+        &self,
+        ctx: &RequestContext,
+        id: ResourceClassId,
+        expected: Revision,
+    ) -> Result<(), Error>;
 }

@@ -6,6 +6,7 @@
 //! same `K8sExecutor` trait.
 
 use async_trait::async_trait;
+use moqentra_domain::resource_class::ResourceClass;
 use moqentra_domain::training::{Attempt, TrainingJob};
 use moqentra_types::{AttemptId, ProjectId, TenantId, TrainingJobId};
 use serde::{Deserialize, Serialize};
@@ -244,8 +245,18 @@ impl JobCompiler {
         job: &TrainingJob,
         attempt: &Attempt,
         namespace: &str,
-    ) -> serde_json::Value {
-        Self::compile(job, attempt, namespace, "Job", false)
+    ) -> Result<serde_json::Value, moqentra_types::Error> {
+        Self::compile(job, attempt, namespace, false, None)
+    }
+
+    /// Compile a single-replica job bound to a specific resource class.
+    pub fn compile_k8s_job_with_class(
+        job: &TrainingJob,
+        attempt: &Attempt,
+        namespace: &str,
+        resource_class: &ResourceClass,
+    ) -> Result<serde_json::Value, moqentra_types::Error> {
+        Self::compile(job, attempt, namespace, false, Some(resource_class))
     }
 
     /// Compile a distributed job into a VolcanoJob manifest.
@@ -253,21 +264,37 @@ impl JobCompiler {
         job: &TrainingJob,
         attempt: &Attempt,
         namespace: &str,
-    ) -> serde_json::Value {
-        Self::compile(job, attempt, namespace, "VolcanoJob", true)
+    ) -> Result<serde_json::Value, moqentra_types::Error> {
+        Self::compile(job, attempt, namespace, true, None)
+    }
+
+    /// Compile a distributed job bound to a specific resource class.
+    pub fn compile_volcano_job_with_class(
+        job: &TrainingJob,
+        attempt: &Attempt,
+        namespace: &str,
+        resource_class: &ResourceClass,
+    ) -> Result<serde_json::Value, moqentra_types::Error> {
+        Self::compile(job, attempt, namespace, true, Some(resource_class))
     }
 
     pub fn compile(
         job: &TrainingJob,
         attempt: &Attempt,
         namespace: &str,
-        _kind: &str,
         is_volcano: bool,
-    ) -> serde_json::Value {
+        resource_class: Option<&ResourceClass>,
+    ) -> Result<serde_json::Value, moqentra_types::Error> {
+        job.spec.validate()?;
         let spec = &job.spec;
+        if let Some(class) = resource_class {
+            class.validate_request(&spec.distributed, &spec.resources)?;
+        }
+
         let image = format!("moqentra/executor@{}", &spec.image_digest);
         let labels = labels(job, attempt);
-        let deadline_seconds = spec.deadline_seconds as i64;
+        let deadline_seconds = i64::try_from(spec.deadline_seconds)
+            .map_err(|_| moqentra_types::Error::invalid_argument("deadline too large"))?;
         let replicas = spec.resources.replicas.max(1);
         let world_size = spec.world_size();
         let processes_per_replica = spec.processes_per_replica.max(1);
@@ -316,12 +343,11 @@ impl JobCompiler {
             json!(format!("{}Mi", spec.resources.ephemeral_storage_mib)),
         );
         if spec.resources.accelerator_count > 0 {
-            let kind = spec
-                .resources
-                .accelerator_kind
-                .clone()
+            let device_kind = resource_class
+                .map(|c| c.device_resource_name())
+                .or_else(|| spec.resources.accelerator_kind.clone())
                 .unwrap_or_else(|| "nvidia.com/gpu".to_string());
-            requests.insert(kind, json!(spec.resources.accelerator_count));
+            requests.insert(device_kind, json!(spec.resources.accelerator_count));
         }
 
         let resources = json!({ "requests": requests });
@@ -346,7 +372,7 @@ impl JobCompiler {
             ]
         });
 
-        let pod_spec = json!({
+        let mut pod_spec = json!({
             "restartPolicy": "Never",
             "terminationGracePeriodSeconds": 30,
             "securityContext": {
@@ -360,7 +386,11 @@ impl JobCompiler {
             ]
         });
 
-        if is_volcano {
+        if let Some(class) = resource_class {
+            apply_resource_class_constraints(&mut pod_spec, class);
+        }
+
+        let manifest = if is_volcano {
             json!({
                 "apiVersion": "batch.volcano.sh/v1alpha1",
                 "kind": "Job",
@@ -407,6 +437,41 @@ impl JobCompiler {
                     }
                 }
             })
+        };
+        Ok(manifest)
+    }
+}
+
+fn apply_resource_class_constraints(pod_spec: &mut serde_json::Value, class: &ResourceClass) {
+    let obj = match pod_spec.as_object_mut() {
+        Some(o) => o,
+        None => return,
+    };
+
+    let node_selector = class.node_selector();
+    if !node_selector.is_empty() {
+        let mut merged =
+            obj.get("nodeSelector").and_then(|v| v.as_object()).cloned().unwrap_or_default();
+        for (k, v) in node_selector {
+            merged.insert(k, json!(v));
+        }
+        obj.insert("nodeSelector".to_string(), json!(merged));
+    }
+
+    if let Some(runtime) = class.runtime_class() {
+        obj.insert("runtimeClassName".to_string(), json!(runtime));
+    }
+
+    if !class.name.is_empty() {
+        let toleration = json!({
+            "key": "moqentra.io/accelerator-class",
+            "operator": "Equal",
+            "value": class.name,
+            "effect": "NoSchedule"
+        });
+        let tolerations = obj.entry("tolerations").or_insert_with(|| json!([]));
+        if let Some(arr) = tolerations.as_array_mut() {
+            arr.push(toleration);
         }
     }
 }
@@ -638,12 +703,13 @@ pub async fn watch_workloads<E: K8sExecutor>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use moqentra_domain::resource_class::{SharingMode, SupportTier};
     use moqentra_domain::training::{
         DistributedConfig, ParameterSchema, Rank, RankState, ResourceRequest, TrainingJobSpec,
     };
     use moqentra_types::{
-        AttemptId, DatasetVersionId, ExperimentId, ProjectId, RandomIdGenerator, RankId, TenantId,
-        TrainingJobId,
+        AttemptId, DatasetVersionId, ExperimentId, ProjectId, RandomIdGenerator, RankId,
+        ResourceClassId, TenantId, TrainingJobId,
     };
     use std::collections::BTreeMap;
 
@@ -737,7 +803,7 @@ mod tests {
         job.admit().unwrap();
         let attempt = make_attempt(&job, 1);
         job.start_attempt(attempt.clone()).unwrap();
-        let manifest = JobCompiler::compile_k8s_job(&job, &attempt, "moqentra");
+        let manifest = JobCompiler::compile_k8s_job(&job, &attempt, "moqentra").unwrap();
         assert_eq!(manifest["apiVersion"], "batch/v1");
         assert_eq!(manifest["kind"], "Job");
         assert_eq!(manifest["metadata"]["namespace"], "moqentra");
@@ -758,12 +824,83 @@ mod tests {
         job.admit().unwrap();
         let attempt = make_attempt(&job, 1);
         job.start_attempt(attempt.clone()).unwrap();
-        let manifest = JobCompiler::compile_volcano_job(&job, &attempt, "moqentra");
+        let manifest = JobCompiler::compile_volcano_job(&job, &attempt, "moqentra").unwrap();
         assert_eq!(manifest["apiVersion"], "batch.volcano.sh/v1alpha1");
         assert_eq!(manifest["kind"], "Job");
         let tasks = manifest["spec"]["tasks"].as_array().unwrap();
         assert_eq!(tasks[0]["replicas"], 2);
         assert_eq!(tasks[0]["name"], "trainer");
+        assert_eq!(manifest["spec"]["minAvailable"], 2);
+    }
+
+    #[test]
+    fn compile_with_resource_class_maps_device_and_constraints() {
+        let g = RandomIdGenerator;
+        let class = ResourceClass::new(
+            ResourceClassId::new_v7(&g),
+            "nvidia-a100-80g".to_string(),
+            "nvidia".to_string(),
+            "a100".to_string(),
+            81920,
+            "550.90".to_string(),
+            "nvidia".to_string(),
+            "nccl".to_string(),
+            "nvlink".to_string(),
+            SharingMode::WholeCard,
+            SupportTier::Supported,
+            1,
+        )
+        .unwrap();
+
+        let mut job = test_job();
+        job.spec.resources.accelerator_kind = Some("nvidia.com/gpu".to_string());
+        job.spec.resources.accelerator_count = 1;
+        job.submit().unwrap();
+        job.admit().unwrap();
+        let attempt = make_attempt(&job, 1);
+        job.start_attempt(attempt.clone()).unwrap();
+        let manifest =
+            JobCompiler::compile_k8s_job_with_class(&job, &attempt, "moqentra", &class).unwrap();
+        let pod_spec = &manifest["spec"]["template"]["spec"];
+        assert_eq!(pod_spec["runtimeClassName"], "nvidia");
+        let node_selector = pod_spec["nodeSelector"].as_object().unwrap();
+        assert_eq!(node_selector["moqentra.io/accelerator-family"], "a100");
+        let requests = pod_spec["containers"][0]["resources"]["requests"].as_object().unwrap();
+        assert_eq!(requests["nvidia.com/gpu"], 1);
+    }
+
+    #[test]
+    fn compile_rejects_ddp_on_shareable_class() {
+        let g = RandomIdGenerator;
+        let class = ResourceClass::new(
+            ResourceClassId::new_v7(&g),
+            "nvidia-a10-share".to_string(),
+            "nvidia".to_string(),
+            "a10".to_string(),
+            10240,
+            "550.90".to_string(),
+            "nvidia".to_string(),
+            "nccl".to_string(),
+            "pcie".to_string(),
+            SharingMode::Shareable,
+            SupportTier::Preview,
+            1,
+        )
+        .unwrap();
+
+        let mut job = test_job();
+        job.spec.resources.replicas = 2;
+        job.spec.resources.accelerator_kind = Some("nvidia.com/gpu".to_string());
+        job.spec.resources.accelerator_count = 1;
+        job.spec.distributed = DistributedConfig::Ddp { world_size: 2 };
+        job.submit().unwrap();
+        job.admit().unwrap();
+        let attempt = make_attempt(&job, 1);
+        job.start_attempt(attempt.clone()).unwrap();
+        assert!(
+            JobCompiler::compile_volcano_job_with_class(&job, &attempt, "moqentra", &class)
+                .is_err()
+        );
     }
 
     #[test]
@@ -792,7 +929,7 @@ mod tests {
         job.admit().unwrap();
         let attempt = make_attempt(&job, 1);
         job.start_attempt(attempt.clone()).unwrap();
-        let manifest = JobCompiler::compile_k8s_job(&job, &attempt, "moqentra");
+        let manifest = JobCompiler::compile_k8s_job(&job, &attempt, "moqentra").unwrap();
         let workload = K8sWorkload {
             tenant_id: job.tenant_id,
             project_id: job.project_id,

@@ -11,7 +11,9 @@ mod approval_svc;
 mod conversion_svc;
 mod dispatch;
 mod model_svc;
+mod queue_svc;
 mod quota_svc;
+mod resource_class_svc;
 mod training_svc;
 
 /// Repository ports used by application services.
@@ -31,9 +33,12 @@ pub use platform::PlatformAnnotationDataset;
 pub use ports::{
     AnnotationRepository, ApplicationRepository, ApprovalRepository, ConversionRepository,
     DatasetRepository, DeploymentRepository, EvaluationRepository, ModelRepository,
-    QuotaRepository, ResourceListFilter, TrainingJobRepository, Versioned,
+    PriorityClassRepository, QueuePolicyRepository, QuotaRepository, ResourceClassRepository,
+    ResourceListFilter, TrainingJobRepository, Versioned,
 };
+pub use queue_svc::{InMemoryPriorityClassRegistry, InMemoryQueuePolicyRegistry, QueueService};
 pub use quota_svc::{InMemoryQuotaRegistry, QuotaService};
+pub use resource_class_svc::{InMemoryResourceClassRegistry, ResourceClassService};
 pub use training_svc::InMemoryTrainingRegistry;
 
 use moqentra_domain::application::{
