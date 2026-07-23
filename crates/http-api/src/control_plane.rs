@@ -46,6 +46,7 @@ use moqentra_types::{
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
+use tracing::Instrument;
 use uuid::Uuid;
 
 /// Application state shared by all control-plane handlers.
@@ -401,7 +402,7 @@ async fn observability_middleware(
         .and_then(|v| v.to_str().ok())
         .and_then(parse_traceparent);
 
-    let _span = tracing::info_span!(
+    let span = tracing::info_span!(
         "request",
         request_id = %request_id,
         correlation_id = %correlation_id.as_deref().unwrap_or(""),
@@ -409,27 +410,31 @@ async fn observability_middleware(
         route = %route,
     );
 
-    let response = next.run(req).await;
-    let status = response.status().as_u16().to_string();
-    let duration = start.elapsed().as_secs_f64();
-    let labels = &[
-        ("method", method.as_str()),
-        ("route", route.as_str()),
-        ("status", status.as_str()),
-    ];
-    state.metrics.counter_inc("moqentra_http_requests_total", labels, 1);
-    state
-        .metrics
-        .histogram_record("moqentra_http_request_duration_seconds", labels, duration);
+    async move {
+        let response = next.run(req).await;
+        let status = response.status().as_u16().to_string();
+        let duration = start.elapsed().as_secs_f64();
+        let labels = &[
+            ("method", method.as_str()),
+            ("route", route.as_str()),
+            ("status", status.as_str()),
+        ];
+        state.metrics.counter_inc("moqentra_http_requests_total", labels, 1);
+        state
+            .metrics
+            .histogram_record("moqentra_http_request_duration_seconds", labels, duration);
 
-    tracing::debug!(
-        method = %method,
-        route = %route,
-        status = %status,
-        duration_seconds = %duration,
-        "handled request"
-    );
-    response
+        tracing::debug!(
+            method = %method,
+            route = %route,
+            status = %status,
+            duration_seconds = %duration,
+            "handled request"
+        );
+        response
+    }
+    .instrument(span)
+    .await
 }
 
 fn parse_traceparent(header: &str) -> Option<String> {
@@ -2367,11 +2372,11 @@ pub fn app_router(state: AppState) -> Router {
         .route("/v1/outbox", get(list_outbox))
         .with_state(state.clone())
         .layer(DefaultBodyLimit::max(1024 * 1024))
-        .layer(middleware::from_fn(security_headers))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_auth_middleware,
         ))
+        .layer(middleware::from_fn(security_headers))
         .layer(middleware::from_fn_with_state(
             state,
             observability_middleware,

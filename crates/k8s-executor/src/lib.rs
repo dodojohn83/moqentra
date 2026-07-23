@@ -726,6 +726,7 @@ mod tests {
     #[test]
     fn compile_k8s_job_is_batch_v1() {
         let mut job = test_job();
+        job.submit().unwrap();
         job.admit().unwrap();
         let attempt = make_attempt(&job, 1);
         job.start_attempt(attempt.clone()).unwrap();
@@ -744,6 +745,7 @@ mod tests {
     #[test]
     fn compile_volcano_job_for_ddp() {
         let mut job = test_job();
+        job.submit().unwrap();
         job.admit().unwrap();
         job.spec.distributed = DistributedConfig::Ddp { world_size: 2 };
         let attempt = make_attempt(&job, 1);
@@ -778,6 +780,7 @@ mod tests {
     async fn in_memory_executor_lifecycle() {
         let exec = Arc::new(InMemoryK8sExecutor::new());
         let mut job = test_job();
+        job.submit().unwrap();
         job.admit().unwrap();
         let attempt = make_attempt(&job, 1);
         job.start_attempt(attempt.clone()).unwrap();

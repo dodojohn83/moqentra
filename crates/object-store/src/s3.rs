@@ -6,7 +6,12 @@ use aws_credential_types::Credentials;
 use aws_sdk_s3::primitives::ByteStream;
 use bytes::Bytes;
 use moqentra_types::{config::SecretString, Error};
+use sha2::{Digest, Sha256};
 use std::time::Duration;
+
+fn digest(data: &[u8]) -> String {
+    format!("sha256:{:x}", Sha256::digest(data))
+}
 
 /// Configuration for an S3-compatible object store.
 #[derive(Clone)]
@@ -98,7 +103,7 @@ impl ObjectStorage for S3ObjectStore {
                 .map_err(|_| Error::invalid_argument("object size overflow"))?,
             media_type: media_type.map(|s| s.to_string()),
             etag: output.e_tag,
-            digest: None,
+            digest: Some(digest(&data)),
         })
     }
 
@@ -115,6 +120,7 @@ impl ObjectStorage for S3ObjectStore {
             .map_err(|_| Error::invalid_argument("negative content length"))?;
         let media_type = output.content_type.map(|s| s.to_string());
         let bytes = output.body.collect().await.map_err(S3ObjectStore::map_error)?.into_bytes();
+        let digest_value = Some(digest(&bytes));
         Ok((
             bytes,
             ObjectMetadata {
@@ -122,7 +128,7 @@ impl ObjectStorage for S3ObjectStore {
                 size,
                 media_type,
                 etag: output.e_tag,
-                digest: None,
+                digest: digest_value,
             },
         ))
     }
@@ -201,8 +207,7 @@ impl ObjectStorage for S3ObjectStore {
             .collect();
         let completed =
             CompletedMultipartUpload::builder().set_parts(Some(completed_parts)).build();
-        let output = self
-            .client
+        self.client
             .complete_multipart_upload()
             .bucket(&self.bucket)
             .key(key)
@@ -211,13 +216,9 @@ impl ObjectStorage for S3ObjectStore {
             .send()
             .await
             .map_err(S3ObjectStore::map_error)?;
-        Ok(ObjectMetadata {
-            key: key.to_string(),
-            size: 0, // S3 response does not include size directly.
-            media_type: None,
-            etag: output.e_tag,
-            digest: None,
-        })
+        // Fetch the final object to obtain size, content-type and content digest.
+        let (_, meta) = self.get_object(key).await?;
+        Ok(meta)
     }
 
     async fn abort_multipart(&self, key: &str, upload_id: &str) -> Result<(), Error> {

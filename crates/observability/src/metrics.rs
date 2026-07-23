@@ -39,6 +39,7 @@ pub enum MetricError {
     InvalidLabelValue(String),
     ReservedLabel(String),
     CardinalityExceeded,
+    InvalidValue(String),
 }
 
 impl std::fmt::Display for MetricError {
@@ -49,6 +50,7 @@ impl std::fmt::Display for MetricError {
             Self::InvalidLabelValue(v) => write!(f, "invalid label value: {v}"),
             Self::ReservedLabel(n) => write!(f, "reserved label {n} cannot be used"),
             Self::CardinalityExceeded => write!(f, "metric cardinality limit exceeded"),
+            Self::InvalidValue(v) => write!(f, "invalid metric value: {v}"),
         }
     }
 }
@@ -188,6 +190,9 @@ impl MetricsRegistry {
         labels: &[(&str, &str)],
         value: f64,
     ) -> Result<(), MetricError> {
+        if !value.is_finite() {
+            return Err(MetricError::InvalidValue(format!("{value}")));
+        }
         self.validate(name, labels)?;
         let key = MetricKey {
             name: name.to_string(),
@@ -218,6 +223,9 @@ impl MetricsRegistry {
         labels: &[(&str, &str)],
         value: f64,
     ) -> Result<(), MetricError> {
+        if !value.is_finite() {
+            return Err(MetricError::InvalidValue(format!("{value}")));
+        }
         self.validate(name, labels)?;
         let key = MetricKey {
             name: name.to_string(),
