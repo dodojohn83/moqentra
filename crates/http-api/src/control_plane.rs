@@ -473,15 +473,16 @@ impl HealthCheck for ObjectStorageHealthCheck {
     }
 
     async fn check(&self) -> Result<(), String> {
-        let key = format!("moqentra/healthz-probe/{}", Uuid::new_v4());
+        // Use a fixed key so a failing delete does not create an unbounded pile
+        // of probe objects; subsequent writes overwrite the same object.
+        let key = "moqentra/healthz-probe";
         let data = Bytes::from_static(b"healthz");
-        let _ = self
-            .store
-            .put_object(&key, data, None)
+        self.store
+            .put_object(key, data, None)
             .await
             .map_err(|e| format!("object store probe write failed: {e}"))?;
         self.store
-            .delete_object(&key)
+            .delete_object(key)
             .await
             .map_err(|e| format!("object store probe cleanup failed: {e}"))?;
         Ok(())
