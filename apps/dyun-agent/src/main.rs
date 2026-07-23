@@ -23,6 +23,7 @@ struct AgentState {
     capabilities: Arc<AgentCapabilities>,
     replicas: Arc<Mutex<HashMap<ReplicaId, Replica>>>,
     sandbox_root: String,
+    persistence_path: PathBuf,
     production_keys: Arc<Vec<String>>,
     dev_keys: Arc<Vec<String>>,
     object_store: Arc<dyn moqentra_object_store::ObjectStorage + Send + Sync>,
@@ -535,10 +536,13 @@ async fn main() -> anyhow::Result<()> {
         .collect::<Vec<_>>();
 
     let object_store = build_object_store_from_env()?;
+    let persistence_path = PathBuf::from(&sandbox_root).join("replicas.json");
+    let initial_replicas = load_replicas(&persistence_path).await.unwrap_or_default();
     let state = AgentState {
         capabilities: Arc::new(caps),
-        replicas: Arc::new(Mutex::new(HashMap::new())),
+        replicas: Arc::new(Mutex::new(initial_replicas)),
         sandbox_root,
+        persistence_path,
         production_keys: Arc::new(production_keys),
         dev_keys: Arc::new(dev_keys),
         object_store,
@@ -576,10 +580,30 @@ async fn reconcile_replicas(state: AgentState, heartbeat_timeout: std::time::Dur
     let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
     loop {
         interval.tick().await;
-        let mut replicas = state.replicas.lock().unwrap_or_else(|e| e.into_inner());
-        let now = UtcTimestamp::now();
-        for replica in replicas.values_mut() {
-            replica.reconcile(now, heartbeat_timeout);
+        {
+            let mut replicas = state.replicas.lock().unwrap_or_else(|e| e.into_inner());
+            let now = UtcTimestamp::now();
+            for replica in replicas.values_mut() {
+                replica.reconcile(now, heartbeat_timeout);
+            }
+        }
+        if let Err(e) = save_replicas(&state).await {
+            tracing::warn!(error = %e, "failed to persist replica state");
         }
     }
+}
+
+async fn load_replicas(path: &PathBuf) -> anyhow::Result<HashMap<ReplicaId, Replica>> {
+    let bytes = tokio::fs::read(path).await?;
+    let replicas: HashMap<ReplicaId, Replica> = serde_json::from_slice(&bytes)?;
+    Ok(replicas)
+}
+
+async fn save_replicas(state: &AgentState) -> anyhow::Result<()> {
+    let json = {
+        let replicas = state.replicas.lock().unwrap_or_else(|e| e.into_inner());
+        serde_json::to_vec_pretty(&*replicas)?
+    };
+    tokio::fs::write(&state.persistence_path, json).await?;
+    Ok(())
 }

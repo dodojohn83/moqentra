@@ -55,7 +55,7 @@ pub enum ReplicaState {
 }
 
 /// A running replica managed by dyun-agent.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Replica {
     pub id: ReplicaId,
     pub deployment_id: DeploymentId,
