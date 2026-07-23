@@ -48,15 +48,7 @@ export async function apiRequest(
   });
 
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as Partial<ProblemDetails>;
-    const problem: ProblemDetails = {
-      type: body.type ?? "about:blank",
-      title: body.title ?? response.statusText,
-      status: body.status ?? response.status,
-      code: body.code ?? `HTTP_${response.status}`,
-      detail: body.detail ? stripSecrets(body.detail) : response.statusText,
-      request_id: body.request_id ?? "",
-    };
+    const problem = await parseProblemDetails(response);
     throw new ApiError(problem, response);
   }
 
@@ -83,6 +75,27 @@ export async function apiRequest(
     );
   }
 }
+
+export async function parseProblemDetails(response: Response): Promise<ProblemDetails> {
+  const body = (await response.json().catch(() => ({}))) as Partial<ProblemDetails>;
+  return {
+    type: body.type ?? "about:blank",
+    title: body.title ?? response.statusText,
+    status: body.status ?? response.status,
+    code: body.code ?? `HTTP_${response.status}`,
+    detail: body.detail ? stripSecrets(body.detail) : response.statusText,
+    request_id: body.request_id ?? "",
+  };
+}
+
+export const defaultApiFetch: typeof fetch = async (input, init) => {
+  const response = await fetch(input, init);
+  if (!response.ok) {
+    const problem = await parseProblemDetails(response);
+    throw new ApiError(problem, response);
+  }
+  return response;
+};
 
 export async function* apiStream<T>(
   baseUrl: string,

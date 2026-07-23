@@ -2,10 +2,10 @@
 
 ## 1. 前端架构
 
-- [ ] `R1-WEB-001` 增加 React Router、OIDC PKCE session、受保护路由、错误边界、设计 token、i18n 基线和可访问性检查；不引入微前端。
-- [ ] `R1-WEB-002` 以 OpenAPI 生成的 TypeScript types/client 为基础封装唯一 API client；业务组件禁止直接 `fetch`。
+- [x] `R1-WEB-001` 增加 React Router、OIDC PKCE session、受保护路由、错误边界、设计 token、i18n 基线和可访问性检查；不引入微前端。
+- [x] `R1-WEB-002` 以 OpenAPI 生成的 TypeScript types/client 为基础封装唯一 API client；业务组件禁止直接 `fetch`。
 - [ ] `R1-WEB-003` 使用 query/cache 层按 tenant、project、resource 和 revision 建 key；切换租户时取消请求、上传与 SSE，并清空前一租户缓存。
-- [ ] `R1-WEB-004` 统一 Problem Details、401 refresh/login、403、404、409 revision、429 和 202 Operation 交互；失败不得显示虚假成功 toast。
+- [~] `R1-WEB-004` 统一 Problem Details、401 refresh/login、403、404、409 revision、429 和 202 Operation 交互；失败不得显示虚假成功 toast。
 - [ ] `R1-WEB-005` SSE client 持久化 cursor、自动重连、事件去重并在 cursor 失效时重新获取权威资源。
 
 ## 2. 业务页面
@@ -20,11 +20,11 @@
 
 ## 3. 安全与体验
 
-- [ ] `R1-WEB-013` CSP 默认拒绝内联脚本；OIDC、API、媒体和必要 WebSocket/SSE 域使用精确 allowlist。
-- [ ] `R1-WEB-014` Cookie 使用 Secure/HttpOnly/SameSite；若使用 bearer token，只保存在内存，不进入 localStorage、URL 或日志。
-- [ ] `R1-WEB-015` 文件下载、图片/视频预览和 LabelU payload 使用受控 URL；禁止 `dangerouslySetInnerHTML` 展示后端错误或用户标签。
+- [x] `R1-WEB-013` CSP 默认拒绝内联脚本；OIDC、API、媒体和必要 WebSocket/SSE 域使用精确 allowlist。
+- [x] `R1-WEB-014` Cookie 使用 Secure/HttpOnly/SameSite；若使用 bearer token，只保存在内存，不进入 localStorage、URL 或日志。
+- [~] `R1-WEB-015` 文件下载、图片/视频预览和 LabelU payload 使用受控 URL；禁止 `dangerouslySetInnerHTML` 展示后端错误或用户标签。
 - [ ] `R1-WEB-016` 大列表分页/虚拟化，上传和 Operation 可取消；刷新页面后从服务端恢复进度，不依赖浏览器内存状态。
-- [ ] `R1-WEB-017` 关键页面满足键盘操作、焦点、表单标签和颜色对比基线；LabelU-Kit 已知缺口单独登记。
+- [~] `R1-WEB-017` 关键页面满足键盘操作、焦点、表单标签和颜色对比基线；LabelU-Kit 已知缺口单独登记。
 
 ## 4. 完成条件与测试
 
