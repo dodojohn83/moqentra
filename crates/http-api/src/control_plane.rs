@@ -240,7 +240,7 @@ async fn emit_event(
 }
 
 pub(crate) fn resolve_project_id(
-    ctx: &RequestContext,
+    ctx: &mut RequestContext,
     body_project_id: &str,
 ) -> Result<ProjectId, Error> {
     if let Some(p) = ctx.project_id {
@@ -254,7 +254,10 @@ pub(crate) fn resolve_project_id(
         }
         Ok(p)
     } else {
-        ProjectId::try_from(body_project_id)
+        let p = ProjectId::try_from(body_project_id)?;
+        ctx.project_id = Some(p);
+        ctx.project_ids = vec![p];
+        Ok(p)
     }
 }
 
@@ -334,7 +337,7 @@ pub(crate) async fn audit_write(
     resource_type: Resource,
     resource_id: Option<&str>,
     outcome: AuditOutcome,
-) {
+) -> Result<(), moqentra_types::Error> {
     let mut resource = format!("{resource_type:?}");
     if let Some(id) = resource_id {
         resource.push(':');
@@ -353,9 +356,11 @@ pub(crate) async fn audit_write(
         correlation_id: ctx.request_id.clone(),
         occurred_at: UtcTimestamp::now(),
     };
-    if let Err(e) = state.audit.record(event).await {
-        tracing::warn!("failed to record write audit event: {}", e);
-    }
+    state
+        .audit
+        .record(event)
+        .await
+        .map_err(|e| moqentra_types::Error::internal(format!("audit failed: {e}")))
 }
 
 async fn healthz() -> Json<HealthResponse> {
@@ -555,7 +560,7 @@ async fn compile_application(
         Some(&result.digest),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok(Json(result))
 }
 
@@ -635,10 +640,10 @@ async fn create_dataset(
     headers: HeaderMap,
     Json(req): Json<CreateDatasetRequest>,
 ) -> Result<(StatusCode, Json<DatasetResponse>), ApiError> {
-    let ctx = resolve_context(&state, &headers).await?;
+    let mut ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
+    let project_id = resolve_project_id(&mut ctx, &req.project_id)?;
     authorize(&state, &ctx, Action::Create, Resource::Dataset).await?;
-    let project_id = resolve_project_id(&ctx, &req.project_id)?;
 
     let gen = RandomIdGenerator;
     let dataset = Dataset::new(DatasetId::new_v7(&gen), ctx.tenant_id, project_id, req.name)?;
@@ -664,7 +669,7 @@ async fn create_dataset(
         Some(&created.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(DatasetResponse {
@@ -885,10 +890,10 @@ async fn create_experiment(
     headers: HeaderMap,
     Json(req): Json<CreateExperimentRequest>,
 ) -> Result<(StatusCode, Json<ExperimentResponse>), ApiError> {
-    let ctx = resolve_context(&state, &headers).await?;
+    let mut ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
+    let project_id = resolve_project_id(&mut ctx, &req.project_id)?;
     authorize(&state, &ctx, Action::Create, Resource::TrainingJob).await?;
-    let project_id = resolve_project_id(&ctx, &req.project_id)?;
     let gen = RandomIdGenerator;
     let exp = Experiment::new(
         ExperimentId::new_v7(&gen),
@@ -911,7 +916,7 @@ async fn create_experiment(
         Some(&created.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(ExperimentResponse {
@@ -959,10 +964,10 @@ async fn create_training_job(
     headers: HeaderMap,
     Json(req): Json<CreateTrainingJobRequest>,
 ) -> Result<(StatusCode, Json<TrainingJobResponse>), ApiError> {
-    let ctx = resolve_context(&state, &headers).await?;
+    let mut ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
+    let project_id = resolve_project_id(&mut ctx, &req.project_id)?;
     authorize(&state, &ctx, Action::Create, Resource::TrainingJob).await?;
-    let project_id = resolve_project_id(&ctx, &req.project_id)?;
     let gen = RandomIdGenerator;
     let spec = TrainingJobSpec {
         code_digest: req.code_digest,
@@ -1007,7 +1012,7 @@ async fn create_training_job(
         Some(&created.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     emit_event(
         &state,
         ctx.tenant_id,
@@ -1084,7 +1089,7 @@ async fn admit_training_job(
         Some(&job.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     emit_event(
         &state,
         ctx.tenant_id,
@@ -1128,7 +1133,7 @@ async fn cancel_training_job(
         Some(&job.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok(Json(TrainingJobResponse {
         id: job.id.to_string(),
         experiment_id: job.experiment_id.to_string(),
@@ -1204,7 +1209,7 @@ async fn create_dataset_version(
         Some(&created.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(DatasetVersionResponse {
@@ -1250,7 +1255,7 @@ async fn add_dataset_version_asset(
         Some(&updated.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::OK,
         Json(DatasetVersionResponse {
@@ -1292,7 +1297,7 @@ async fn generate_dataset_version_splits(
         Some(&updated.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::OK,
         Json(DatasetVersionResponse {
@@ -1374,7 +1379,7 @@ async fn publish_dataset_version(
         Some(&updated.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::OK,
         Json(DatasetVersionResponse {
@@ -1531,7 +1536,7 @@ async fn create_upload_session(
         Some(&session.id),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(UploadSessionResponse::from(&session)),
@@ -1669,7 +1674,7 @@ async fn upload_part(
         Some(&session.id),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1714,7 +1719,7 @@ async fn complete_upload_session(
         Some(&session.id),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok(Json(UploadSessionResponse::from(&session)))
 }
 
@@ -1750,7 +1755,7 @@ async fn abort_upload_session(
         Some(&session_id),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1844,7 +1849,7 @@ async fn create_import_job(
         Some(&id),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((StatusCode::CREATED, Json(ImportJobResponse::from(&job))))
 }
 
@@ -1894,7 +1899,7 @@ async fn cancel_import_job(
         Some(&job_id),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1903,10 +1908,10 @@ async fn create_model(
     headers: HeaderMap,
     Json(req): Json<CreateModelRequest>,
 ) -> Result<(StatusCode, Json<ModelResponse>), ApiError> {
-    let ctx = resolve_context(&state, &headers).await?;
+    let mut ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
+    let project_id = resolve_project_id(&mut ctx, &req.project_id)?;
     authorize(&state, &ctx, Action::Create, Resource::ModelVersion).await?;
-    let project_id = resolve_project_id(&ctx, &req.project_id)?;
     let gen = RandomIdGenerator;
     let model = Model::new(ModelId::new_v7(&gen), ctx.tenant_id, project_id, req.name)?;
     let created = {
@@ -1922,7 +1927,7 @@ async fn create_model(
         Some(&created.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(ModelResponse {
@@ -2003,7 +2008,7 @@ async fn approve_model_version(
         Some(&version.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok(Json(ModelVersionResponse::from_version(&version)))
 }
 
@@ -2097,10 +2102,10 @@ async fn create_annotation_project(
     headers: HeaderMap,
     Json(req): Json<CreateAnnotationProjectRequest>,
 ) -> Result<(StatusCode, Json<AnnotationProjectResponse>), ApiError> {
-    let ctx = resolve_context(&state, &headers).await?;
+    let mut ctx = resolve_context(&state, &headers).await?;
     check_rate_limit(&state, ctx.tenant_id)?;
+    let project_id = resolve_project_id(&mut ctx, &req.project_id)?;
     authorize(&state, &ctx, Action::Create, Resource::AnnotationTask).await?;
-    let project_id = resolve_project_id(&ctx, &req.project_id)?;
     let task_type = match req.task_type.as_str() {
         "boundingBox" | "rectTool" => TaskType::BoundingBox,
         "polygon" | "polygonTool" => TaskType::Polygon,
@@ -2130,7 +2135,7 @@ async fn create_annotation_project(
         Some(&created.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(AnnotationProjectResponse {
@@ -2163,7 +2168,7 @@ async fn activate_annotation_project(
         Some(&p.id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
     Ok(Json(AnnotationProjectResponse {
         id: p.id.to_string(),
         name: p.name.clone(),

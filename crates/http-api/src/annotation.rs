@@ -136,7 +136,7 @@ pub(crate) async fn create_tasks(
         Some(&project_id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -256,7 +256,7 @@ pub(crate) async fn submit_task(
         Some(&task_id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
 
     Ok(Json((&t).into()))
 }
@@ -304,7 +304,7 @@ pub(crate) async fn approve_task(
         Some(&task_id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
 
     Ok(Json((&t).into()))
 }
@@ -444,7 +444,7 @@ pub(crate) async fn import_coco(
         Some(&project_id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -517,7 +517,7 @@ pub(crate) async fn import_labelu(
         Some(&project_id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -568,7 +568,7 @@ pub(crate) async fn import_platform(
         Some(&project_id.to_string()),
         AuditOutcome::Success,
     )
-    .await;
+    .await?;
 
     Ok((
         StatusCode::CREATED,
