@@ -32,6 +32,17 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
+fn parse_bool_env(var: &str) -> anyhow::Result<bool> {
+    match std::env::var(var) {
+        Ok(v) if v.eq_ignore_ascii_case("true") || v == "1" => Ok(true),
+        Ok(v) if v.eq_ignore_ascii_case("false") || v == "0" || v.is_empty() => Ok(false),
+        Ok(v) => Err(anyhow::anyhow!(
+            "{var} must be 'true', 'false', '1', '0', or unset; got '{v}'"
+        )),
+        Err(_) => Ok(false),
+    }
+}
+
 fn build_state_from_env() -> anyhow::Result<AppState> {
     // OIDC configuration takes precedence for browser tokens.
     let oidc = std::env::var("MOQENTRA_OIDC_ISSUER")
@@ -78,15 +89,28 @@ fn build_state_from_env() -> anyhow::Result<AppState> {
     if let Some(oidc) = oidc {
         tokens = tokens.with_oidc(oidc);
     }
-    let require_auth = std::env::var("MOQENTRA_REQUIRE_AUTH")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(tokens.is_configured());
+    let require_auth = match std::env::var("MOQENTRA_REQUIRE_AUTH") {
+        Ok(v) if v.eq_ignore_ascii_case("true") || v == "1" => true,
+        Ok(v) if v.eq_ignore_ascii_case("false") || v == "0" || v.is_empty() => false,
+        Ok(v) => {
+            return Err(anyhow::anyhow!(
+                "MOQENTRA_REQUIRE_AUTH must be 'true', 'false', '1', '0', or unset; got '{v}'"
+            ))
+        }
+        Err(_) => tokens.is_configured(),
+    };
 
     let object_store: Arc<dyn ObjectStorage + Send + Sync> =
         match std::env::var("MOQENTRA_S3_ENDPOINT") {
             Ok(endpoint) if !endpoint.is_empty() => {
+                let bucket = std::env::var("MOQENTRA_S3_BUCKET").unwrap_or_default();
+                if bucket.is_empty() {
+                    return Err(anyhow::anyhow!(
+                        "MOQENTRA_S3_BUCKET is required when MOQENTRA_S3_ENDPOINT is set"
+                    ));
+                }
                 let config = S3Config {
-                    bucket: std::env::var("MOQENTRA_S3_BUCKET").unwrap_or_default(),
+                    bucket,
                     endpoint,
                     region: std::env::var("MOQENTRA_S3_REGION")
                         .unwrap_or_else(|_| "us-east-1".to_string()),
@@ -96,9 +120,7 @@ fn build_state_from_env() -> anyhow::Result<AppState> {
                     secret_access_key: SecretString::new(
                         std::env::var("MOQENTRA_S3_SECRET_ACCESS_KEY").unwrap_or_default(),
                     ),
-                    force_path_style: std::env::var("MOQENTRA_S3_FORCE_PATH_STYLE")
-                        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-                        .unwrap_or(true),
+                    force_path_style: parse_bool_env("MOQENTRA_S3_FORCE_PATH_STYLE")?,
                 };
                 Arc::new(S3ObjectStore::new(config).map_err(|e| {
                     anyhow::anyhow!("S3 object store configuration is invalid: {e}")
