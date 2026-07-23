@@ -2493,6 +2493,7 @@ dependencies = [
  "moqentra-domain",
  "moqentra-http-api",
  "moqentra-object-store",
+ "moqentra-observability",
  "moqentra-storage",
  "moqentra-types",
  "moqentra-worker-control",
@@ -2565,6 +2566,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
+ "bytes",
  "hex",
  "hmac 0.12.1",
  "jsonwebtoken",
@@ -2572,6 +2574,7 @@ dependencies = [
  "moqentra-auth",
  "moqentra-domain",
  "moqentra-object-store",
+ "moqentra-observability",
  "moqentra-storage",
  "moqentra-types",
  "reqwest",
@@ -2631,11 +2634,14 @@ dependencies = [
 name = "moqentra-observability"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "moqentra-types",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tokio",
  "tracing",
+ "url",
 ]
 
 [[package]]

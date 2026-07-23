@@ -84,6 +84,39 @@ impl InMemoryObjectStore {
         }
         removed
     }
+
+    /// Return the keys that would be deleted by a GC pass without removing them.
+    /// Objects under legal hold or with uncertain ownership (not in `referenced`
+    /// but referenced indirectly) are excluded.
+    pub fn gc_dry_run(
+        &self,
+        referenced: &std::collections::BTreeSet<String>,
+        min_age: Duration,
+        max_delete: usize,
+    ) -> Vec<String> {
+        let now = Instant::now();
+        let objects = self.objects.lock().unwrap_or_else(|e| e.into_inner());
+        let created_at = self.created_at.lock().unwrap_or_else(|e| e.into_inner());
+        let holds = self.legal_holds.lock().unwrap_or_else(|e| e.into_inner());
+        let mut candidates = Vec::new();
+        let mut keys: Vec<String> = objects.keys().cloned().collect();
+        keys.sort();
+        for key in keys {
+            if candidates.len() >= max_delete {
+                break;
+            }
+            if referenced.contains(&key) || holds.contains(&key) {
+                continue;
+            }
+            let Some(instant) = created_at.get(&key) else {
+                continue;
+            };
+            if now.duration_since(*instant) >= min_age {
+                candidates.push(key);
+            }
+        }
+        candidates
+    }
 }
 
 fn digest(data: &[u8]) -> String {
@@ -335,6 +368,19 @@ mod tests {
         let meta2 = store.put_object("a.bin", Bytes::from_static(b"data"), None).await.unwrap();
         // Same data results in the same digest.
         assert_eq!(meta1.digest, meta2.digest);
+    }
+
+    #[tokio::test]
+    async fn gc_dry_run_does_not_delete() {
+        use std::collections::BTreeSet;
+        use std::time::Duration;
+
+        let store = InMemoryObjectStore::new();
+        store.put_object("orphan.bin", Bytes::from_static(b"x"), None).await.unwrap();
+        let referenced = BTreeSet::new();
+        let candidates = store.gc_dry_run(&referenced, Duration::from_secs(0), 10);
+        assert_eq!(candidates.len(), 1);
+        assert!(store.get_object("orphan.bin").await.is_ok());
     }
 
     #[tokio::test]

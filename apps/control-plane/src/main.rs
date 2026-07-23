@@ -16,16 +16,18 @@ use moqentra_auth::{
     Authorizer, CompositeTokenValidator, HmacValidator, JwkSetValidator, OidcConfig,
     ServiceAccountValidator,
 };
-use moqentra_http_api::control_plane::{app_router, spawn_outbox_dispatcher, AppState};
+use moqentra_http_api::control_plane::{
+    app_router, spawn_outbox_dispatcher, AppState, DatabaseHealthCheck, ObjectStorageHealthCheck,
+};
 use moqentra_object_store::{
     s3::{S3Config, S3ObjectStore},
     InMemoryObjectStore, InMemoryUploadSessionStore, ObjectStorage,
 };
+use moqentra_observability::{CompositeHealthCheck, LivenessCheck, MetricsRegistry};
 use moqentra_storage::{InMemoryOutbox, PgAuditLog};
 use moqentra_types::config::SecretString;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use tracing_subscriber::EnvFilter;
 
@@ -120,13 +122,25 @@ fn build_state_from_env() -> AppState {
         _ => (Arc::new(InMemoryAuditLog::new()), None),
     };
 
+    let metrics = Arc::new(MetricsRegistry::default());
+    let mut health = CompositeHealthCheck::new();
+    health.add(Arc::new(LivenessCheck));
+    health.add(Arc::new(ObjectStorageHealthCheck {
+        store: object_store.clone(),
+    }));
+    if let Some(pool) = db_pool.clone() {
+        health.add(Arc::new(DatabaseHealthCheck { pool }));
+    }
+    let health = Arc::new(health);
+
     AppState {
-        ready: Arc::new(AtomicBool::new(true)),
         compiler: moqentra_application::ApplicationCompiler::new(),
         tokens,
         require_auth,
         authorizer: Arc::new(Mutex::new(Authorizer::new())),
         rate_limiters: Arc::new(Mutex::new(HashMap::new())),
+        metrics,
+        health,
         datasets: Arc::new(Mutex::new(InMemoryDatasetRegistry::new())),
         training: Arc::new(Mutex::new(InMemoryTrainingRegistry::new())),
         models: Arc::new(Mutex::new(InMemoryModelRegistry::new())),

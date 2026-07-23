@@ -24,6 +24,10 @@ pub fn spawn_gc_worker(state: AppState) {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(60);
+    let dry_run = std::env::var("MOQENTRA_GC_DRY_RUN")
+        .ok()
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
 
     tokio::spawn(async move {
         loop {
@@ -67,13 +71,21 @@ pub fn spawn_gc_worker(state: AppState) {
             // outside the control plane.
             let any = state.object_store.as_any();
             if let Some(store) = any.downcast_ref::<InMemoryObjectStore>() {
-                let removed = store.gc(
-                    &referenced,
-                    Duration::from_secs(min_age_seconds),
-                    max_delete_per_run,
-                );
-                if removed > 0 {
-                    tracing::info!(removed, "gc pass completed");
+                let min_age = Duration::from_secs(min_age_seconds);
+                if dry_run {
+                    let candidates = store.gc_dry_run(&referenced, min_age, max_delete_per_run);
+                    if !candidates.is_empty() {
+                        tracing::info!(
+                            count = candidates.len(),
+                            ?candidates,
+                            "gc dry-run would delete objects"
+                        );
+                    }
+                } else {
+                    let removed = store.gc(&referenced, min_age, max_delete_per_run);
+                    if removed > 0 {
+                        tracing::info!(removed, "gc pass completed");
+                    }
                 }
             }
         }

@@ -18,6 +18,7 @@ moqentra-application = { path = "../../crates/application" }
 moqentra-auth = { path = "../../crates/auth" }
 moqentra-storage = { path = "../../crates/storage" }
 moqentra-object-store = { path = "../../crates/object-store" }
+moqentra-observability = { path = "../../crates/observability" }
 moqentra-worker-control = { path = "../../crates/worker-control" }
 uuid = { version = "1", features = ["v4"] }
 tokio = { workspace = true }
