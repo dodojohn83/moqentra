@@ -2,12 +2,12 @@
 
 ## 1. 自动质量门禁
 
-- [ ] `R1-QA-001` Rust：`cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo nextest run --workspace`。
-- [ ] `R1-QA-002` 契约：Buf format/lint/breaking、JSON Schema validation/golden、OpenAPI lint/breaking 和生成代码无差异。
+- [~] `R1-QA-001` Rust：`cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo nextest run --workspace`（`tools/run-rust-qa.sh` 已封装，CI 归档日志）。
+- [~] `R1-QA-002` 契约：Buf format/lint/breaking、JSON Schema validation/golden、OpenAPI lint/breaking 和生成代码无差异（`buf breaking` 已加入 staged CI）。
 - [ ] `R1-QA-003` Web：lint、typecheck、Vitest、生产 build、Playwright E2E、依赖和 bundle secret scan。
 - [ ] `R1-QA-004` Python：Ruff、mypy strict、pytest unit/integration、wheel build、protobuf 生成差异和依赖审计。
 - [ ] `R1-QA-005` 真实适配器：PostgreSQL、MinIO、Dex、Docker/Podman、k3s/Volcano 和 dyun-gu contract suites。
-- [ ] `R1-QA-006` CI 失败时保存日志和测试报告；禁止 `continue-on-error`、空硬件脚本或用 simulator 关闭真实环境门禁。
+- [x] `R1-QA-006` CI 失败时保存日志和测试报告；禁止 `continue-on-error`、空硬件脚本或用 simulator 关闭真实环境门禁。
 
 ## 2. 黄金验收 TAS-R1-E2E-001
 
@@ -46,6 +46,6 @@
 
 ## 5. 发布裁决
 
-`ReleaseGate::is_ready` 必须读取或验证真实报告引用，而不是由人工设置布尔值。任一高危安全问题、缺失 R1 黄金步骤、未验证迁移、无法恢复的权威状态或无解释的 Artifact 摘要差异都阻止 release candidate。
+- [x] `ReleaseGate::is_ready` 必须读取或验证真实报告引用，而不是由人工设置布尔值。任一高危安全问题、缺失 R1 黄金步骤、未验证迁移、无法恢复的权威状态或无解释的 Artifact 摘要差异都阻止 release candidate。
 
 RTX 3090 验收只支持把 NVIDIA GeForce R1 功能标记为 `preview`。数据中心 NVIDIA、AMD、Ascend、多节点训练和推理零停机能力不得出现在 R1 GA 声明中。
