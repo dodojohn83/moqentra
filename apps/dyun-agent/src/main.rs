@@ -390,12 +390,16 @@ async fn materialize_artifacts(
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mut dir_perms = std::fs::metadata(&artifact_dir).unwrap().permissions();
-            dir_perms.set_mode(0o555);
-            std::fs::set_permissions(&artifact_dir, dir_perms).ok();
-            let mut file_perms = std::fs::metadata(&file_path).unwrap().permissions();
-            file_perms.set_mode(0o444);
-            std::fs::set_permissions(&file_path, file_perms).ok();
+            if let Ok(meta) = std::fs::metadata(&artifact_dir) {
+                let mut dir_perms = meta.permissions();
+                dir_perms.set_mode(0o555);
+                std::fs::set_permissions(&artifact_dir, dir_perms).ok();
+            }
+            if let Ok(meta) = std::fs::metadata(&file_path) {
+                let mut file_perms = meta.permissions();
+                file_perms.set_mode(0o444);
+                std::fs::set_permissions(&file_path, file_perms).ok();
+            }
         }
 
         paths.push(serde_json::json!({

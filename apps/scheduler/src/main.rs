@@ -194,42 +194,57 @@ async fn process_in_memory_job(
     control_plane_url: &Option<String>,
     service_token: &Option<String>,
 ) {
+    // Without a control-plane URL we cannot admit anything; leave the queue alone.
+    let base = match control_plane_url {
+        Some(base) => base,
+        None => return,
+    };
+
     let popped = {
         let mut queue = state.queue.lock().unwrap_or_else(|e| e.into_inner());
         queue.pop()
     };
     if let Some(entry) = popped {
-        state.admitted.fetch_add(1, Ordering::Relaxed);
         tracing::info!(job_id = %entry.job_id, tenant = %entry.tenant_id, "popped job from queue");
 
-        if let Some(base) = control_plane_url {
-            let url = format!(
-                "{}/v1/training-jobs/{}/admit",
-                base.trim_end_matches('/'),
-                entry.job_id
-            );
-            let mut req = state.http.post(&url).header("x-tenant-id", &entry.tenant_id);
-            if let Some(tok) = service_token {
-                req = req.header("authorization", format!("Bearer {tok}"));
+        let url = format!(
+            "{}/v1/training-jobs/{}/admit",
+            base.trim_end_matches('/'),
+            entry.job_id
+        );
+        let mut req = state.http.post(&url).header("x-tenant-id", &entry.tenant_id);
+        if let Some(tok) = service_token {
+            req = req.header("authorization", format!("Bearer {tok}"));
+        }
+        if !entry.project_id.is_empty() {
+            req = req.header("x-project-id", &entry.project_id);
+        }
+        let admitted = match req.send().await {
+            Ok(resp) if resp.status().is_success() => {
+                tracing::info!(job_id = %entry.job_id, "control-plane admit ok");
+                true
             }
-            if !entry.project_id.is_empty() {
-                req = req.header("x-project-id", &entry.project_id);
+            Ok(resp) => {
+                tracing::warn!(
+                    job_id = %entry.job_id,
+                    status = %resp.status(),
+                    "control-plane admit failed"
+                );
+                false
             }
-            match req.send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    tracing::info!(job_id = %entry.job_id, "control-plane admit ok");
-                }
-                Ok(resp) => {
-                    tracing::warn!(
-                        job_id = %entry.job_id,
-                        status = %resp.status(),
-                        "control-plane admit failed"
-                    );
-                }
-                Err(e) => {
-                    tracing::warn!(error = %e, "control-plane admit request error")
-                }
+            Err(e) => {
+                tracing::warn!(error = %e, "control-plane admit request error");
+                false
             }
+        };
+
+        if !admitted {
+            // Put the job back so a transient network/control-plane failure does not lose it.
+            let mut queue = state.queue.lock().unwrap_or_else(|e| e.into_inner());
+            if let Err(e) = queue.enqueue(entry) {
+                tracing::warn!(error = %e, "failed to re-enqueue job after failed admit");
+            }
+            return;
         }
 
         if let Some(base) = &state.node_url {
@@ -257,6 +272,8 @@ async fn process_in_memory_job(
                 }
             }
         }
+
+        state.admitted.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -273,7 +290,11 @@ async fn main() -> anyhow::Result<()> {
         if dsn.is_empty() {
             None
         } else {
-            PgPool::connect(&dsn).await.ok()
+            Some(
+                PgPool::connect(&dsn)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("MOQENTRA_DATABASE_DSN connection failed: {e}"))?,
+            )
         }
     } else {
         None
@@ -293,7 +314,11 @@ async fn main() -> anyhow::Result<()> {
             "default", tenant, 1024, 256,
         ))),
         db_pool,
-        http: reqwest::Client::new(),
+        http: reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|e| anyhow::anyhow!("failed to build http client: {e}"))?,
         node_url: std::env::var("MOQENTRA_NODE_AGENT_URL").ok().filter(|s| !s.is_empty()),
     };
 

@@ -46,6 +46,8 @@ use moqentra_types::{
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tracing::Instrument;
 use uuid::Uuid;
 
 /// Application state shared by all control-plane handlers.
@@ -163,51 +165,54 @@ pub(crate) async fn resolve_context(
         .ok_or_else(|| Error::invalid_argument("X-Tenant-Id header is required"))?;
     let tenant_id = TenantId::try_from(tenant_raw.as_str())?;
 
-    let project_header =
-        header_str(headers, "x-project-id").and_then(|p| ProjectId::try_from(p.as_str()).ok());
+    let project_header = match header_str(headers, "x-project-id") {
+        Some(p) => Some(ProjectId::try_from(p.as_str())?),
+        None => None,
+    };
 
-    let principal = if let Some(token) = bearer_token(headers) {
+    let (principal, roles, project_ids) = if let Some(token) = bearer_token(headers) {
         let session = state.tokens.validate_session(&token).await?;
         if let Principal::User { id } = session.principal {
             // Resolve roles from DB membership when available; JWT claim roles are ignored in
             // production to enforce re-auth on tenant/project switch.
-            let roles = if let Some(pool) = &state.db_pool {
+            let mut roles = if let Some(pool) = &state.db_pool {
                 let store = PgRoleStore::new(pool.clone());
-                match project_header {
-                    Some(pid) => store.project_roles(id, tenant_id, pid).await?,
-                    None => store.tenant_roles(id, tenant_id).await?,
+                let mut roles = store.tenant_roles(id, tenant_id).await?;
+                if let Some(pid) = project_header {
+                    roles.extend(store.project_roles(id, tenant_id, pid).await?);
                 }
+                roles
             } else {
                 session.roles
             };
-            let mut authz = state.authorizer.lock().unwrap_or_else(|e| e.into_inner());
-            for role in roles {
-                authz.assign_role(id, tenant_id, role);
-            }
-            // Optional project membership bootstrap for development.
-            if let Some(project_id) = project_header {
-                authz.add_project_member(id, tenant_id, project_id);
-            }
+            roles.sort_unstable();
+            roles.dedup();
+            let role_strings: Vec<String> = roles.iter().map(|r| r.as_str().to_string()).collect();
+            let project_ids: Vec<ProjectId> = project_header.into_iter().collect();
+            (session.principal, role_strings, project_ids)
+        } else if let Principal::Service { .. } = session.principal {
+            (
+                session.principal,
+                vec![Role::Operator.as_str().to_string()],
+                Vec::new(),
+            )
+        } else {
+            (session.principal, Vec::new(), Vec::new())
         }
-        if let Principal::Service { name } = &session.principal {
-            let mut authz = state.authorizer.lock().unwrap_or_else(|e| e.into_inner());
-            // Default operator grant for known services unless already assigned.
-            authz.assign_service_role(name.clone(), tenant_id, Role::Operator);
-        }
-        session.principal
     } else if state.require_auth {
         return Err(Error::unauthenticated(
             "Authorization bearer token required",
         ));
     } else {
         // Dev open mode: anonymous principal for local tooling.
-        Principal::Anonymous
+        (Principal::Anonymous, Vec::new(), Vec::new())
     };
 
-    let mut ctx = RequestContext::new(tenant_id, principal, request_id);
+    let mut ctx = RequestContext::new(tenant_id, principal, request_id).with_roles(roles);
     if let Some(project_id) = project_header {
         ctx = ctx.with_project(project_id);
     }
+    ctx.project_ids = project_ids;
     Ok(ctx)
 }
 
@@ -253,9 +258,18 @@ pub(crate) fn resolve_project_id(
     }
 }
 
+const RATE_LIMITER_RETENTION: Duration = Duration::from_secs(3600);
+const RATE_LIMITER_MAX_TENANTS: usize = 1024;
+
 pub(crate) fn check_rate_limit(state: &AppState, tenant_id: TenantId) -> Result<(), Error> {
     let now = UtcTimestamp::now();
     let mut map = state.rate_limiters.lock().unwrap_or_else(|e| e.into_inner());
+    if map.len() > RATE_LIMITER_MAX_TENANTS {
+        map.retain(|_, limiter| {
+            (now.as_offset() - limiter.last_used.as_offset()).whole_seconds()
+                < RATE_LIMITER_RETENTION.as_secs() as i64
+        });
+    }
     let limiter = map.entry(tenant_id).or_insert_with(|| {
         TokenBucketLimiter::new(tenant_id, 100, 50.0, now)
             .expect("static rate limit config is valid")
@@ -301,9 +315,11 @@ pub(crate) async fn authorize(
         correlation_id: ctx.request_id.clone(),
         occurred_at: UtcTimestamp::now(),
     };
-    if let Err(e) = state.audit.record(event).await {
-        tracing::warn!("failed to record authorization audit event: {}", e);
-    }
+    state
+        .audit
+        .record(event)
+        .await
+        .map_err(|e| Error::internal(format!("audit failed: {e}")))?;
     match outcome {
         AuditOutcome::Success => Ok(()),
         _ => Err(Error::permission_denied("not authorized for this action")),
@@ -401,7 +417,7 @@ async fn observability_middleware(
         .and_then(|v| v.to_str().ok())
         .and_then(parse_traceparent);
 
-    let _span = tracing::info_span!(
+    let span = tracing::info_span!(
         "request",
         request_id = %request_id,
         correlation_id = %correlation_id.as_deref().unwrap_or(""),
@@ -409,27 +425,31 @@ async fn observability_middleware(
         route = %route,
     );
 
-    let response = next.run(req).await;
-    let status = response.status().as_u16().to_string();
-    let duration = start.elapsed().as_secs_f64();
-    let labels = &[
-        ("method", method.as_str()),
-        ("route", route.as_str()),
-        ("status", status.as_str()),
-    ];
-    state.metrics.counter_inc("moqentra_http_requests_total", labels, 1);
-    state
-        .metrics
-        .histogram_record("moqentra_http_request_duration_seconds", labels, duration);
+    async move {
+        let response = next.run(req).await;
+        let status = response.status().as_u16().to_string();
+        let duration = start.elapsed().as_secs_f64();
+        let labels = &[
+            ("method", method.as_str()),
+            ("route", route.as_str()),
+            ("status", status.as_str()),
+        ];
+        state.metrics.counter_inc("moqentra_http_requests_total", labels, 1);
+        state
+            .metrics
+            .histogram_record("moqentra_http_request_duration_seconds", labels, duration);
 
-    tracing::debug!(
-        method = %method,
-        route = %route,
-        status = %status,
-        duration_seconds = %duration,
-        "handled request"
-    );
-    response
+        tracing::debug!(
+            method = %method,
+            route = %route,
+            status = %status,
+            duration_seconds = %duration,
+            "handled request"
+        );
+        response
+    }
+    .instrument(span)
+    .await
 }
 
 fn parse_traceparent(header: &str) -> Option<String> {
@@ -458,15 +478,16 @@ impl HealthCheck for ObjectStorageHealthCheck {
     }
 
     async fn check(&self) -> Result<(), String> {
-        let key = format!("moqentra/healthz-probe/{}", Uuid::new_v4());
+        // Use a fixed key so a failing delete does not create an unbounded pile
+        // of probe objects; subsequent writes overwrite the same object.
+        let key = "moqentra/healthz-probe";
         let data = Bytes::from_static(b"healthz");
-        let _ = self
-            .store
-            .put_object(&key, data, None)
+        self.store
+            .put_object(key, data, None)
             .await
             .map_err(|e| format!("object store probe write failed: {e}"))?;
         self.store
-            .delete_object(&key)
+            .delete_object(key)
             .await
             .map_err(|e| format!("object store probe cleanup failed: {e}"))?;
         Ok(())
@@ -698,7 +719,7 @@ async fn list_datasets(
 
     let total = items.len() as u64;
     let limit = page.bounded_limit() as usize;
-    let offset = page.offset as usize;
+    let offset = (page.offset as usize).min(items.len());
     let end = (offset + limit).min(items.len());
     let page_items = items[offset..end]
         .iter()
@@ -920,7 +941,7 @@ async fn list_experiments(
     });
     let total = items.len() as u64;
     let limit = page.bounded_limit() as usize;
-    let offset = page.offset as usize;
+    let offset = (page.offset as usize).min(items.len());
     let end = (offset + limit).min(items.len());
     let page_items = items[offset..end]
         .iter()
@@ -1028,7 +1049,7 @@ async fn list_training_jobs(
     });
     let total = items.len() as u64;
     let limit = page.bounded_limit() as usize;
-    let offset = page.offset as usize;
+    let offset = (page.offset as usize).min(items.len());
     let end = (offset + limit).min(items.len());
     let page_items = items[offset..end]
         .iter()
@@ -1800,6 +1821,7 @@ async fn create_import_job(
         Error::invalid_argument("X-Project-Id is required when creating an import job")
     })?;
     ObjectKey::from_str(ctx.tenant_id, project_id, &req.target_key)?;
+    crate::northbound::validate_url(&req.source_url)?;
     let id = Uuid::new_v4().to_string();
     let job = ImportJob::new_v1(
         id.clone(),
@@ -1926,7 +1948,7 @@ async fn list_models(
     });
     let total = items.len() as u64;
     let limit = page.bounded_limit() as usize;
-    let offset = page.offset as usize;
+    let offset = (page.offset as usize).min(items.len());
     let end = (offset + limit).min(items.len());
     let page_items = items[offset..end].iter().map(ModelResponse::from_model).collect();
     Ok(Json(Page::new(page_items, total, page)))
@@ -2164,7 +2186,7 @@ async fn list_outbox(
         b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
     });
     let total = pending.len() as u64;
-    let offset = page.offset as usize;
+    let offset = (page.offset as usize).min(pending.len());
     let end = (offset + page.bounded_limit() as usize).min(pending.len());
     let items = pending[offset..end]
         .iter()
@@ -2367,11 +2389,11 @@ pub fn app_router(state: AppState) -> Router {
         .route("/v1/outbox", get(list_outbox))
         .with_state(state.clone())
         .layer(DefaultBodyLimit::max(1024 * 1024))
-        .layer(middleware::from_fn(security_headers))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_auth_middleware,
         ))
+        .layer(middleware::from_fn(security_headers))
         .layer(middleware::from_fn_with_state(
             state,
             observability_middleware,
@@ -2557,7 +2579,11 @@ mod tests {
             db_pool: None,
             scheduler_url: None,
             node_agent_url: None,
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(5))
+                .timeout(Duration::from_secs(30))
+                .build()
+                .expect("test http client"),
         }
     }
 

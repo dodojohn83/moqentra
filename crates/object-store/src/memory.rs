@@ -175,7 +175,15 @@ impl ObjectStorage for InMemoryObjectStore {
     }
 
     async fn delete_object(&self, key: &str) -> Result<(), Error> {
-        self.objects.lock().unwrap_or_else(|e| e.into_inner()).remove(key);
+        let mut objects = self.objects.lock().unwrap_or_else(|e| e.into_inner());
+        let removed = objects.remove(key).is_some();
+        drop(objects);
+        if removed {
+            let mut created_at = self.created_at.lock().unwrap_or_else(|e| e.into_inner());
+            created_at.remove(key);
+            let mut holds = self.legal_holds.lock().unwrap_or_else(|e| e.into_inner());
+            holds.remove(key);
+        }
         Ok(())
     }
 

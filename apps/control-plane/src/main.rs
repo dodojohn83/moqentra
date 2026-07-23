@@ -29,27 +29,25 @@ use moqentra_types::config::SecretString;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
-fn build_state_from_env() -> AppState {
+fn build_state_from_env() -> anyhow::Result<AppState> {
     // OIDC configuration takes precedence for browser tokens.
-    let oidc =
-        std::env::var("MOQENTRA_OIDC_ISSUER")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .and_then(|issuer| {
-                std::env::var("MOQENTRA_OIDC_AUDIENCE").ok().filter(|s| !s.is_empty()).map(
-                    |audience| {
-                        let mut config = OidcConfig::new(issuer, audience);
-                        if let Ok(uri) = std::env::var("MOQENTRA_OIDC_JWKS_URI") {
-                            if !uri.is_empty() {
-                                config = config.with_jwks_uri(uri);
-                            }
-                        }
-                        JwkSetValidator::new(config)
-                    },
-                )
-            });
+    let oidc = std::env::var("MOQENTRA_OIDC_ISSUER")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .zip(std::env::var("MOQENTRA_OIDC_AUDIENCE").ok().filter(|s| !s.is_empty()))
+        .map(|(issuer, audience)| {
+            let mut config = OidcConfig::new(issuer, audience);
+            if let Ok(uri) = std::env::var("MOQENTRA_OIDC_JWKS_URI") {
+                if !uri.is_empty() {
+                    config = config.with_jwks_uri(uri);
+                }
+            }
+            JwkSetValidator::new(config)
+        })
+        .transpose()?;
 
     // HMAC is kept only for local integration tests; OIDC is the production path.
     let jwt_secret = std::env::var("MOQENTRA_JWT_SECRET").ok().filter(|s| !s.is_empty());
@@ -102,10 +100,9 @@ fn build_state_from_env() -> AppState {
                         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                         .unwrap_or(true),
                 };
-                Arc::new(
-                    S3ObjectStore::new(config)
-                        .expect("S3 object store configuration must be valid"),
-                )
+                Arc::new(S3ObjectStore::new(config).map_err(|e| {
+                    anyhow::anyhow!("S3 object store configuration is invalid: {e}")
+                })?)
             }
             _ => Arc::new(InMemoryObjectStore::new()),
         };
@@ -116,7 +113,7 @@ fn build_state_from_env() -> AppState {
     ) = match std::env::var("DATABASE_URL") {
         Ok(url) if !url.is_empty() => {
             let pool = sqlx::PgPool::connect_lazy(&url)
-                .expect("DATABASE_URL must be a valid PostgreSQL connection string");
+                .map_err(|e| anyhow::anyhow!("DATABASE_URL is invalid: {e}"))?;
             (Arc::new(PgAuditLog::new(pool.clone())), Some(pool))
         }
         _ => (Arc::new(InMemoryAuditLog::new()), None),
@@ -133,7 +130,13 @@ fn build_state_from_env() -> AppState {
     }
     let health = Arc::new(health);
 
-    AppState {
+    let http = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| anyhow::anyhow!("failed to build http client: {e}"))?;
+
+    Ok(AppState {
         compiler: moqentra_application::ApplicationCompiler::new(),
         tokens,
         require_auth,
@@ -158,8 +161,8 @@ fn build_state_from_env() -> AppState {
         db_pool,
         scheduler_url: std::env::var("MOQENTRA_SCHEDULER_URL").ok().filter(|s| !s.is_empty()),
         node_agent_url: std::env::var("MOQENTRA_NODE_AGENT_URL").ok().filter(|s| !s.is_empty()),
-        http: reqwest::Client::new(),
-    }
+        http,
+    })
 }
 
 #[tokio::main]
@@ -170,7 +173,7 @@ async fn main() -> anyhow::Result<()> {
         std::env::var("MOQENTRA_LISTEN_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
     let addr: SocketAddr = listen.parse()?;
 
-    let state = build_state_from_env();
+    let state = build_state_from_env()?;
 
     if let Some(pool) = &state.db_pool {
         sqlx::migrate!("../../crates/storage/migrations")

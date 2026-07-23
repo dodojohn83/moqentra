@@ -63,6 +63,25 @@ impl PgIdempotencyStore {
         Self { pool }
     }
 
+    fn evaluate_existing(
+        row: IdempotencyRow,
+        scope: &IdempotencyScope,
+    ) -> Result<Option<IdempotencyResult>, Error> {
+        if row.expires_at > OffsetDateTime::now_utc() {
+            let entry: IdempotencyEntry = row.try_into()?;
+            if entry.scope.fingerprint != scope.fingerprint {
+                return Err(Error::conflict(
+                    "idempotency key reused with different request fingerprint",
+                ));
+            }
+            if entry.status == IdempotencyStatus::Completed {
+                return Ok(Some(IdempotencyResult::Completed(entry)));
+            }
+            return Err(Error::conflict("idempotency key already in progress"));
+        }
+        Ok(None)
+    }
+
     /// Begin an idempotency scope on an existing connection/transaction.
     pub async fn begin_with_conn(
         &self,
@@ -83,9 +102,18 @@ impl PgIdempotencyStore {
             .await
             .map_err(|e| Error::internal(format!("failed to set tenant context: {e}")))?;
 
+        let now = UtcTimestamp::now();
+        let expires_at = now
+            .add_std_duration(ttl)
+            .ok_or_else(|| Error::invalid_argument("idempotency ttl is too large"))?;
+
+        // Lock the row if it exists so concurrent requests for the same key are
+        // serialized. After deleting an expired row we still rely on the primary
+        // key, so we handle a unique-constraint race by re-reading.
         let existing: Option<IdempotencyRow> = sqlx::query_as(
             "SELECT * FROM idempotency_keys \
-             WHERE tenant_id = $1 AND operation_type = $2 AND key = $3",
+             WHERE tenant_id = $1 AND operation_type = $2 AND key = $3 \
+             FOR UPDATE",
         )
         .bind(tenant_id.as_uuid())
         .bind(operation_type)
@@ -94,23 +122,9 @@ impl PgIdempotencyStore {
         .await
         .map_err(|e| Error::internal(format!("idempotency lookup failed: {e}")))?;
 
-        let now = UtcTimestamp::now();
-        let expires_at = now
-            .add_std_duration(ttl)
-            .ok_or_else(|| Error::invalid_argument("idempotency ttl is too large"))?;
-
         if let Some(row) = existing {
-            if row.expires_at > OffsetDateTime::now_utc() {
-                let entry: IdempotencyEntry = row.try_into()?;
-                if entry.scope.fingerprint != scope.fingerprint {
-                    return Err(Error::conflict(
-                        "idempotency key reused with different request fingerprint",
-                    ));
-                }
-                if entry.status == IdempotencyStatus::Completed {
-                    return Ok(IdempotencyResult::Completed(entry));
-                }
-                return Err(Error::conflict("idempotency key already in progress"));
+            if let Some(result) = Self::evaluate_existing(row, &scope)? {
+                return Ok(result);
             }
             // Expired entry: delete so it can be replaced.
             sqlx::query(
@@ -126,7 +140,7 @@ impl PgIdempotencyStore {
         }
 
         let id = Uuid::new_v4();
-        let _ = sqlx::query(
+        let insert = sqlx::query(
             "INSERT INTO idempotency_keys \
              (tenant_id, operation_type, key, fingerprint, response, status, expires_at, created_at, id) \
              VALUES ($1, $2, $3, $4, NULL, 'in_progress', $5, $6, $7)",
@@ -139,8 +153,69 @@ impl PgIdempotencyStore {
         .bind(now.as_offset())
         .bind(id)
         .execute(&mut *conn)
-        .await
-        .map_err(|e| Error::internal(format!("idempotency insert failed: {e}")))?;
+        .await;
+
+        if let Err(sqlx::Error::Database(db_err)) = &insert {
+            if db_err.constraint() == Some("idempotency_keys_pkey") {
+                // Another transaction inserted first. Re-read the committed row.
+                let row: Option<IdempotencyRow> = sqlx::query_as(
+                    "SELECT * FROM idempotency_keys \
+                     WHERE tenant_id = $1 AND operation_type = $2 AND key = $3 \
+                     FOR UPDATE",
+                )
+                .bind(tenant_id.as_uuid())
+                .bind(operation_type)
+                .bind(key)
+                .fetch_optional(&mut *conn)
+                .await
+                .map_err(|e| Error::internal(format!("idempotency re-read failed: {e}")))?;
+                if let Some(row) = row {
+                    if let Some(result) = Self::evaluate_existing(row, &scope)? {
+                        return Ok(result);
+                    }
+                    // The row was inserted by another transaction but has since
+                    // expired before we could lock it; delete and retry once.
+                    sqlx::query(
+                        "DELETE FROM idempotency_keys \
+                         WHERE tenant_id = $1 AND operation_type = $2 AND key = $3",
+                    )
+                    .bind(tenant_id.as_uuid())
+                    .bind(operation_type)
+                    .bind(key)
+                    .execute(&mut *conn)
+                    .await
+                    .map_err(|e| Error::internal(format!("idempotency delete failed: {e}")))?;
+
+                    let id2 = Uuid::new_v4();
+                    let _ = sqlx::query(
+                        "INSERT INTO idempotency_keys \
+                         (tenant_id, operation_type, key, fingerprint, response, status, expires_at, created_at, id) \
+                         VALUES ($1, $2, $3, $4, NULL, 'in_progress', $5, $6, $7)",
+                    )
+                    .bind(tenant_id.as_uuid())
+                    .bind(operation_type)
+                    .bind(key)
+                    .bind(fingerprint)
+                    .bind(expires_at.as_offset())
+                    .bind(now.as_offset())
+                    .bind(id2)
+                    .execute(&mut *conn)
+                    .await
+                    .map_err(|e| Error::internal(format!("idempotency insert failed: {e}")))?;
+                    let entry = IdempotencyEntry {
+                        id: id2,
+                        scope,
+                        status: IdempotencyStatus::InProgress,
+                        response: None,
+                        expires_at,
+                        created_at: now,
+                    };
+                    return Ok(IdempotencyResult::New(entry));
+                }
+            }
+        }
+
+        let _ = insert.map_err(|e| Error::internal(format!("idempotency insert failed: {e}")))?;
 
         let entry = IdempotencyEntry {
             id,

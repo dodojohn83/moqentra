@@ -54,6 +54,11 @@ impl Principal {
 pub struct RequestContext {
     pub tenant_id: TenantId,
     pub project_id: Option<ProjectId>,
+    /// Roles resolved for this request, as stable string identifiers.
+    /// Empty means the caller has no resolved roles.
+    pub roles: Vec<String>,
+    /// Projects the caller is a member of for this request.
+    pub project_ids: Vec<ProjectId>,
     pub principal: Principal,
     pub request_id: String,
     pub correlation_id: Option<String>,
@@ -65,6 +70,8 @@ impl RequestContext {
         Self {
             tenant_id,
             project_id: None,
+            roles: Vec::new(),
+            project_ids: Vec::new(),
             principal,
             request_id: request_id.into(),
             correlation_id: None,
@@ -74,6 +81,12 @@ impl RequestContext {
 
     pub fn with_project(mut self, project_id: ProjectId) -> Self {
         self.project_id = Some(project_id);
+        self.project_ids = vec![project_id];
+        self
+    }
+
+    pub fn with_roles(mut self, roles: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.roles = roles.into_iter().map(Into::into).collect();
         self
     }
 
