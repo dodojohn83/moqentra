@@ -46,6 +46,7 @@ use moqentra_types::{
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tracing::Instrument;
 use uuid::Uuid;
 
@@ -256,9 +257,18 @@ pub(crate) fn resolve_project_id(
     }
 }
 
+const RATE_LIMITER_RETENTION: Duration = Duration::from_secs(3600);
+const RATE_LIMITER_MAX_TENANTS: usize = 1024;
+
 pub(crate) fn check_rate_limit(state: &AppState, tenant_id: TenantId) -> Result<(), Error> {
     let now = UtcTimestamp::now();
     let mut map = state.rate_limiters.lock().unwrap_or_else(|e| e.into_inner());
+    if map.len() > RATE_LIMITER_MAX_TENANTS {
+        map.retain(|_, limiter| {
+            (now.as_offset() - limiter.last_used.as_offset()).whole_seconds()
+                < RATE_LIMITER_RETENTION.as_secs() as i64
+        });
+    }
     let limiter = map.entry(tenant_id).or_insert_with(|| {
         TokenBucketLimiter::new(tenant_id, 100, 50.0, now)
             .expect("static rate limit config is valid")
@@ -2525,7 +2535,6 @@ mod tests {
     use moqentra_observability::LivenessCheck;
     use moqentra_types::UserId;
     use std::collections::BTreeMap;
-    use std::time::Duration;
     use tower::ServiceExt;
 
     fn empty_regs(

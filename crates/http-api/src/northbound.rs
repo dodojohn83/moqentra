@@ -319,6 +319,8 @@ pub struct TokenBucketLimiter {
     tokens: f64,
     refill_per_sec: f64,
     last_refill: UtcTimestamp,
+    /// Last time this limiter was used; lets the caller evict stale tenants.
+    pub last_used: UtcTimestamp,
 }
 
 impl TokenBucketLimiter {
@@ -342,6 +344,7 @@ impl TokenBucketLimiter {
             tokens: f64::from(capacity),
             refill_per_sec,
             last_refill: now,
+            last_used: now,
         })
     }
 
@@ -370,6 +373,7 @@ impl TokenBucketLimiter {
         if n == 0 {
             return Err(Error::invalid_argument("token acquire count must be > 0"));
         }
+        self.last_used = now;
         self.refill(now);
         let need = f64::from(n);
         if self.tokens + f64::EPSILON < need {
