@@ -6,7 +6,11 @@ members = [
   "apps/node-agent",
   "apps/dyun-agent",
 ]
+
 resolver = "3"
+
+[workspace.metadata.k8s]
+baseline = "v1.30"
 
 [workspace.package]
 version = "0.1.0"
