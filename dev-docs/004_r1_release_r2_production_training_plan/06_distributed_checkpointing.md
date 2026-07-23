@@ -1,0 +1,37 @@
+# 06. 分布式检查点一致性与恢复
+
+## 1. CheckpointManifest
+
+- [ ] `R2-CKPT-001` manifest 记录 tenant/project/job/attempt、step、epoch、world size、framework、template、code/image digest 和创建时间。
+- [ ] `R2-CKPT-002` 每个 shard 记录 rank、对象 key、size、SHA-256、tensor/layout 元数据；key 只能由受控 builder 生成。
+- [ ] `R2-CKPT-003` compatibility 保存 model、optimizer、AMP scaler、RNG、sampler 和 dataset manifest signature。
+- [ ] `R2-CKPT-004` checkpoint 状态固定为 Uploading → Validating → Complete/Failed；只有 Complete 可用于恢复、下载或模型晋级。
+
+## 2. 两阶段完成协议
+
+- [ ] `R2-CKPT-005` 所有 rank 先写 attempt/step 临时前缀并上报 shard digest，任何 rank 不直接发布 complete marker。
+- [ ] `R2-CKPT-006` coordinator 等待 barrier 和全部预期 shard，校验数量、摘要、size、world size 与 fencing。
+- [ ] `R2-CKPT-007` validator 成功后在事务中写 manifest/outbox，再写内容寻址 complete marker；重复 finalize 幂等。
+- [ ] `R2-CKPT-008` 数据库提交或 marker 写入任一失败时保持可重试中间状态，reconciler 根据 digest 恢复，不生成第二份 checkpoint。
+- [ ] `R2-CKPT-009` 旧 attempt、旧 generation、重复 shard、摘要冲突和缺失 rank 必须拒绝并产生安全诊断。
+
+## 3. PyTorch 状态
+
+- [ ] `R2-CKPT-010` 使用 `torch.distributed.checkpoint` 保存 sharded model/optimizer；单机模板保持兼容的 state_dict 导入路径。
+- [ ] `R2-CKPT-011` 保存 AMP scaler、scheduler、RNG、sampler epoch/offset、global step 和 template 自定义状态。
+- [ ] `R2-CKPT-012` 恢复后用固定 fixture 验证模型输出，并确认 step/epoch/optimizer 不倒退或重复训练已完成 batch。
+- [ ] `R2-CKPT-013` preserve_optimizer=false 的恢复被记录为显式 warm restart，不能伪装成等价续训。
+
+## 4. Retention 与 GC
+
+- [ ] `R2-CKPT-014` 默认保留最近 3 个、最佳 1 个和最终 1 个；策略 snapshot 随 job 固定。
+- [ ] `R2-CKPT-015` active recovery、模型血缘、人工 hold 和审计调查引用阻止删除。
+- [ ] `R2-CKPT-016` GC 先生成 dry-run，经过 grace period 后删除对象，再更新 tombstone；不确定 ownership 时只告警。
+- [ ] `R2-CKPT-017` 清理 Failed/Uploading 临时 shard 前确认 attempt 已终结且 lease 过期。
+
+## 5. 完成条件与测试
+
+- 在 upload、barrier、manifest transaction、complete marker 和 restore 各阶段注入故障，系统只选择完整 checkpoint。
+- 相同 checkpoint 被并发恢复或重复 finalize 不造成对象冲突、双重用量或状态倒退。
+- node/rank 故障后恢复到最新兼容 step，并通过数值、optimizer 和 sampler 一致性检查。
+- 备份恢复后 manifest、shard 和 complete marker 引用完整，摘要全部可验证。
