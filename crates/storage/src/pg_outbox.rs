@@ -119,7 +119,12 @@ impl PgOutboxStore {
         .bind(&event.event_type)
         .bind(payload)
         .bind(status)
-        .bind(i32::try_from(event.retry_count).unwrap_or(0))
+        .bind(i32::try_from(event.retry_count).map_err(|_| {
+            Error::internal(format!(
+                "retry_count {} exceeds i32 range",
+                event.retry_count
+            ))
+        })?)
         .bind(event.failure_reason.as_ref())
         .bind(created_at)
         .bind(3i32)
