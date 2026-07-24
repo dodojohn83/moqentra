@@ -512,9 +512,11 @@ fn build_object_store_from_env(
             force_path_style,
         };
         let store = S3ObjectStore::new(config).map_err(|e| anyhow::anyhow!(e.to_string()))?;
-        Ok(Arc::new(store) as Arc<dyn ObjectStorage + Send + Sync>)
+        let store: Arc<dyn ObjectStorage + Send + Sync> = Arc::new(store);
+        Ok(store)
     } else {
-        Ok(Arc::new(InMemoryObjectStore::new()) as Arc<dyn ObjectStorage + Send + Sync>)
+        let store: Arc<dyn ObjectStorage + Send + Sync> = Arc::new(InMemoryObjectStore::new());
+        Ok(store)
     }
 }
 

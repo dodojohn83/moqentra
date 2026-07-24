@@ -760,7 +760,7 @@ mod tests {
     fn make_attempt(job: &TrainingJob, token: u64) -> Attempt {
         let (_, _, _, _, _, id, _) = gen_ids();
         let world_size = job.spec.world_size();
-        let mut ranks = Vec::with_capacity(world_size as usize);
+        let mut ranks = Vec::with_capacity(usize::try_from(world_size).unwrap());
         for _ in 0..world_size {
             let (_, _, _, _, _, _, rank_id) = gen_ids();
             ranks.push(Rank {

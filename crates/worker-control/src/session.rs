@@ -675,6 +675,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::as_conversions)]
     fn ack(command_id: &str) -> WorkerAgentServiceOpenStreamRequest {
         WorkerAgentServiceOpenStreamRequest {
             payload: Some(InPayload::Ack(
