@@ -441,15 +441,19 @@ impl LocalExecutor {
         let active: HashSet<_> = active_attempts.iter().cloned().collect();
         let format =
             "{{.ID}}|{{.Label \"moqentra.io/attempt-id\"}}|{{.Label \"moqentra.io/lease-deadline\"}}";
-        let output = tokio::process::Command::new(&self.container_runtime)
-            .arg("ps")
-            .arg("--filter")
-            .arg(format!("label=moqentra.io/node-id={}", node_id))
-            .arg("--format")
-            .arg(format)
-            .output()
-            .await
-            .map_err(|e| moqentra_types::Error::external_failed(format!("{e}")))?;
+        let output = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            tokio::process::Command::new(&self.container_runtime)
+                .arg("ps")
+                .arg("--filter")
+                .arg(format!("label=moqentra.io/node-id={}", node_id))
+                .arg("--format")
+                .arg(format)
+                .output(),
+        )
+        .await
+        .map_err(|_| moqentra_types::Error::external_failed("runtime ps timed out"))?
+        .map_err(|e| moqentra_types::Error::external_failed(format!("{e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -479,12 +483,15 @@ impl LocalExecutor {
             };
 
             if attempt_id.is_empty() || !active.contains(attempt_id) || expired {
-                let kill = tokio::process::Command::new(&self.container_runtime)
-                    .arg("kill")
-                    .arg(container_id)
-                    .output()
-                    .await;
-                if kill.is_ok() {
+                let kill = tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    tokio::process::Command::new(&self.container_runtime)
+                        .arg("kill")
+                        .arg(container_id)
+                        .output(),
+                )
+                .await;
+                if kill.is_ok_and(|r| r.is_ok()) {
                     removed = removed.saturating_add(1);
                 }
             }
