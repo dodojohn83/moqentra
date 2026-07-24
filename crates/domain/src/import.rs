@@ -57,8 +57,10 @@ impl ImportJob {
     pub fn new() -> Self {
         Self {
             id: String::new(),
-            tenant_id: TenantId::from_str("00000000-0000-0000-0000-000000000000").unwrap(),
-            project_id: ProjectId::from_str("00000000-0000-0000-0000-000000000000").unwrap(),
+            tenant_id: TenantId::from_str("00000000-0000-0000-0000-000000000000")
+                .unwrap_or_else(|_| unreachable!("nil UUID parses")),
+            project_id: ProjectId::from_str("00000000-0000-0000-0000-000000000000")
+                .unwrap_or_else(|_| unreachable!("nil UUID parses")),
             source_url: String::new(),
             target_key: String::new(),
             media_type: String::new(),

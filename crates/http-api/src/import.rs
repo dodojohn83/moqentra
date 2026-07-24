@@ -210,7 +210,9 @@ async fn download_and_store(state: &AppState, job: &ImportJob) -> Result<String,
 
     let bytes = resp.bytes().await.map_err(|_| ImportJobFailure::Network)?;
 
-    if bytes.len() as u64 != job.total_bytes {
+    if u64::try_from(bytes.len()).map_err(|_| ImportJobFailure::ValidationFailed)?
+        != job.total_bytes
+    {
         return Err(ImportJobFailure::ValidationFailed);
     }
 

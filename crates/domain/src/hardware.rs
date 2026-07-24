@@ -198,7 +198,7 @@ impl HardwareCompatibility {
         }
 
         let tier = resource_class.support_tier;
-        if tier as i32 > requirement.max_support_tier as i32 {
+        if tier > requirement.max_support_tier {
             return Compatibility::Blocked;
         }
 

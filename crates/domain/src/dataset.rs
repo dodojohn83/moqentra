@@ -256,26 +256,34 @@ impl DatasetVersion {
         let mut rng = seed;
         for i in (1..names.len()).rev() {
             rng = splitmix64(rng);
-            let j = (rng % (i as u64 + 1)) as usize;
+            let range =
+                u64::try_from(i + 1).unwrap_or_else(|_| unreachable!("shuffle range fits in u64"));
+            let j_u64 = rng % range;
+            let j = usize::try_from(j_u64)
+                .unwrap_or_else(|_| unreachable!("shuffle index fits in usize"));
             names.swap(i, j);
         }
 
         let n = names.len();
-        let train_end = ((train * n as f64).round() as usize).clamp(0, n);
-        let val_end = train_end + ((val * n as f64).round() as usize).clamp(0, n - train_end);
+        #[allow(clippy::as_conversions)]
+        {
+            let n_f = n as f64;
+            let train_end = ((train * n_f).round() as usize).clamp(0, n);
+            let val_end = train_end + ((val * n_f).round() as usize).clamp(0, n - train_end);
+            let (train_names, rest) = names.split_at(train_end);
+            let (val_names, test_names) = rest.split_at(val_end - train_end);
 
-        let (train_names, rest) = names.split_at(train_end);
-        let (val_names, test_names) = rest.split_at(val_end - train_end);
+            self.splits = serde_json::json!({
+                "seed": seed,
+                "train": train_names,
+                "val": val_names,
+                "test": test_names,
+                "train_fraction": train,
+                "val_fraction": val,
+                "test_fraction": test,
+            });
+        }
 
-        self.splits = serde_json::json!({
-            "seed": seed,
-            "train": train_names,
-            "val": val_names,
-            "test": test_names,
-            "train_fraction": train,
-            "val_fraction": val,
-            "test_fraction": test,
-        });
         Ok(())
     }
 

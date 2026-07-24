@@ -4,7 +4,7 @@ use moqentra_types::{ResourceClassId, UtcTimestamp};
 use serde::{Deserialize, Serialize};
 
 /// Tier of support for a resource class.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SupportTier {
     Supported,

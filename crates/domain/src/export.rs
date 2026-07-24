@@ -214,6 +214,7 @@ pub fn annotation_to_yolo_line(
 }
 
 /// Convert a finite f64 coordinate to i64, rejecting NaN/inf/out-of-range values.
+#[allow(clippy::as_conversions)]
 fn f64_to_i64(v: f64) -> Result<i64, moqentra_types::Error> {
     if !v.is_finite() {
         return Err(moqentra_types::Error::invalid_argument(

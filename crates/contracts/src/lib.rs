@@ -3,6 +3,7 @@
 //! This crate contains generated protobuf contracts and JSON schema definitions.
 
 #![allow(missing_docs)]
+#![allow(clippy::as_conversions)]
 
 /// Placeholder module until domain types are added in subsequent tasks.
 pub mod placeholder {

@@ -51,7 +51,7 @@ impl PgAuditLog {
         .bind(resource_type(&event.resource))
         .bind(resource_id(&event.resource))
         .bind(outcome_str(event.outcome))
-        .bind(event.reason.as_deref().unwrap_or("") as &str)
+        .bind(event.reason.as_deref().unwrap_or(""))
         .bind(PgAuditLog::details(&event))
         .bind(&event.correlation_id)
         .bind(event.occurred_at.as_offset())

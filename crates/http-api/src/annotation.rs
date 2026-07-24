@@ -201,7 +201,8 @@ pub(crate) async fn assign_task(
     let expires_at = now
         .add_std_duration(ttl)
         .ok_or_else(|| moqentra_types::Error::invalid_argument("invalid lease ttl"))?;
-    let fencing_token = now.as_offset().unix_timestamp() as u64;
+    let fencing_token = u64::try_from(now.as_offset().unix_timestamp())
+        .map_err(|_| moqentra_types::Error::invalid_argument("fencing timestamp overflow"))?;
 
     let t = {
         let mut reg = state.annotations.lock().unwrap_or_else(|e| e.into_inner());

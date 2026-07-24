@@ -76,7 +76,9 @@ impl UploadSession {
         }
         let now = UtcTimestamp::now();
         let max_parts = total_size.div_ceil(part_size).max(1);
-        if max_parts > Self::MAX_PARTS as u64 {
+        let max_parts_limit = u64::try_from(Self::MAX_PARTS)
+            .map_err(|_| moqentra_types::Error::internal("MAX_PARTS exceeds u64 range"))?;
+        if max_parts > max_parts_limit {
             return Err(moqentra_types::Error::invalid_argument(format!(
                 "upload would require more than {} parts",
                 Self::MAX_PARTS
@@ -85,7 +87,9 @@ impl UploadSession {
         let expires_at = now
             .add_std_duration(std::time::Duration::from_secs(ttl_seconds))
             .ok_or_else(|| moqentra_types::Error::invalid_argument("invalid session ttl"))?;
-        let expected_parts = total_size.div_ceil(part_size) as i32;
+        let expected_parts = i32::try_from(max_parts).map_err(|_| {
+            moqentra_types::Error::invalid_argument("upload part count exceeds i32 range")
+        })?;
         let mut parts = BTreeMap::new();
         for n in 1..=expected_parts {
             let size = if n == expected_parts && !total_size.is_multiple_of(part_size) {
