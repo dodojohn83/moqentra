@@ -188,10 +188,14 @@ impl QualityRun {
         let mut all_classes: BTreeMap<String, u64> = BTreeMap::new();
 
         for (asset_id, anns) in annotations {
-            total_annotations += u64::try_from(anns.len()).unwrap_or(u64::MAX);
+            total_annotations =
+                total_annotations.saturating_add(u64::try_from(anns.len()).unwrap_or(u64::MAX));
             for ann in anns {
                 if let Some(label) = ann.payload.get("label").and_then(|v| v.as_str()) {
-                    *all_classes.entry(label.to_string()).or_insert(0) += 1;
+                    all_classes
+                        .entry(label.to_string())
+                        .and_modify(|c| *c = c.saturating_add(1))
+                        .or_insert(1);
                 }
                 for rule in &self.rules {
                     if let Some(v) = self.check(rule, asset_id, ann, asset_sizes) {
@@ -363,10 +367,10 @@ fn parse_bbox(payload: &Value) -> Option<[f64; 4]> {
     if bbox.len() < 4 {
         return None;
     }
-    let x = bbox[0].as_f64()?;
-    let y = bbox[1].as_f64()?;
-    let w = bbox[2].as_f64()?;
-    let h = bbox[3].as_f64()?;
+    let x = bbox.first()?.as_f64()?;
+    let y = bbox.get(1)?.as_f64()?;
+    let w = bbox.get(2)?.as_f64()?;
+    let h = bbox.get(3)?.as_f64()?;
     if ![x, y, w, h].into_iter().all(f64::is_finite) {
         return None;
     }
@@ -467,15 +471,15 @@ fn parse_polygon_points(value: &Value) -> Option<Vec<(f64, f64)>> {
     if arr.is_empty() {
         return Some(Vec::new());
     }
-    if arr[0].as_array().is_some() || arr[0].as_object().is_some() {
+    if arr.first().is_some_and(|v| v.as_array().is_some() || v.as_object().is_some()) {
         let mut points = Vec::with_capacity(arr.len());
         for p in arr {
             if let Some(pair) = p.as_array() {
                 if pair.len() < 2 {
                     return None;
                 }
-                let x = pair[0].as_f64()?;
-                let y = pair[1].as_f64()?;
+                let x = pair.first()?.as_f64()?;
+                let y = pair.get(1)?.as_f64()?;
                 if !x.is_finite() || !y.is_finite() {
                     return None;
                 }
@@ -497,15 +501,13 @@ fn parse_polygon_points(value: &Value) -> Option<Vec<(f64, f64)>> {
         return None;
     }
     let mut points = Vec::with_capacity(arr.len() / 2);
-    let mut i = 0;
-    while i + 1 < arr.len() {
-        let x = arr[i].as_f64()?;
-        let y = arr[i + 1].as_f64()?;
+    for chunk in arr.chunks_exact(2) {
+        let x = chunk.first()?.as_f64()?;
+        let y = chunk.get(1)?.as_f64()?;
         if !x.is_finite() || !y.is_finite() {
             return None;
         }
         points.push((x, y));
-        i += 2;
     }
     Some(points)
 }
@@ -556,15 +558,28 @@ fn polygon_self_intersects(points: &[(f64, f64)]) -> bool {
         return false;
     }
     for i in 0..n {
-        let a1 = points[i];
-        let a2 = points[(i + 1) % n];
-        for j in (i + 1)..n {
+        let Some(a1) = points.get(i).copied() else {
+            continue;
+        };
+        let a2_idx = (i.saturating_add(1)).checked_rem_euclid(n).unwrap_or(0);
+        let Some(a2) = points.get(a2_idx).copied() else {
+            continue;
+        };
+        for j in (i.saturating_add(1))..n {
             // Skip adjacent edges (including first/last which share a vertex).
-            if j == i || (j + 1) % n == i || (i + 1) % n == j {
+            if j == i
+                || (j.saturating_add(1)).checked_rem_euclid(n).unwrap_or(0) == i
+                || (i.saturating_add(1)).checked_rem_euclid(n).unwrap_or(0) == j
+            {
                 continue;
             }
-            let b1 = points[j];
-            let b2 = points[(j + 1) % n];
+            let Some(b1) = points.get(j).copied() else {
+                continue;
+            };
+            let b2_idx = (j.saturating_add(1)).checked_rem_euclid(n).unwrap_or(0);
+            let Some(b2) = points.get(b2_idx).copied() else {
+                continue;
+            };
             if segments_intersect(a1, a2, b1, b2) {
                 return true;
             }
@@ -613,13 +628,19 @@ fn detect_duplicate_objects(
     let mut dup_pairs = 0u64;
     let mut evidence_pairs = Vec::new();
     for i in 0..boxes.len() {
-        for j in (i + 1)..boxes.len() {
-            let iou = bbox_iou(boxes[i].1, boxes[j].1);
+        let Some((a_idx, a_box)) = boxes.get(i).copied() else {
+            continue;
+        };
+        for j in (i.saturating_add(1))..boxes.len() {
+            let Some((b_idx, b_box)) = boxes.get(j).copied() else {
+                continue;
+            };
+            let iou = bbox_iou(a_box, b_box);
             if iou >= IOU_DUP {
                 dup_pairs = dup_pairs.saturating_add(1);
                 evidence_pairs.push(serde_json::json!({
-                    "a": anns[boxes[i].0].id.to_string(),
-                    "b": anns[boxes[j].0].id.to_string(),
+                    "a": anns.get(a_idx).map(|a| a.id.to_string()).unwrap_or_default(),
+                    "b": anns.get(b_idx).map(|a| a.id.to_string()).unwrap_or_default(),
                     "iou": iou,
                 }));
             }
@@ -818,7 +839,10 @@ impl AutoLabelJob {
             .iter()
             .position(|s| s.id == suggestion_id)
             .ok_or_else(|| moqentra_types::Error::not_found("suggestion"))?;
-        self.accepted_count += 1;
+        self.accepted_count = self
+            .accepted_count
+            .checked_add(1)
+            .ok_or_else(|| moqentra_types::Error::internal("accepted count overflow"))?;
         self.updated_at = UtcTimestamp::now();
         Ok(self.suggestions.remove(pos))
     }

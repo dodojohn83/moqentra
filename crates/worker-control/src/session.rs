@@ -461,7 +461,7 @@ impl SessionManager {
             // Stale session: replace on reconnect.
         }
 
-        let fencing_token = self.counter.fetch_add(1, Ordering::SeqCst) + 1;
+        let fencing_token = self.counter.fetch_add(1, Ordering::SeqCst).wrapping_add(1);
         let (tx, rx) = mpsc::channel(OUTBOUND_BUFFER);
         let session = Arc::new(Mutex::new(AgentSession::new(
             node_id.clone(),

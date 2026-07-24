@@ -125,23 +125,25 @@ impl SecretRedactor {
         let mut output = String::with_capacity(input.len());
         let mut rest = input;
         while let Some(pos) = Self::find_ci(rest, &pat_lower) {
-            let match_end = pos + pat.len();
+            let match_end = pos.saturating_add(pat.len());
             // The match is only a secret key if the character before it (if any)
             // is not an ASCII alphanumeric character and the match is followed by
             // an '=' or ':' separator (with optional whitespace).
-            let before_ok = pos == 0 || {
-                let b = rest.as_bytes()[pos - 1];
-                !b.is_ascii_alphanumeric()
-            };
-            let (sep_len, has_sep) = Self::skip_value_separator(&rest[match_end..]);
+            let before_ok = pos == 0
+                || rest
+                    .as_bytes()
+                    .get(pos.saturating_sub(1))
+                    .is_some_and(|b| !b.is_ascii_alphanumeric());
+            let (sep_len, has_sep) =
+                Self::skip_value_separator(rest.get(match_end..).unwrap_or(""));
             if !before_ok || !has_sep {
                 // Not a key/value pair; copy the matched text and continue.
-                output.push_str(&rest[..match_end]);
-                rest = &rest[match_end..];
+                output.push_str(rest.get(..match_end).unwrap_or(""));
+                rest = rest.get(match_end..).unwrap_or("");
                 continue;
             }
-            let value_start = match_end + sep_len;
-            let value_str = &rest[value_start..];
+            let value_start = match_end.saturating_add(sep_len);
+            let value_str = rest.get(value_start..).unwrap_or("");
             let consumed = if let Some(quote) =
                 value_str.chars().next().filter(|c| matches!(c, '"' | '\''))
             {
@@ -160,7 +162,7 @@ impl SecretRedactor {
                         }
                         *c == quote
                     })
-                    .map(|(i, c)| i + c.len_utf8())
+                    .map(|(i, c)| i.saturating_add(c.len_utf8()))
                     .unwrap_or(value_str.len())
             } else {
                 value_str
@@ -169,9 +171,9 @@ impl SecretRedactor {
                     .map(|(i, _)| i)
                     .unwrap_or(value_str.len())
             };
-            output.push_str(&rest[..pos]);
+            output.push_str(rest.get(..pos).unwrap_or(""));
             output.push_str("[REDACTED]");
-            rest = &rest[value_start + consumed..];
+            rest = rest.get(value_start.saturating_add(consumed)..).unwrap_or("");
         }
         output.push_str(rest);
         output
@@ -195,13 +197,19 @@ impl SecretRedactor {
     fn skip_value_separator(s: &str) -> (usize, bool) {
         let bytes = s.as_bytes();
         let mut i = 0;
-        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
-            i += 1;
+        while let Some(&b) = bytes.get(i) {
+            if !b.is_ascii_whitespace() {
+                break;
+            }
+            i = i.saturating_add(1);
         }
-        if i < bytes.len() && (bytes[i] == b'=' || bytes[i] == b':') {
-            i += 1;
-            while i < bytes.len() && bytes[i].is_ascii_whitespace() {
-                i += 1;
+        if bytes.get(i).is_some_and(|&b| b == b'=' || b == b':') {
+            i = i.saturating_add(1);
+            while let Some(&b) = bytes.get(i) {
+                if !b.is_ascii_whitespace() {
+                    break;
+                }
+                i = i.saturating_add(1);
             }
             (i, true)
         } else {
@@ -294,12 +302,12 @@ impl SecurityLimits {
         match value {
             serde_json::Value::Array(arr) => {
                 for v in arr {
-                    self.check_json_depth(v, depth + 1)?;
+                    self.check_json_depth(v, depth.saturating_add(1))?;
                 }
             }
             serde_json::Value::Object(obj) => {
                 for v in obj.values() {
-                    self.check_json_depth(v, depth + 1)?;
+                    self.check_json_depth(v, depth.saturating_add(1))?;
                 }
             }
             _ => {}

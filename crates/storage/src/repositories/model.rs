@@ -254,7 +254,7 @@ impl ModelRepository for PgModelRepository {
             conditions.push("state = $3".to_string());
         }
         if filter.name_prefix.is_some() {
-            conditions.push(format!("name LIKE ${}", conditions.len() + 1));
+            conditions.push(format!("name LIKE ${}", conditions.len().saturating_add(1)));
         }
 
         let where_clause = conditions.join(" AND ");
@@ -282,8 +282,8 @@ impl ModelRepository for PgModelRepository {
              {base}
              ORDER BY updated_at DESC, id
              LIMIT ${} OFFSET ${}",
-            conditions.len() + 1,
-            conditions.len() + 2
+            conditions.len().saturating_add(1),
+            conditions.len().saturating_add(2)
         );
 
         let mut query = sqlx::query_as(&items_sql)

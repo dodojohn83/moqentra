@@ -143,7 +143,7 @@ impl MetricsRegistry {
 
     fn maybe_bump_rejected(&self) {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        inner.rejected += 1;
+        inner.rejected = inner.rejected.saturating_add(1);
     }
 
     /// Increment a counter by `n`.
@@ -167,12 +167,17 @@ impl MetricsRegistry {
         };
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if !inner.counters.contains_key(&key) {
-            let series = inner.counters.len() + inner.gauges.len() + inner.histograms.len();
+            let series = inner
+                .counters
+                .len()
+                .saturating_add(inner.gauges.len())
+                .saturating_add(inner.histograms.len());
             if series >= self.max_series {
                 return Err(MetricError::CardinalityExceeded);
             }
         }
-        *inner.counters.entry(key).or_insert(0) += n;
+        let entry = inner.counters.entry(key).or_insert(0);
+        *entry = entry.saturating_add(n);
         Ok(())
     }
 
@@ -200,7 +205,11 @@ impl MetricsRegistry {
         };
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if !inner.gauges.contains_key(&key) {
-            let series = inner.counters.len() + inner.gauges.len() + inner.histograms.len();
+            let series = inner
+                .counters
+                .len()
+                .saturating_add(inner.gauges.len())
+                .saturating_add(inner.histograms.len());
             if series >= self.max_series {
                 return Err(MetricError::CardinalityExceeded);
             }
@@ -233,7 +242,11 @@ impl MetricsRegistry {
         };
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if !inner.histograms.contains_key(&key) {
-            let series = inner.counters.len() + inner.gauges.len() + inner.histograms.len();
+            let series = inner
+                .counters
+                .len()
+                .saturating_add(inner.gauges.len())
+                .saturating_add(inner.histograms.len());
             if series >= self.max_series {
                 return Err(MetricError::CardinalityExceeded);
             }
@@ -299,10 +312,10 @@ impl Histogram {
 
     fn observe(&mut self, value: f64) {
         self.sum += value;
-        self.count += 1;
+        self.count = self.count.saturating_add(1);
         for (bound, count) in &mut self.buckets {
             if value <= *bound {
-                *count += 1;
+                *count = count.saturating_add(1);
                 break;
             }
         }
@@ -313,7 +326,7 @@ impl Histogram {
         let base = label_string(labels);
         let mut cumulative = 0u64;
         for (bound, count) in &self.buckets {
-            cumulative += *count;
+            cumulative = cumulative.saturating_add(*count);
             let line = if base.is_empty() {
                 format!(
                     "{name}_bucket{{le=\"{}\"}} {cumulative}\n",

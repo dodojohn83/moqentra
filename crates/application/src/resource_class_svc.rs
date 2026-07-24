@@ -158,7 +158,7 @@ impl ResourceClassRepository for InMemoryResourceClassRegistry {
         if expected.as_u64() != current {
             return Err(Error::conflict("resource class revision mismatch"));
         }
-        let next = current + 1;
+        let next = current.checked_add(1).ok_or_else(|| Error::internal("revision overflow"))?;
         revs.insert(id, next);
         reg.insert(id, class.clone());
         Ok(Versioned::new(class, revision_from_u64(next)))

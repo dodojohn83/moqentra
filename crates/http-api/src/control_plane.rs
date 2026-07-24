@@ -475,7 +475,11 @@ pub(crate) fn check_rate_limit(state: &AppState, tenant_id: TenantId) -> Result<
         map.retain(|_, limiter| {
             let retention_secs =
                 i64::try_from(RATE_LIMITER_RETENTION.as_secs()).unwrap_or(i64::MAX);
-            (now.as_offset() - limiter.last_used.as_offset()).whole_seconds() < retention_secs
+            now.as_offset()
+                .unix_timestamp()
+                .saturating_sub(limiter.last_used.as_offset().unix_timestamp())
+                .max(0)
+                < retention_secs
         });
     }
     let limiter = map
@@ -671,8 +675,8 @@ async fn observability_middleware(
 
 fn parse_traceparent(header: &str) -> Option<String> {
     let parts: Vec<&str> = header.split('-').collect();
-    if parts.len() >= 2 && parts[0] == "00" {
-        Some(parts[1].to_string())
+    if parts.len() >= 2 && parts.first() == Some(&"00") {
+        Some(parts.get(1)?.to_string())
     } else {
         None
     }
@@ -938,8 +942,10 @@ async fn list_datasets(
     let total = u64::try_from(items.len()).unwrap_or(0);
     let limit = usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX);
     let offset = (usize::try_from(page.offset).unwrap_or(0)).min(items.len());
-    let end = (offset + limit).min(items.len());
-    let page_items = items[offset..end]
+    let end = offset.saturating_add(limit).min(items.len());
+    let page_items = items
+        .get(offset..end)
+        .unwrap_or(&[])
         .iter()
         .map(|ds| DatasetResponse {
             id: ds.id.to_string(),
@@ -1161,8 +1167,10 @@ async fn list_experiments(
     let total = u64::try_from(items.len()).unwrap_or(0);
     let limit = usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX);
     let offset = (usize::try_from(page.offset).unwrap_or(0)).min(items.len());
-    let end = (offset + limit).min(items.len());
-    let page_items = items[offset..end]
+    let end = offset.saturating_add(limit).min(items.len());
+    let page_items = items
+        .get(offset..end)
+        .unwrap_or(&[])
         .iter()
         .map(|e| ExperimentResponse {
             id: e.id.to_string(),
@@ -1276,8 +1284,10 @@ async fn list_training_jobs(
     let total = u64::try_from(items.len()).unwrap_or(0);
     let limit = usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX);
     let offset = (usize::try_from(page.offset).unwrap_or(0)).min(items.len());
-    let end = (offset + limit).min(items.len());
-    let page_items = items[offset..end]
+    let end = offset.saturating_add(limit).min(items.len());
+    let page_items = items
+        .get(offset..end)
+        .unwrap_or(&[])
         .iter()
         .map(|j| TrainingJobResponse {
             id: j.id.to_string(),
@@ -2202,8 +2212,13 @@ async fn list_models(
     let total = u64::try_from(items.len()).unwrap_or(0);
     let limit = usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX);
     let offset = (usize::try_from(page.offset).unwrap_or(0)).min(items.len());
-    let end = (offset + limit).min(items.len());
-    let page_items = items[offset..end].iter().map(ModelResponse::from_model).collect();
+    let end = offset.saturating_add(limit).min(items.len());
+    let page_items = items
+        .get(offset..end)
+        .unwrap_or(&[])
+        .iter()
+        .map(ModelResponse::from_model)
+        .collect();
     Ok(Json(Page::new(page_items, total, page)))
 }
 
@@ -2449,9 +2464,12 @@ async fn list_outbox(
     });
     let total = u64::try_from(pending.len()).unwrap_or(0);
     let offset = (usize::try_from(page.offset).unwrap_or(0)).min(pending.len());
-    let end =
-        (offset + usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX)).min(pending.len());
-    let items = pending[offset..end]
+    let end = offset
+        .saturating_add(usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX))
+        .min(pending.len());
+    let items = pending
+        .get(offset..end)
+        .unwrap_or(&[])
         .iter()
         .map(|e| {
             serde_json::json!({

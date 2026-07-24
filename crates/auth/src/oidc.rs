@@ -101,7 +101,9 @@ impl JwkSetValidator {
             client,
             cache: Arc::new(RwLock::new(CacheEntry {
                 keys: HashMap::new(),
-                expires_at: Instant::now() - Duration::from_secs(1),
+                expires_at: Instant::now()
+                    .checked_sub(Duration::from_secs(1))
+                    .unwrap_or_else(Instant::now),
             })),
             last_failed: Arc::new(RwLock::new(Instant::now())),
         })
@@ -176,7 +178,9 @@ impl JwkSetValidator {
         }
         *cache = CacheEntry {
             keys,
-            expires_at: now + self.config.cache_ttl,
+            expires_at: now
+                .checked_add(self.config.cache_ttl)
+                .ok_or_else(|| Error::internal("cache expiration overflow"))?,
         };
         Ok(())
     }

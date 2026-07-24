@@ -77,22 +77,35 @@ impl ServiceIdentity {
     /// are done by the TLS layer.
     pub fn parse_spiffe_id(id: &str) -> Result<(String, String, String), moqentra_types::Error> {
         let prefix = "spiffe://";
-        if !id.starts_with(prefix) {
-            return Err(moqentra_types::Error::invalid_argument(
-                "SPIFFE ID must start with spiffe://",
-            ));
-        }
-        let rest = &id[prefix.len()..];
+        let rest = id.strip_prefix(prefix).ok_or_else(|| {
+            moqentra_types::Error::invalid_argument("SPIFFE ID must start with spiffe://")
+        })?;
         let parts: Vec<_> = rest.split('/').collect();
-        if parts.len() < 4 || parts[1] != "ns" || parts[3] != "sa" {
+        if parts.get(1) != Some(&"ns") || parts.get(3) != Some(&"sa") {
             return Err(moqentra_types::Error::invalid_argument(
                 "SPIFFE ID must follow spiffe://<trust>/ns/<namespace>/sa/<service-account>",
             ));
         }
         Ok((
-            parts[0].to_string(),
-            parts[2].to_string(),
-            parts[4].to_string(),
+            parts
+                .first()
+                .copied()
+                .ok_or_else(|| {
+                    moqentra_types::Error::invalid_argument("missing SPIFFE trust domain")
+                })?
+                .to_string(),
+            parts
+                .get(2)
+                .copied()
+                .ok_or_else(|| moqentra_types::Error::invalid_argument("missing SPIFFE namespace"))?
+                .to_string(),
+            parts
+                .get(4)
+                .copied()
+                .ok_or_else(|| {
+                    moqentra_types::Error::invalid_argument("missing SPIFFE service account")
+                })?
+                .to_string(),
         ))
     }
 }

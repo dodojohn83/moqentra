@@ -326,7 +326,7 @@ impl ConversionRepository for PgConversionRepository {
         )
         .bind(target)
         .bind(job.state.to_string())
-        .bind(expected.as_i64()? + 1)
+        .bind(new_revision.as_i64()?)
         .bind(profile)
         .bind(parameters)
         .bind(output_artifacts)
@@ -499,7 +499,7 @@ impl EvaluationRepository for PgEvaluationRepository {
              WHERE id = $9 AND tenant_id = $10 AND revision = $11",
         )
         .bind(state)
-        .bind(expected.as_i64()? + 1)
+        .bind(new_revision.as_i64()?)
         .bind(metrics)
         .bind(&run.hardware_profile)
         .bind(&run.preprocess_version)

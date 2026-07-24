@@ -237,7 +237,7 @@ fn parse_ipv4_like(domain: &str) -> Option<Ipv4Addr> {
     let mut values = [0u32; 4];
     let count = parts.len();
     for (i, part) in parts.iter().enumerate() {
-        let is_last = i + 1 == count;
+        let is_last = i.saturating_add(1) == count;
         let max = match (count, i == 0, is_last) {
             (1, _, _) => u32::MAX,
             (2, false, true) | (3, false, true) => {
@@ -252,7 +252,7 @@ fn parse_ipv4_like(domain: &str) -> Option<Ipv4Addr> {
             _ => 0xff,
         };
         let value = parse_numeric_literal(part, max)?;
-        values[i] = value;
+        *values.get_mut(i)? = value;
     }
 
     let addr = match count {
@@ -267,13 +267,14 @@ fn parse_ipv4_like(domain: &str) -> Option<Ipv4Addr> {
 
 fn parse_numeric_literal(part: &str, max: u32) -> Option<u32> {
     let lower = part.to_lowercase();
-    let (base, num) = if let Some(stripped) = lower.strip_prefix("0x") {
+    let lower_ref = lower.as_str();
+    let (base, num) = if let Some(stripped) = lower_ref.strip_prefix("0x") {
         (16u32, stripped)
-    } else if lower.starts_with('0') && lower.len() > 1 {
+    } else if lower_ref.starts_with('0') && lower_ref.len() > 1 {
         // Treat ambiguous leading-zero forms as octal to avoid bypasses.
-        (8u32, &lower[1..])
+        (8u32, lower_ref.get(1..).unwrap_or(lower_ref))
     } else {
-        (10u32, &lower[..])
+        (10u32, lower_ref)
     };
     let value = u32::from_str_radix(num, base).ok()?;
     if value > max {
@@ -368,7 +369,15 @@ impl TokenBucketLimiter {
     }
 
     fn refill(&mut self, now: UtcTimestamp) {
-        let elapsed = (now.as_offset() - self.last_refill.as_offset()).as_seconds_f64();
+        let elapsed = u64::try_from(
+            now.as_offset()
+                .unix_timestamp()
+                .saturating_sub(self.last_refill.as_offset().unix_timestamp())
+                .max(0),
+        )
+        .map_or(0.0, |secs| {
+            std::time::Duration::from_secs(secs).as_secs_f64()
+        });
         if elapsed <= 0.0 {
             return;
         }
@@ -387,7 +396,7 @@ impl TokenBucketLimiter {
     }
 
     fn remaining(&self) -> u32 {
-        #[allow(clippy::as_conversions)]
+        #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
         {
             self.tokens.floor().max(0.0) as u32
         }

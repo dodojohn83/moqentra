@@ -93,7 +93,7 @@ impl UploadSession {
         let mut parts = BTreeMap::new();
         for n in 1..=expected_parts {
             let size = if n == expected_parts && !total_size.is_multiple_of(part_size) {
-                total_size % part_size
+                total_size.checked_rem(part_size).unwrap_or(0)
             } else {
                 part_size
             };

@@ -96,14 +96,18 @@ impl CocoDataset {
                     "COCO export supports one asset per task",
                 ));
             }
-            let asset_id = task.asset_ids[0];
+            let asset_id = task.asset_ids.first().copied().ok_or_else(|| {
+                moqentra_types::Error::internal("missing asset id after length check")
+            })?;
             let asset = assets
                 .iter()
                 .find(|a| a.id == asset_id)
                 .ok_or_else(|| moqentra_types::Error::not_found("asset for task"))?;
 
             let image_id = next_image_id;
-            next_image_id += 1;
+            next_image_id = next_image_id
+                .checked_add(1)
+                .ok_or_else(|| moqentra_types::Error::internal("image id overflow"))?;
             image_id_by_asset.insert(asset_id, image_id);
             let (width, height) = match parse_media_dimensions(asset) {
                 Some((w, h)) => (w, h),
@@ -127,14 +131,21 @@ impl CocoDataset {
             if task.project_id != project_id {
                 continue;
             }
-            let asset_id = task.asset_ids[0];
-            let image_id = image_id_by_asset[&asset_id];
+            let asset_id = task.asset_ids.first().copied().ok_or_else(|| {
+                moqentra_types::Error::internal("missing asset id after length check")
+            })?;
+            let image_id = image_id_by_asset
+                .get(&asset_id)
+                .copied()
+                .ok_or_else(|| moqentra_types::Error::not_found("image id for asset"))?;
             let task_annotations =
                 annotations_by_task.get(&task.id).map(|v| v.as_slice()).unwrap_or(&[]);
             for a in task_annotations {
                 let mut coco = payload_to_coco(&a.payload, task_type)?;
                 coco.id = next_annotation_id;
-                next_annotation_id += 1;
+                next_annotation_id = next_annotation_id
+                    .checked_add(1)
+                    .ok_or_else(|| moqentra_types::Error::internal("annotation id overflow"))?;
                 coco.image_id = image_id;
                 annotations.push(coco);
             }
@@ -171,7 +182,8 @@ impl CocoDataset {
             asset_by_name.insert(a.name.clone(), a);
             let id = u64::try_from(idx)
                 .map_err(|_| moqentra_types::Error::internal("asset index overflow"))?
-                + 1;
+                .checked_add(1)
+                .ok_or_else(|| moqentra_types::Error::internal("asset index overflow"))?;
             asset_by_id.insert(id, a);
         }
 

@@ -247,11 +247,11 @@ impl AuditExporter {
             let size = serde_json::to_string(&value)
                 .map_err(|e| moqentra_types::Error::internal(format!("export json: {e}")))?
                 .len();
-            if total + size > self.max_bytes && !output.is_empty() {
+            if total.saturating_add(size) > self.max_bytes && !output.is_empty() {
                 truncated = true;
                 break;
             }
-            total += size;
+            total = total.saturating_add(size);
             output.push(value);
         }
 

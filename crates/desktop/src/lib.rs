@@ -94,10 +94,13 @@ impl IpcAllowlist {
         if pat.is_empty() {
             return path.is_empty();
         }
-        if pat[0] == "**" {
+        let Some(pat_first) = pat.first() else {
+            return path.is_empty();
+        };
+        if pat_first == &"**" {
             // ** may match zero or more path components.
             for i in 0..=path.len() {
-                if Self::match_glob(&path[i..], &pat[1..]) {
+                if Self::match_glob(path.get(i..).unwrap_or(&[]), pat.get(1..).unwrap_or(&[])) {
                     return true;
                 }
             }
@@ -106,8 +109,11 @@ impl IpcAllowlist {
         if path.is_empty() {
             return false;
         }
-        if pat[0] == "*" || pat[0] == path[0] {
-            return Self::match_glob(&path[1..], &pat[1..]);
+        let Some(path_first) = path.first() else {
+            return false;
+        };
+        if pat_first == &"*" || pat_first == path_first {
+            return Self::match_glob(path.get(1..).unwrap_or(&[]), pat.get(1..).unwrap_or(&[]));
         }
         false
     }
@@ -178,10 +184,13 @@ impl FileUpload {
         for i in 0..chunk_count {
             let i_u64 = u64::try_from(i)
                 .map_err(|_| moqentra_types::Error::internal("chunk index overflow"))?;
+            let offset = i_u64
+                .checked_mul(chunk_size)
+                .ok_or_else(|| moqentra_types::Error::internal("chunk offset overflow"))?;
             chunks.push(FileChunk {
                 chunk_index: i_u64,
-                offset: i_u64 * chunk_size,
-                size: chunk_size.min(total_size - i_u64 * chunk_size),
+                offset,
+                size: chunk_size.min(total_size.saturating_sub(offset)),
                 sha256: String::new(),
                 etag: None,
             });
