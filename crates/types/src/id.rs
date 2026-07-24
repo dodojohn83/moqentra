@@ -78,6 +78,11 @@ macro_rules! define_id {
                 Self(uuid)
             }
 
+            /// Returns a nil identifier for use as an internal sentinel.
+            pub const fn nil() -> Self {
+                Self(Uuid::nil())
+            }
+
             /// Returns the underlying UUID.
             pub const fn as_uuid(&self) -> Uuid {
                 self.0

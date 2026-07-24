@@ -256,11 +256,9 @@ impl DatasetVersion {
         let mut rng = seed;
         for i in (1..names.len()).rev() {
             rng = splitmix64(rng);
-            let range =
-                u64::try_from(i + 1).unwrap_or_else(|_| unreachable!("shuffle range fits in u64"));
-            let j_u64 = rng % range;
-            let j = usize::try_from(j_u64)
-                .unwrap_or_else(|_| unreachable!("shuffle index fits in usize"));
+            let range = u64::try_from(i + 1).unwrap_or(0);
+            let j_u64 = rng % range.max(1);
+            let j = usize::try_from(j_u64).unwrap_or(0);
             names.swap(i, j);
         }
 

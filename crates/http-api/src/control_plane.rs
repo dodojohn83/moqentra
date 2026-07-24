@@ -478,10 +478,9 @@ pub(crate) fn check_rate_limit(state: &AppState, tenant_id: TenantId) -> Result<
             (now.as_offset() - limiter.last_used.as_offset()).whole_seconds() < retention_secs
         });
     }
-    let limiter = map.entry(tenant_id).or_insert_with(|| {
-        TokenBucketLimiter::new(tenant_id, 100, 50.0, now)
-            .unwrap_or_else(|_| unreachable!("static rate limit config is valid"))
-    });
+    let limiter = map
+        .entry(tenant_id)
+        .or_insert_with(|| TokenBucketLimiter::new_unchecked(tenant_id, 100, 50.0, now));
     let window = limiter.try_acquire(now, 1)?;
     if window.limited {
         return Err(Error::rate_limited("tenant request rate exceeded"));
@@ -936,8 +935,7 @@ async fn list_datasets(
         b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
     });
 
-    let total =
-        u64::try_from(items.len()).unwrap_or_else(|_| unreachable!("item count fits in u64"));
+    let total = u64::try_from(items.len()).unwrap_or(0);
     let limit = usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX);
     let offset = (usize::try_from(page.offset).unwrap_or(0)).min(items.len());
     let end = (offset + limit).min(items.len());
@@ -1160,8 +1158,7 @@ async fn list_experiments(
     items.sort_by(|a, b| {
         b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
     });
-    let total =
-        u64::try_from(items.len()).unwrap_or_else(|_| unreachable!("item count fits in u64"));
+    let total = u64::try_from(items.len()).unwrap_or(0);
     let limit = usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX);
     let offset = (usize::try_from(page.offset).unwrap_or(0)).min(items.len());
     let end = (offset + limit).min(items.len());
@@ -1276,8 +1273,7 @@ async fn list_training_jobs(
     items.sort_by(|a, b| {
         b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
     });
-    let total =
-        u64::try_from(items.len()).unwrap_or_else(|_| unreachable!("item count fits in u64"));
+    let total = u64::try_from(items.len()).unwrap_or(0);
     let limit = usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX);
     let offset = (usize::try_from(page.offset).unwrap_or(0)).min(items.len());
     let end = (offset + limit).min(items.len());
@@ -2203,8 +2199,7 @@ async fn list_models(
     items.sort_by(|a, b| {
         b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
     });
-    let total =
-        u64::try_from(items.len()).unwrap_or_else(|_| unreachable!("item count fits in u64"));
+    let total = u64::try_from(items.len()).unwrap_or(0);
     let limit = usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX);
     let offset = (usize::try_from(page.offset).unwrap_or(0)).min(items.len());
     let end = (offset + limit).min(items.len());
@@ -2452,8 +2447,7 @@ async fn list_outbox(
     pending.sort_by(|a, b| {
         b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
     });
-    let total =
-        u64::try_from(pending.len()).unwrap_or_else(|_| unreachable!("item count fits in u64"));
+    let total = u64::try_from(pending.len()).unwrap_or(0);
     let offset = (usize::try_from(page.offset).unwrap_or(0)).min(pending.len());
     let end =
         (offset + usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX)).min(pending.len());

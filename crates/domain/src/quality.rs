@@ -655,8 +655,7 @@ fn sample_review_violations(
     if asset_ids.is_empty() {
         return Vec::new();
     }
-    let total =
-        u64::try_from(asset_ids.len()).unwrap_or_else(|_| unreachable!("asset count fits in u64"));
+    let total = u64::try_from(asset_ids.len()).unwrap_or(0);
     let mut sample_count = total.saturating_mul(ratio_permille) / 1000;
     if sample_count == 0 {
         sample_count = 1;

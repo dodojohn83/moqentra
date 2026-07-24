@@ -348,6 +348,25 @@ impl TokenBucketLimiter {
         })
     }
 
+    /// Creates a limiter without validating invariants.
+    ///
+    /// Only used for static, compiler-checked rate-limiter configuration.
+    pub(crate) fn new_unchecked(
+        tenant_id: moqentra_types::TenantId,
+        capacity: u32,
+        refill_per_sec: f64,
+        now: UtcTimestamp,
+    ) -> Self {
+        Self {
+            tenant_id,
+            capacity,
+            tokens: f64::from(capacity),
+            refill_per_sec,
+            last_refill: now,
+            last_used: now,
+        }
+    }
+
     fn refill(&mut self, now: UtcTimestamp) {
         let elapsed = (now.as_offset() - self.last_refill.as_offset()).as_seconds_f64();
         if elapsed <= 0.0 {

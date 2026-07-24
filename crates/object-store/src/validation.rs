@@ -6,6 +6,7 @@
 use image::GenericImageView;
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
+use std::time::Duration;
 
 /// Validation result returned for a media object.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -26,6 +27,7 @@ pub enum MediaValidationFailure {
     DecodeFailed,
     MetadataMissing,
     IoError(String),
+    Timeout,
 }
 
 impl std::fmt::Display for MediaValidationFailure {
@@ -37,6 +39,7 @@ impl std::fmt::Display for MediaValidationFailure {
             Self::DecodeFailed => write!(f, "media decode failed"),
             Self::MetadataMissing => write!(f, "metadata extraction failed"),
             Self::IoError(s) => write!(f, "io error: {s}"),
+            Self::Timeout => write!(f, "media validation timed out"),
         }
     }
 }
@@ -151,6 +154,8 @@ fn format_to_media_type(format: image::ImageFormat) -> String {
     }
 }
 
+const FFPROBE_TIMEOUT: Duration = Duration::from_secs(30);
+
 async fn validate_video(bytes: &[u8], declared: &str) -> Result<MediaInfo, MediaValidationFailure> {
     let mut child = tokio::process::Command::new("ffprobe")
         .args([
@@ -162,6 +167,7 @@ async fn validate_video(bytes: &[u8], declared: &str) -> Result<MediaInfo, Media
             "json",
             "-",
         ])
+        .kill_on_drop(true)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -176,9 +182,9 @@ async fn validate_video(bytes: &[u8], declared: &str) -> Result<MediaInfo, Media
             .map_err(|e| MediaValidationFailure::IoError(e.to_string()))?;
     }
 
-    let output = child
-        .wait_with_output()
+    let output = tokio::time::timeout(FFPROBE_TIMEOUT, child.wait_with_output())
         .await
+        .map_err(|_| MediaValidationFailure::Timeout)?
         .map_err(|e| MediaValidationFailure::IoError(e.to_string()))?;
     if !output.status.success() {
         return Err(MediaValidationFailure::DecodeFailed);
