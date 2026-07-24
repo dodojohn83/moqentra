@@ -180,7 +180,7 @@ impl PgScheduler {
             return Err("distributed world_size must be greater than zero".into());
         }
 
-        let mut ranks = Vec::with_capacity(world_size as usize);
+        let mut ranks = Vec::with_capacity(usize::try_from(world_size).unwrap_or(0));
         for _ in 0..world_size {
             ranks.push(Rank {
                 id: RankId::new_v7(&gen),
@@ -263,6 +263,8 @@ impl PgScheduler {
                 accelerators,
                 taints: BTreeSet::new(),
                 labels: BTreeMap::new(),
+                healthy: true,
+                observed_at: moqentra_types::UtcTimestamp::now(),
             },
         );
         ClusterTopology { nodes }

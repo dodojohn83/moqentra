@@ -169,7 +169,10 @@ impl CocoDataset {
         let mut asset_by_id: BTreeMap<u64, &AssetRef> = BTreeMap::new();
         for (idx, a) in assets.iter().enumerate() {
             asset_by_name.insert(a.name.clone(), a);
-            asset_by_id.insert((idx as u64) + 1, a);
+            let id = u64::try_from(idx)
+                .map_err(|_| moqentra_types::Error::internal("asset index overflow"))?
+                + 1;
+            asset_by_id.insert(id, a);
         }
 
         let mut image_to_asset: BTreeMap<u64, &AssetRef> = BTreeMap::new();

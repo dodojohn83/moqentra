@@ -60,7 +60,7 @@ pub use quality::{
     QualityReport, QualityRule, QualityRun, QualityRunState, QualityViolation, ReviewDecision,
     ReviewItem, Severity,
 };
-pub use queue::{PriorityClass, QueueDecision, QueuePolicy};
+pub use queue::{PriorityClass, QueueAdmissionPolicy, QueueDecision, QueuePolicy};
 pub use quota::{
     DimensionLimit, QuotaPolicy, QuotaReservation, QuotaScope, ReservationState, ResourceDimension,
     UsageLedgerEntry, UsageRollup,
