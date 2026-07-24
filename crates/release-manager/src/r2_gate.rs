@@ -97,9 +97,9 @@ impl R2EvidenceBundle {
             }
         }
         for (name, digest) in &self.artifact_digests {
-            if !digest.starts_with("sha256:") || digest.len() < 8 {
+            if !moqentra_types::valid_content_digest(digest) {
                 return Err(moqentra_types::Error::invalid_argument(format!(
-                    "r2 artifact {name} digest must be a sha256 reference"
+                    "r2 artifact {name} digest must be a valid content digest"
                 )));
             }
         }

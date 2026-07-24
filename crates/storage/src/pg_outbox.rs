@@ -38,7 +38,8 @@ impl TryFrom<OutboxRow> for OutboxEvent {
             event_type: row.event_type,
             payload: row.payload,
             status: parse_status(&row.status)?,
-            retry_count: row.retry_count as u32,
+            retry_count: u32::try_from(row.retry_count)
+                .map_err(|_| Error::internal("negative retry_count in database"))?,
             failure_reason: row.failure_reason,
             created_at: UtcTimestamp::new(row.created_at),
         })

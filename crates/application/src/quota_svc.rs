@@ -71,14 +71,30 @@ impl<R: QuotaRepository> QuotaService<R> {
         if requested == 0 {
             return Err(Error::invalid_argument("requested quota must be > 0"));
         }
+        if ctx.tenant_id != tenant_id {
+            return Err(Error::permission_denied(
+                "tenant mismatch in quota admission",
+            ));
+        }
+        if ctx.project_id.is_some_and(|p| p != project_id) {
+            return Err(Error::permission_denied(
+                "project mismatch in quota admission",
+            ));
+        }
 
         let policy = self.repo.get_policy(ctx, policy_id).await?;
         let active = self.repo.active_reservations(ctx, dimension).await?;
 
         let effective = self.effective_limit(&policy.entity, tenant_id, project_id, dimension)?;
+        let now = UtcTimestamp::now();
         let used: u64 = active
             .iter()
-            .filter(|r| matches!(r.state, ReservationState::Active))
+            .filter(|r| {
+                r.tenant_id == tenant_id
+                    && (policy.entity.project_id.is_none() || r.project_id == project_id)
+                    && r.expires_at >= now
+                    && matches!(r.state, ReservationState::Active)
+            })
             .map(|r| r.requested)
             .fold(0u64, |a, b| a.saturating_add(b));
 
@@ -243,7 +259,7 @@ impl QuotaRepository for InMemoryQuotaRegistry {
 
     async fn active_reservations(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         dimension: ResourceDimension,
     ) -> Result<Vec<QuotaReservation>, Error> {
         let reg = self.reservations.lock().map_err(|e| Error::internal(e.to_string()))?;
@@ -251,7 +267,8 @@ impl QuotaRepository for InMemoryQuotaRegistry {
         Ok(reg
             .values()
             .filter(|r| {
-                r.resource_dimension == dimension
+                r.tenant_id == ctx.tenant_id
+                    && r.resource_dimension == dimension
                     && matches!(r.state, ReservationState::Active)
                     && r.expires_at >= now
             })

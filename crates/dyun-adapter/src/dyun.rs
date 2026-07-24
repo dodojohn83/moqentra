@@ -224,9 +224,8 @@ impl Replica {
         }
         if matches!(self.state, ReplicaState::Running | ReplicaState::Starting) {
             if let Some(last) = self.last_heartbeat {
-                if now.unix_millis().saturating_sub(last.unix_millis())
-                    > heartbeat_timeout.as_millis() as i64
-                {
+                let timeout_ms = heartbeat_timeout.as_millis().min(i64::MAX as u128) as i64;
+                if now.unix_millis().saturating_sub(last.unix_millis()) > timeout_ms {
                     self.state = ReplicaState::Failed;
                     self.errors.push("heartbeat timed out".to_string());
                     self.updated_at = now;

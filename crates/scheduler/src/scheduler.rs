@@ -442,7 +442,7 @@ pub fn pick_tenant_drf<T: Ord + Clone>(
     }
     let mut best: Option<(u64, T)> = None;
     for t in tenants {
-        let usage = tenant_usage.get(t)?;
+        let usage = tenant_usage.get(t).cloned().unwrap_or_else(|| vec![0u64; capacity.len()]);
         if usage.len() != capacity.len() {
             continue;
         }
