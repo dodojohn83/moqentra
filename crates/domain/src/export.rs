@@ -114,7 +114,12 @@ pub fn annotations_to_coco(
                     "bbox must contain exactly 4 values",
                 ));
             }
-            let (x, y, w, h) = (bbox[0], bbox[1], bbox[2], bbox[3]);
+            let [x, y, w, h] = bbox.as_slice() else {
+                return Err(moqentra_types::Error::invalid_argument(
+                    "bbox must contain exactly 4 values",
+                ));
+            };
+            let (x, y, w, h) = (*x, *y, *w, *h);
             if !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
                 return Err(moqentra_types::Error::invalid_argument(
                     "bbox coordinates must be finite",
@@ -197,10 +202,10 @@ pub fn annotation_to_yolo_line(
     if bbox.len() < 4 || image_width == 0.0 || image_height == 0.0 {
         return None;
     }
-    let x = bbox[0];
-    let y = bbox[1];
-    let w = bbox[2];
-    let h = bbox[3];
+    let x = *bbox.first()?;
+    let y = *bbox.get(1)?;
+    let w = *bbox.get(2)?;
+    let h = *bbox.get(3)?;
     if !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
         return None;
     }
@@ -290,7 +295,12 @@ pub fn annotations_to_voc(
         let bbox = nums.ok_or_else(|| {
             moqentra_types::Error::invalid_argument("bbox coordinates must be numeric")
         })?;
-        let (x, y, w, h) = (bbox[0], bbox[1], bbox[2], bbox[3]);
+        let [x, y, w, h] = bbox.as_slice() else {
+            return Err(moqentra_types::Error::invalid_argument(
+                "bbox must contain exactly 4 values",
+            ));
+        };
+        let (x, y, w, h) = (*x, *y, *w, *h);
         if ![x, y, w, h].into_iter().all(f64::is_finite) {
             return Err(moqentra_types::Error::invalid_argument(
                 "bbox coordinates must be finite",

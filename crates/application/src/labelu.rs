@@ -107,8 +107,11 @@ impl LabelUDataset {
             if task.project_id != project_id || task.asset_ids.len() != 1 {
                 continue;
             }
+            let asset_id = task.asset_ids.first().copied().ok_or_else(|| {
+                moqentra_types::Error::internal("missing asset id after length check")
+            })?;
             let asset = asset_by_id
-                .get(&task.asset_ids[0])
+                .get(&asset_id)
                 .ok_or_else(|| moqentra_types::Error::not_found("asset for task"))?;
             let annotations =
                 annotations_by_task.get(&task.id).map(|v| v.as_slice()).unwrap_or(&[]);
@@ -198,9 +201,8 @@ fn annotation_to_labelu(
         TaskType::BoundingBox => {
             if let Some(bbox) = a.payload.get("bbox").and_then(|v| v.as_array()) {
                 let nums: Vec<f64> = bbox.iter().filter_map(|v| v.as_f64()).collect();
-                if nums.len() == 4 {
-                    let [x, y, w, h] = [nums[0], nums[1], nums[2], nums[3]];
-                    points = Some(vec![x, y, x + w, y + h]);
+                if let [x, y, w, h] = nums.as_slice() {
+                    points = Some(vec![*x, *y, *x + *w, *y + *h]);
                 } else {
                     extra.insert("bbox".to_string(), serde_json::json!(nums));
                 }
@@ -248,11 +250,10 @@ fn labelu_to_payload(
     match task_type {
         TaskType::BoundingBox => {
             if let Some(points) = &l.points {
-                if points.len() >= 4 {
-                    let [x1, y1, x2, y2] = [points[0], points[1], points[2], points[3]];
+                if let [x1, y1, x2, y2, ..] = points.as_slice() {
                     payload.insert(
                         "bbox".to_string(),
-                        serde_json::json!(vec![x1, y1, x2 - x1, y2 - y1]),
+                        serde_json::json!(vec![*x1, *y1, *x2 - *x1, *y2 - *y1]),
                     );
                 } else {
                     payload.insert("bbox".to_string(), serde_json::json!(points));

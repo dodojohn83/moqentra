@@ -113,7 +113,8 @@ fn scan_malware_signatures(bytes: &[u8]) -> Result<(), MediaValidationFailure> {
         }
     }
     // Reject HTML/JS payloads disguised as media by looking for JS event handlers.
-    let prefix = std::str::from_utf8(&bytes[..bytes.len().min(512)]).unwrap_or("");
+    let prefix =
+        std::str::from_utf8(bytes.get(..bytes.len().min(512)).unwrap_or(&[])).unwrap_or("");
     let prefix_lower = prefix.to_lowercase();
     if prefix_lower.contains("javascript:") || prefix_lower.contains("<script") {
         return Err(MediaValidationFailure::MalwareDetected);

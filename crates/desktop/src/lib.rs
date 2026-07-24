@@ -94,10 +94,13 @@ impl IpcAllowlist {
         if pat.is_empty() {
             return path.is_empty();
         }
-        if pat[0] == "**" {
+        let Some(pat_first) = pat.first() else {
+            return path.is_empty();
+        };
+        if pat_first == &"**" {
             // ** may match zero or more path components.
             for i in 0..=path.len() {
-                if Self::match_glob(&path[i..], &pat[1..]) {
+                if Self::match_glob(path.get(i..).unwrap_or(&[]), pat.get(1..).unwrap_or(&[])) {
                     return true;
                 }
             }
@@ -106,8 +109,11 @@ impl IpcAllowlist {
         if path.is_empty() {
             return false;
         }
-        if pat[0] == "*" || pat[0] == path[0] {
-            return Self::match_glob(&path[1..], &pat[1..]);
+        let Some(path_first) = path.first() else {
+            return false;
+        };
+        if pat_first == &"*" || pat_first == path_first {
+            return Self::match_glob(path.get(1..).unwrap_or(&[]), pat.get(1..).unwrap_or(&[]));
         }
         false
     }

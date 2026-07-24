@@ -675,8 +675,8 @@ async fn observability_middleware(
 
 fn parse_traceparent(header: &str) -> Option<String> {
     let parts: Vec<&str> = header.split('-').collect();
-    if parts.len() >= 2 && parts[0] == "00" {
-        Some(parts[1].to_string())
+    if parts.len() >= 2 && parts.first() == Some(&"00") {
+        Some(parts.get(1)?.to_string())
     } else {
         None
     }
@@ -943,7 +943,9 @@ async fn list_datasets(
     let limit = usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX);
     let offset = (usize::try_from(page.offset).unwrap_or(0)).min(items.len());
     let end = offset.saturating_add(limit).min(items.len());
-    let page_items = items[offset..end]
+    let page_items = items
+        .get(offset..end)
+        .unwrap_or(&[])
         .iter()
         .map(|ds| DatasetResponse {
             id: ds.id.to_string(),
@@ -1166,7 +1168,9 @@ async fn list_experiments(
     let limit = usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX);
     let offset = (usize::try_from(page.offset).unwrap_or(0)).min(items.len());
     let end = offset.saturating_add(limit).min(items.len());
-    let page_items = items[offset..end]
+    let page_items = items
+        .get(offset..end)
+        .unwrap_or(&[])
         .iter()
         .map(|e| ExperimentResponse {
             id: e.id.to_string(),
@@ -1281,7 +1285,9 @@ async fn list_training_jobs(
     let limit = usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX);
     let offset = (usize::try_from(page.offset).unwrap_or(0)).min(items.len());
     let end = offset.saturating_add(limit).min(items.len());
-    let page_items = items[offset..end]
+    let page_items = items
+        .get(offset..end)
+        .unwrap_or(&[])
         .iter()
         .map(|j| TrainingJobResponse {
             id: j.id.to_string(),
@@ -2207,7 +2213,12 @@ async fn list_models(
     let limit = usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX);
     let offset = (usize::try_from(page.offset).unwrap_or(0)).min(items.len());
     let end = offset.saturating_add(limit).min(items.len());
-    let page_items = items[offset..end].iter().map(ModelResponse::from_model).collect();
+    let page_items = items
+        .get(offset..end)
+        .unwrap_or(&[])
+        .iter()
+        .map(ModelResponse::from_model)
+        .collect();
     Ok(Json(Page::new(page_items, total, page)))
 }
 
@@ -2456,7 +2467,9 @@ async fn list_outbox(
     let end = offset
         .saturating_add(usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX))
         .min(pending.len());
-    let items = pending[offset..end]
+    let items = pending
+        .get(offset..end)
+        .unwrap_or(&[])
         .iter()
         .map(|e| {
             serde_json::json!({

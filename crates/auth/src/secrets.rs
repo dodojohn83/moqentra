@@ -129,10 +129,11 @@ impl SecretRedactor {
             // The match is only a secret key if the character before it (if any)
             // is not an ASCII alphanumeric character and the match is followed by
             // an '=' or ':' separator (with optional whitespace).
-            let before_ok = pos == 0 || {
-                let b = rest.as_bytes()[pos.saturating_sub(1)];
-                !b.is_ascii_alphanumeric()
-            };
+            let before_ok = pos == 0
+                || rest
+                    .as_bytes()
+                    .get(pos.saturating_sub(1))
+                    .is_some_and(|b| !b.is_ascii_alphanumeric());
             let (sep_len, has_sep) = Self::skip_value_separator(&rest[match_end..]);
             if !before_ok || !has_sep {
                 // Not a key/value pair; copy the matched text and continue.
@@ -195,12 +196,18 @@ impl SecretRedactor {
     fn skip_value_separator(s: &str) -> (usize, bool) {
         let bytes = s.as_bytes();
         let mut i = 0;
-        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        while let Some(&b) = bytes.get(i) {
+            if !b.is_ascii_whitespace() {
+                break;
+            }
             i = i.saturating_add(1);
         }
-        if i < bytes.len() && (bytes[i] == b'=' || bytes[i] == b':') {
+        if bytes.get(i).is_some_and(|&b| b == b'=' || b == b':') {
             i = i.saturating_add(1);
-            while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            while let Some(&b) = bytes.get(i) {
+                if !b.is_ascii_whitespace() {
+                    break;
+                }
                 i = i.saturating_add(1);
             }
             (i, true)

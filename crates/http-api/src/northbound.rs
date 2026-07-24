@@ -252,7 +252,7 @@ fn parse_ipv4_like(domain: &str) -> Option<Ipv4Addr> {
             _ => 0xff,
         };
         let value = parse_numeric_literal(part, max)?;
-        values[i] = value;
+        *values.get_mut(i)? = value;
     }
 
     let addr = match count {

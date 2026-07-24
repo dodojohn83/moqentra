@@ -96,7 +96,9 @@ impl CocoDataset {
                     "COCO export supports one asset per task",
                 ));
             }
-            let asset_id = task.asset_ids[0];
+            let asset_id = task.asset_ids.first().copied().ok_or_else(|| {
+                moqentra_types::Error::internal("missing asset id after length check")
+            })?;
             let asset = assets
                 .iter()
                 .find(|a| a.id == asset_id)
@@ -129,8 +131,13 @@ impl CocoDataset {
             if task.project_id != project_id {
                 continue;
             }
-            let asset_id = task.asset_ids[0];
-            let image_id = image_id_by_asset[&asset_id];
+            let asset_id = task.asset_ids.first().copied().ok_or_else(|| {
+                moqentra_types::Error::internal("missing asset id after length check")
+            })?;
+            let image_id = image_id_by_asset
+                .get(&asset_id)
+                .copied()
+                .ok_or_else(|| moqentra_types::Error::not_found("image id for asset"))?;
             let task_annotations =
                 annotations_by_task.get(&task.id).map(|v| v.as_slice()).unwrap_or(&[]);
             for a in task_annotations {

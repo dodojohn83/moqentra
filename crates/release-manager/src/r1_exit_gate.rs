@@ -58,11 +58,18 @@ fn parse_expiry(s: &str) -> Result<OffsetDateTime, moqentra_types::Error> {
     }
     let parts: Vec<&str> = s.split('-').collect();
     if parts.len() == 3 {
-        if let (Ok(year), Ok(month), Ok(day)) = (
-            parts[0].parse::<i32>(),
-            parts[1].parse::<u8>(),
-            parts[2].parse::<u8>(),
-        ) {
+        let Some(year) = parts.first().copied() else {
+            return Err(moqentra_types::Error::internal("missing year"));
+        };
+        let Some(month) = parts.get(1).copied() else {
+            return Err(moqentra_types::Error::internal("missing month"));
+        };
+        let Some(day) = parts.get(2).copied() else {
+            return Err(moqentra_types::Error::internal("missing day"));
+        };
+        if let (Ok(year), Ok(month), Ok(day)) =
+            (year.parse::<i32>(), month.parse::<u8>(), day.parse::<u8>())
+        {
             if let Ok(month) = Month::try_from(month) {
                 if let Ok(date) = Date::from_calendar_date(year, month, day) {
                     let end = PrimitiveDateTime::new(date, Time::MIDNIGHT)

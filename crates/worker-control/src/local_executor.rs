@@ -465,9 +465,9 @@ impl LocalExecutor {
             if parts.len() != 3 {
                 continue;
             }
-            let container_id = parts[0].trim();
-            let attempt_id = parts[1].trim();
-            let deadline_str = parts[2].trim();
+            let container_id = parts.first().copied().unwrap_or("").trim();
+            let attempt_id = parts.get(1).copied().unwrap_or("").trim();
+            let deadline_str = parts.get(2).copied().unwrap_or("").trim();
             if container_id.is_empty() {
                 continue;
             }

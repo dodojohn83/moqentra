@@ -351,7 +351,7 @@ impl HpoRun {
             return false;
         }
         let best = completed.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-        let recent = &completed[completed.len().saturating_sub(3)..];
+        let recent = completed.get(completed.len().saturating_sub(3)..).unwrap_or(&[]);
         recent.iter().all(|m| *m < best * 0.95)
     }
 }

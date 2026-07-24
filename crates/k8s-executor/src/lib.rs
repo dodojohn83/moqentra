@@ -644,11 +644,13 @@ impl TenantSecurityProfile {
             "podSelector": { "matchLabels": { "app": "moqentra" } },
             "policyTypes": ["Ingress", "Egress"]
         });
-        if !self.network_ingress {
-            spec["ingress"] = json!([]);
-        }
-        if !self.network_egress {
-            spec["egress"] = json!([]);
+        if let Some(obj) = spec.as_object_mut() {
+            if !self.network_ingress {
+                obj.insert("ingress".to_string(), json!([]));
+            }
+            if !self.network_egress {
+                obj.insert("egress".to_string(), json!([]));
+            }
         }
         json!({
             "apiVersion": "networking.k8s.io/v1",

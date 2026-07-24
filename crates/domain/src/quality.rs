@@ -367,10 +367,10 @@ fn parse_bbox(payload: &Value) -> Option<[f64; 4]> {
     if bbox.len() < 4 {
         return None;
     }
-    let x = bbox[0].as_f64()?;
-    let y = bbox[1].as_f64()?;
-    let w = bbox[2].as_f64()?;
-    let h = bbox[3].as_f64()?;
+    let x = bbox.first()?.as_f64()?;
+    let y = bbox.get(1)?.as_f64()?;
+    let w = bbox.get(2)?.as_f64()?;
+    let h = bbox.get(3)?.as_f64()?;
     if ![x, y, w, h].into_iter().all(f64::is_finite) {
         return None;
     }
@@ -471,15 +471,15 @@ fn parse_polygon_points(value: &Value) -> Option<Vec<(f64, f64)>> {
     if arr.is_empty() {
         return Some(Vec::new());
     }
-    if arr[0].as_array().is_some() || arr[0].as_object().is_some() {
+    if arr.first().is_some_and(|v| v.as_array().is_some() || v.as_object().is_some()) {
         let mut points = Vec::with_capacity(arr.len());
         for p in arr {
             if let Some(pair) = p.as_array() {
                 if pair.len() < 2 {
                     return None;
                 }
-                let x = pair[0].as_f64()?;
-                let y = pair[1].as_f64()?;
+                let x = pair.first()?.as_f64()?;
+                let y = pair.get(1)?.as_f64()?;
                 if !x.is_finite() || !y.is_finite() {
                     return None;
                 }
@@ -502,8 +502,8 @@ fn parse_polygon_points(value: &Value) -> Option<Vec<(f64, f64)>> {
     }
     let mut points = Vec::with_capacity(arr.len() / 2);
     for chunk in arr.chunks_exact(2) {
-        let x = chunk[0].as_f64()?;
-        let y = chunk[1].as_f64()?;
+        let x = chunk.first()?.as_f64()?;
+        let y = chunk.get(1)?.as_f64()?;
         if !x.is_finite() || !y.is_finite() {
             return None;
         }
@@ -558,8 +558,13 @@ fn polygon_self_intersects(points: &[(f64, f64)]) -> bool {
         return false;
     }
     for i in 0..n {
-        let a1 = points[i];
-        let a2 = points[(i.saturating_add(1)).checked_rem_euclid(n).unwrap_or(0)];
+        let Some(a1) = points.get(i).copied() else {
+            continue;
+        };
+        let a2_idx = (i.saturating_add(1)).checked_rem_euclid(n).unwrap_or(0);
+        let Some(a2) = points.get(a2_idx).copied() else {
+            continue;
+        };
         for j in (i.saturating_add(1))..n {
             // Skip adjacent edges (including first/last which share a vertex).
             if j == i
@@ -568,8 +573,13 @@ fn polygon_self_intersects(points: &[(f64, f64)]) -> bool {
             {
                 continue;
             }
-            let b1 = points[j];
-            let b2 = points[(j.saturating_add(1)).checked_rem_euclid(n).unwrap_or(0)];
+            let Some(b1) = points.get(j).copied() else {
+                continue;
+            };
+            let b2_idx = (j.saturating_add(1)).checked_rem_euclid(n).unwrap_or(0);
+            let Some(b2) = points.get(b2_idx).copied() else {
+                continue;
+            };
             if segments_intersect(a1, a2, b1, b2) {
                 return true;
             }
@@ -618,13 +628,19 @@ fn detect_duplicate_objects(
     let mut dup_pairs = 0u64;
     let mut evidence_pairs = Vec::new();
     for i in 0..boxes.len() {
+        let Some((a_idx, a_box)) = boxes.get(i).copied() else {
+            continue;
+        };
         for j in (i.saturating_add(1))..boxes.len() {
-            let iou = bbox_iou(boxes[i].1, boxes[j].1);
+            let Some((b_idx, b_box)) = boxes.get(j).copied() else {
+                continue;
+            };
+            let iou = bbox_iou(a_box, b_box);
             if iou >= IOU_DUP {
                 dup_pairs = dup_pairs.saturating_add(1);
                 evidence_pairs.push(serde_json::json!({
-                    "a": anns[boxes[i].0].id.to_string(),
-                    "b": anns[boxes[j].0].id.to_string(),
+                    "a": anns.get(a_idx).map(|a| a.id.to_string()).unwrap_or_default(),
+                    "b": anns.get(b_idx).map(|a| a.id.to_string()).unwrap_or_default(),
                     "iou": iou,
                 }));
             }

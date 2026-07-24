@@ -48,11 +48,14 @@ fn is_secret_key(key: &str) -> bool {
     let lower = key.to_lowercase();
     SECRET_KEYS.iter().any(|pat| {
         lower.match_indices(pat).any(|(pos, _)| {
-            let before_ok =
-                pos == 0 || !lower.as_bytes()[pos.saturating_sub(1)].is_ascii_alphanumeric();
+            let before_ok = pos == 0
+                || lower
+                    .as_bytes()
+                    .get(pos.saturating_sub(1))
+                    .is_some_and(|b| !b.is_ascii_alphanumeric());
             let after_pos = pos.saturating_add(pat.len());
-            let after_ok =
-                after_pos >= lower.len() || !lower.as_bytes()[after_pos].is_ascii_alphanumeric();
+            let after_ok = after_pos >= lower.len()
+                || lower.as_bytes().get(after_pos).is_some_and(|b| !b.is_ascii_alphanumeric());
             before_ok && after_ok
         })
     })
