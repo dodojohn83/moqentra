@@ -94,6 +94,75 @@ impl ResourceClass {
                 SupportTier::Mock | SupportTier::CompileOnly
             )
     }
+
+    /// Kubernetes device plugin resource name for this class.
+    pub fn device_resource_name(&self) -> String {
+        match (self.vendor.as_str(), self.sharing_mode) {
+            ("nvidia", SharingMode::WholeCard) => "nvidia.com/gpu".to_string(),
+            ("nvidia", SharingMode::Shareable | SharingMode::TimeSliced) => {
+                "hami.sh.io/vgpu".to_string()
+            }
+            ("amd", _) => "amd.com/gpu".to_string(),
+            ("huawei" | "ascend", _) => "huawei.com/Ascend910".to_string(),
+            _ => format!("{}/gpu", self.vendor),
+        }
+    }
+
+    /// Runtime class to use for this resource class, if any.
+    pub fn runtime_class(&self) -> Option<String> {
+        if self.runtime.is_empty() || self.runtime == "docker" || self.runtime == "containerd" {
+            None
+        } else {
+            Some(self.runtime.clone())
+        }
+    }
+
+    /// Node selector labels for this class.
+    pub fn node_selector(&self) -> std::collections::BTreeMap<String, String> {
+        let mut labels = std::collections::BTreeMap::new();
+        labels.insert(
+            "moqentra.io/accelerator-vendor".to_string(),
+            self.vendor.clone(),
+        );
+        labels.insert(
+            "moqentra.io/accelerator-family".to_string(),
+            self.family.clone(),
+        );
+        if !self.topology.is_empty() && self.topology != "none" {
+            labels.insert(
+                "moqentra.io/accelerator-topology".to_string(),
+                self.topology.clone(),
+            );
+        }
+        labels
+    }
+
+    /// Validate that a training request is compatible with this class.
+    pub fn validate_request(
+        &self,
+        distributed: &crate::training::DistributedConfig,
+        request: &crate::training::ResourceRequest,
+    ) -> Result<(), moqentra_types::Error> {
+        if request.accelerator_count > 0
+            && !self.vendor.is_empty()
+            && !matches!(
+                self.support_tier,
+                SupportTier::Supported | SupportTier::Preview
+            )
+        {
+            return Err(moqentra_types::Error::invalid_argument(
+                "resource class is not runnable",
+            ));
+        }
+        if !matches!(distributed, crate::training::DistributedConfig::Single)
+            && !self.supports_ddp()
+        {
+            return Err(moqentra_types::Error::invalid_argument(
+                "distributed training requires a whole-card DDP-capable resource class",
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
