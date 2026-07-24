@@ -319,15 +319,34 @@ impl JobCompiler {
             json!({"name": "MOQENTRA_NPROC_PER_NODE", "value": processes_per_replica.to_string()}),
         );
 
-        let command = if spec.hyperparameters.argv.is_empty() {
-            vec![
-                "python".to_string(),
-                "-m".to_string(),
-                "moqentra_worker".to_string(),
-            ]
+        let command;
+        if is_volcano && world_size > 1 {
+            // DDP/Elastic: compile to torchrun argv and environment. Each pod receives the same
+            // launcher env; torchrun assigns per-process RANK/LOCAL_RANK at runtime.
+            let rdzv_endpoint = format!("moqentra-{}-rdzv:29500", sanitize(&job.id.to_string()));
+            let launcher =
+                moqentra_scheduler::distributed::DdpLauncher::new(job, attempt, &rdzv_endpoint, 0)
+                    .map_err(|e| {
+                        moqentra_types::Error::invalid_argument(format!("ddp launcher: {e}"))
+                    })?;
+            command = launcher.torchrun_argv();
+            env = launcher
+                .environment_for_rank(job, attempt, 0, 0, "node-0", &spec.hyperparameters.env)
+                .into_iter()
+                .filter(|(k, _)| k != "RANK" && k != "LOCAL_RANK")
+                .map(|(k, v)| json!({"name": k, "value": v}))
+                .collect();
         } else {
-            spec.hyperparameters.argv.clone()
-        };
+            command = if spec.hyperparameters.argv.is_empty() {
+                vec![
+                    "python".to_string(),
+                    "-m".to_string(),
+                    "moqentra_worker".to_string(),
+                ]
+            } else {
+                spec.hyperparameters.argv.clone()
+            };
+        }
 
         let mut requests = serde_json::Map::new();
         requests.insert(
@@ -819,7 +838,15 @@ mod tests {
     fn compile_volcano_job_for_ddp() {
         let mut job = test_job();
         job.spec.resources.replicas = 2;
-        job.spec.distributed = DistributedConfig::Ddp { world_size: 2 };
+        job.spec.resources.accelerator_kind = Some("nvidia.com/gpu".to_string());
+        job.spec.resources.accelerator_count = 1;
+        job.spec.processes_per_replica = 2;
+        job.spec.distributed = DistributedConfig::Ddp { world_size: 4 };
+        job.spec.hyperparameters.argv = vec![
+            "train.py".to_string(),
+            "--lr".to_string(),
+            "0.01".to_string(),
+        ];
         job.submit().unwrap();
         job.admit().unwrap();
         let attempt = make_attempt(&job, 1);
@@ -830,6 +857,27 @@ mod tests {
         let tasks = manifest["spec"]["tasks"].as_array().unwrap();
         assert_eq!(tasks[0]["replicas"], 2);
         assert_eq!(tasks[0]["name"], "trainer");
+
+        // DDP uses torchrun argv and retains the user script argv after flags.
+        let container = &tasks[0]["template"]["spec"]["containers"][0];
+        let cmd = container["command"].as_array().unwrap();
+        assert_eq!(cmd[0], "torchrun");
+        assert!(cmd.contains(&"--rdzv_backend".into()));
+        assert!(cmd.contains(&"c10d".into()));
+        assert!(cmd.ends_with(&["train.py".into(), "--lr".into(), "0.01".into()]));
+
+        let env_vars = container["env"].as_array().unwrap();
+        let env = env_vars
+            .iter()
+            .filter_map(|e| Some((e["name"].as_str()?, e["value"].as_str()?)))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        assert_eq!(env["MOQENTRA_BACKEND"], "nccl");
+        assert_eq!(env["MOQENTRA_WORLD_SIZE"], "4");
+        assert_eq!(env["MOQENTRA_NNODES"], "2");
+        assert_eq!(env["MOQENTRA_NPROC_PER_NODE"], "2");
+        assert!(env.contains_key("MOQENTRA_FENCING_TOKEN"));
+        // torchrun assigns per-process RANK/LOCAL_RANK at runtime.
+        assert!(!env.contains_key("RANK") && !env.contains_key("LOCAL_RANK"));
         assert_eq!(manifest["spec"]["minAvailable"], 2);
     }
 
