@@ -5,6 +5,7 @@
 
 use image::GenericImageView;
 use serde::{Deserialize, Serialize};
+use std::io::Cursor;
 use std::process::Stdio;
 use std::time::Duration;
 
@@ -124,8 +125,13 @@ fn scan_malware_signatures(bytes: &[u8]) -> Result<(), MediaValidationFailure> {
 
 fn validate_image(bytes: &[u8], declared: &str) -> Result<MediaInfo, MediaValidationFailure> {
     let format = image::guess_format(bytes).map_err(|_| MediaValidationFailure::DecodeFailed)?;
-    let dynamic =
-        image::load_from_memory(bytes).map_err(|_| MediaValidationFailure::DecodeFailed)?;
+    let mut reader = image::ImageReader::with_format(Cursor::new(bytes), format);
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(16_384);
+    limits.max_image_height = Some(16_384);
+    limits.max_alloc = Some(512 * 1024 * 1024);
+    reader.limits(limits);
+    let dynamic = reader.decode().map_err(|_| MediaValidationFailure::DecodeFailed)?;
     let (width, height) = dynamic.dimensions();
 
     let detected = format_to_media_type(format);
