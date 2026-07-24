@@ -68,8 +68,9 @@ pub fn sanitize_message(message: &str) -> String {
     for pat in SECRET_PATTERNS {
         if let Some(idx) = out.to_lowercase().find(pat) {
             let start = idx.saturating_add(pat.len());
-            let end = out[start..]
-                .find(|c: char| c.is_whitespace() || c == '&' || c == '\n')
+            let end = out
+                .get(start..)
+                .and_then(|s| s.find(|c: char| c.is_whitespace() || c == '&' || c == '\n'))
                 .map(|n| start.saturating_add(n))
                 .unwrap_or(out.len());
             out.replace_range(start..end, "[REDACTED]");

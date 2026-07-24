@@ -267,13 +267,14 @@ fn parse_ipv4_like(domain: &str) -> Option<Ipv4Addr> {
 
 fn parse_numeric_literal(part: &str, max: u32) -> Option<u32> {
     let lower = part.to_lowercase();
-    let (base, num) = if let Some(stripped) = lower.strip_prefix("0x") {
+    let lower_ref = lower.as_str();
+    let (base, num) = if let Some(stripped) = lower_ref.strip_prefix("0x") {
         (16u32, stripped)
-    } else if lower.starts_with('0') && lower.len() > 1 {
+    } else if lower_ref.starts_with('0') && lower_ref.len() > 1 {
         // Treat ambiguous leading-zero forms as octal to avoid bypasses.
-        (8u32, &lower[1..])
+        (8u32, lower_ref.get(1..).unwrap_or(lower_ref))
     } else {
-        (10u32, &lower[..])
+        (10u32, lower_ref)
     };
     let value = u32::from_str_radix(num, base).ok()?;
     if value > max {

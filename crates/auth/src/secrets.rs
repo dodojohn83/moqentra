@@ -134,15 +134,16 @@ impl SecretRedactor {
                     .as_bytes()
                     .get(pos.saturating_sub(1))
                     .is_some_and(|b| !b.is_ascii_alphanumeric());
-            let (sep_len, has_sep) = Self::skip_value_separator(&rest[match_end..]);
+            let (sep_len, has_sep) =
+                Self::skip_value_separator(rest.get(match_end..).unwrap_or(""));
             if !before_ok || !has_sep {
                 // Not a key/value pair; copy the matched text and continue.
-                output.push_str(&rest[..match_end]);
-                rest = &rest[match_end..];
+                output.push_str(rest.get(..match_end).unwrap_or(""));
+                rest = rest.get(match_end..).unwrap_or("");
                 continue;
             }
             let value_start = match_end.saturating_add(sep_len);
-            let value_str = &rest[value_start..];
+            let value_str = rest.get(value_start..).unwrap_or("");
             let consumed = if let Some(quote) =
                 value_str.chars().next().filter(|c| matches!(c, '"' | '\''))
             {
@@ -170,9 +171,9 @@ impl SecretRedactor {
                     .map(|(i, _)| i)
                     .unwrap_or(value_str.len())
             };
-            output.push_str(&rest[..pos]);
+            output.push_str(rest.get(..pos).unwrap_or(""));
             output.push_str("[REDACTED]");
-            rest = &rest[value_start.saturating_add(consumed)..];
+            rest = rest.get(value_start.saturating_add(consumed)..).unwrap_or("");
         }
         output.push_str(rest);
         output
