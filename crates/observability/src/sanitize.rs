@@ -48,8 +48,9 @@ fn is_secret_key(key: &str) -> bool {
     let lower = key.to_lowercase();
     SECRET_KEYS.iter().any(|pat| {
         lower.match_indices(pat).any(|(pos, _)| {
-            let before_ok = pos == 0 || !lower.as_bytes()[pos - 1].is_ascii_alphanumeric();
-            let after_pos = pos + pat.len();
+            let before_ok =
+                pos == 0 || !lower.as_bytes()[pos.saturating_sub(1)].is_ascii_alphanumeric();
+            let after_pos = pos.saturating_add(pat.len());
             let after_ok =
                 after_pos >= lower.len() || !lower.as_bytes()[after_pos].is_ascii_alphanumeric();
             before_ok && after_ok
@@ -63,10 +64,10 @@ pub fn sanitize_message(message: &str) -> String {
     let mut out = message.to_string();
     for pat in SECRET_PATTERNS {
         if let Some(idx) = out.to_lowercase().find(pat) {
-            let start = idx + pat.len();
+            let start = idx.saturating_add(pat.len());
             let end = out[start..]
                 .find(|c: char| c.is_whitespace() || c == '&' || c == '\n')
-                .map(|n| start + n)
+                .map(|n| start.saturating_add(n))
                 .unwrap_or(out.len());
             out.replace_range(start..end, "[REDACTED]");
         }

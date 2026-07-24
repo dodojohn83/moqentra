@@ -245,7 +245,7 @@ impl ApprovalRepository for InMemoryApprovalRegistry {
         if expected.as_u64() != current {
             return Err(Error::conflict("approval request revision mismatch"));
         }
-        let next = current + 1;
+        let next = current.checked_add(1).ok_or_else(|| Error::internal("revision overflow"))?;
         revs.insert(id, next);
         reg.insert(id, request.clone());
         Ok(Versioned::new(request, revision_from_u64(next)))

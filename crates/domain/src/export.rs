@@ -170,9 +170,13 @@ pub fn annotations_to_coco(
                 area,
                 iscrowd: 0,
             });
-            ann_id += 1;
+            ann_id = ann_id
+                .checked_add(1)
+                .ok_or_else(|| moqentra_types::Error::internal("annotation id overflow"))?;
         }
-        img_id += 1;
+        img_id = img_id
+            .checked_add(1)
+            .ok_or_else(|| moqentra_types::Error::internal("image id overflow"))?;
     }
 
     Ok(CocoDataset {
@@ -214,7 +218,7 @@ pub fn annotation_to_yolo_line(
 }
 
 /// Convert a finite f64 coordinate to i64, rejecting NaN/inf/out-of-range values.
-#[allow(clippy::as_conversions)]
+#[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
 fn f64_to_i64(v: f64) -> Result<i64, moqentra_types::Error> {
     if !v.is_finite() {
         return Err(moqentra_types::Error::invalid_argument(

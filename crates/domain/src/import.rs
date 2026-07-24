@@ -195,7 +195,10 @@ impl ImportJob {
         }
         self.state = ImportJobState::Failed;
         self.failure = Some(reason);
-        self.retry_count += 1;
+        self.retry_count = self
+            .retry_count
+            .checked_add(1)
+            .ok_or_else(|| moqentra_types::Error::internal("retry count overflow"))?;
         Ok(())
     }
 

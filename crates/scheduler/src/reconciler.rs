@@ -215,7 +215,7 @@ impl Reconciler {
                 // Use wrapping_add to avoid debug-build panics on u64 overflow;
                 // reconcile rejects next_revision <= current, so a wrap is safely ignored.
                 let _ = state.reconcile(observed, state.revision.wrapping_add(1));
-                processed += 1;
+                processed = processed.saturating_add(1);
             }
         }
         processed

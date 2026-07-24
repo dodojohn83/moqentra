@@ -124,7 +124,7 @@ impl IdempotencyStore for InMemoryIdempotencyStore {
         let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
         let before_count = entries.len();
         entries.retain(|_, entry| entry.expires_at > before);
-        let removed = before_count - entries.len();
+        let removed = before_count.saturating_sub(entries.len());
         u64::try_from(removed).map_err(|_| Error::internal("cleanup removed count overflow"))
     }
 }

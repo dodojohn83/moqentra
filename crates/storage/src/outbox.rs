@@ -119,9 +119,10 @@ impl OutboxStore for InMemoryOutbox {
                 entry.event.status = OutboxStatus::Processing;
                 entry.event.retry_count = entry.event.retry_count.saturating_add(1);
                 entry.lease_expires_at = Some(
-                    now + std::time::Duration::from_secs(
+                    now.checked_add(std::time::Duration::from_secs(
                         u64::try_from(IN_MEMORY_LEASE_SECS).unwrap_or(30),
-                    ),
+                    ))
+                    .ok_or_else(|| Error::internal("outbox lease time overflow"))?,
                 );
                 entry.next_retry_at = None;
                 claimed.push(entry.event.clone());
@@ -169,8 +170,11 @@ impl OutboxStore for InMemoryOutbox {
             } else {
                 entry.event.status = OutboxStatus::Pending;
                 let backoff_secs = 1u64 << entry.event.retry_count.min(8);
-                entry.next_retry_at =
-                    Some(std::time::Instant::now() + std::time::Duration::from_secs(backoff_secs));
+                entry.next_retry_at = Some(
+                    std::time::Instant::now()
+                        .checked_add(std::time::Duration::from_secs(backoff_secs))
+                        .ok_or_else(|| Error::internal("outbox retry time overflow"))?,
+                );
             }
         }
         Ok(())

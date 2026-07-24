@@ -211,8 +211,8 @@ impl DeploymentRepository for PgDeploymentRepository {
              {base}
              ORDER BY updated_at DESC, id
              LIMIT ${} OFFSET ${}",
-            conditions.len() + 1,
-            conditions.len() + 2
+            conditions.len().saturating_add(1),
+            conditions.len().saturating_add(2)
         );
 
         let mut query = sqlx::query_as(&items_sql)

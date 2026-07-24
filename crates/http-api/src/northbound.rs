@@ -237,7 +237,7 @@ fn parse_ipv4_like(domain: &str) -> Option<Ipv4Addr> {
     let mut values = [0u32; 4];
     let count = parts.len();
     for (i, part) in parts.iter().enumerate() {
-        let is_last = i + 1 == count;
+        let is_last = i.saturating_add(1) == count;
         let max = match (count, i == 0, is_last) {
             (1, _, _) => u32::MAX,
             (2, false, true) | (3, false, true) => {
@@ -368,7 +368,15 @@ impl TokenBucketLimiter {
     }
 
     fn refill(&mut self, now: UtcTimestamp) {
-        let elapsed = (now.as_offset() - self.last_refill.as_offset()).as_seconds_f64();
+        let elapsed = u64::try_from(
+            now.as_offset()
+                .unix_timestamp()
+                .saturating_sub(self.last_refill.as_offset().unix_timestamp())
+                .max(0),
+        )
+        .map_or(0.0, |secs| {
+            std::time::Duration::from_secs(secs).as_secs_f64()
+        });
         if elapsed <= 0.0 {
             return;
         }
@@ -387,7 +395,7 @@ impl TokenBucketLimiter {
     }
 
     fn remaining(&self) -> u32 {
-        #[allow(clippy::as_conversions)]
+        #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
         {
             self.tokens.floor().max(0.0) as u32
         }

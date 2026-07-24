@@ -144,9 +144,16 @@ impl K8sExecutor for InMemoryK8sExecutor {
         let key = Self::key(&workload.namespace, &workload.name);
         let mut map = self.workloads.write().await;
         workload.resource_version = self.counter.fetch_add(1, Ordering::SeqCst);
-        workload.generation += 1;
+        workload.generation = workload
+            .generation
+            .checked_add(1)
+            .ok_or_else(|| moqentra_types::Error::internal("workload generation overflow"))?;
         if workload.lease_until.is_none() {
-            workload.lease_until = Some(Instant::now() + Duration::from_secs(600));
+            workload.lease_until = Some(
+                Instant::now()
+                    .checked_add(Duration::from_secs(600))
+                    .ok_or_else(|| moqentra_types::Error::internal("workload lease overflow"))?,
+            );
         }
         map.insert(key, workload);
         Ok(())
@@ -677,7 +684,7 @@ impl<E: K8sExecutor> Reconciler<E> {
                 continue;
             }
             self.executor.delete(&w.namespace, &w.name).await?;
-            removed += 1;
+            removed = removed.saturating_add(1);
         }
         Ok(removed)
     }
@@ -715,7 +722,10 @@ pub async fn watch_workloads<E: K8sExecutor>(
             Err(e) => {
                 tracing::warn!(error = %e, "watch failed; relisting");
                 sleep(backoff).await;
-                backoff = (backoff * 2).min(Duration::from_secs(30));
+                backoff = backoff
+                    .checked_mul(2)
+                    .unwrap_or_else(|| Duration::from_secs(30))
+                    .min(Duration::from_secs(30));
                 // Simulate 410 Gone recovery by relisting from zero.
                 resource_version = 0;
             }

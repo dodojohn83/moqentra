@@ -256,20 +256,22 @@ impl DatasetVersion {
         let mut rng = seed;
         for i in (1..names.len()).rev() {
             rng = splitmix64(rng);
-            let range = u64::try_from(i + 1).unwrap_or(0);
-            let j_u64 = rng % range.max(1);
+            let range = u64::try_from(i.saturating_add(1)).unwrap_or(0);
+            let j_u64 = rng.checked_rem(range.max(1)).unwrap_or(0);
             let j = usize::try_from(j_u64).unwrap_or(0);
             names.swap(i, j);
         }
 
         let n = names.len();
-        #[allow(clippy::as_conversions)]
+        #[allow(clippy::as_conversions, clippy::cast_possible_truncation)]
         {
             let n_f = n as f64;
             let train_end = ((train * n_f).round() as usize).clamp(0, n);
-            let val_end = train_end + ((val * n_f).round() as usize).clamp(0, n - train_end);
+            let val_end = train_end.saturating_add(
+                ((val * n_f).round() as usize).clamp(0, n.saturating_sub(train_end)),
+            );
             let (train_names, rest) = names.split_at(train_end);
-            let (val_names, test_names) = rest.split_at(val_end - train_end);
+            let (val_names, test_names) = rest.split_at(val_end.saturating_sub(train_end));
 
             self.splits = serde_json::json!({
                 "seed": seed,

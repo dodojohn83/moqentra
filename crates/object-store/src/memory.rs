@@ -79,7 +79,7 @@ impl InMemoryObjectStore {
             if now.duration_since(*instant) >= min_age {
                 objects.remove(&key);
                 created_at.remove(&key);
-                removed += 1;
+                removed = removed.saturating_add(1);
             }
         }
         removed
@@ -194,7 +194,7 @@ impl ObjectStorage for InMemoryObjectStore {
 
     async fn start_multipart(&self, key: &str, media_type: Option<&str>) -> Result<String, Error> {
         let mut counter = self.counter.lock().unwrap_or_else(|e| e.into_inner());
-        *counter += 1;
+        *counter = counter.saturating_add(1);
         let upload_id = format!("upload-{}", counter);
         self.multipart.lock().unwrap_or_else(|e| e.into_inner()).insert(
             upload_id.clone(),
@@ -263,7 +263,8 @@ impl ObjectStorage for InMemoryObjectStore {
                     expected, part_number
                 )));
             }
-            expected += 1;
+            expected =
+                expected.checked_add(1).ok_or_else(|| Error::internal("part number overflow"))?;
             if !seen.insert(part_number) {
                 return Err(Error::invalid_argument(format!(
                     "duplicate part {}",

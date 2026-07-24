@@ -152,8 +152,9 @@ fn is_secret_key(key: &str, pat: &str) -> bool {
     let lower = key.to_lowercase();
     let pat = pat.to_lowercase();
     lower.match_indices(&pat).any(|(pos, _)| {
-        let before_ok = pos == 0 || !lower.as_bytes()[pos - 1].is_ascii_alphanumeric();
-        let after_pos = pos + pat.len();
+        let before_ok =
+            pos == 0 || !lower.as_bytes()[pos.saturating_sub(1)].is_ascii_alphanumeric();
+        let after_pos = pos.saturating_add(pat.len());
         let after_ok =
             after_pos >= lower.len() || !lower.as_bytes()[after_pos].is_ascii_alphanumeric();
         before_ok && after_ok

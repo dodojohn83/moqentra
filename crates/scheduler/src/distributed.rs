@@ -221,7 +221,7 @@ impl FailureClassifier {
 
         // Negative values represent raw Unix signals.
         if exit_code < 0 {
-            return match -exit_code {
+            return match 0i32.checked_sub(exit_code).unwrap_or(i32::MAX) {
                 6 => FailureClass::Oom,        // SIGABRT
                 9 => FailureClass::Oom,        // SIGKILL (OOM killer / node loss)
                 11 => FailureClass::Device,    // SIGSEGV
@@ -232,7 +232,7 @@ impl FailureClassifier {
 
         // Exit codes 128+N represent signal N.
         if exit_code >= 128 {
-            return match exit_code - 128 {
+            return match exit_code.saturating_sub(128) {
                 6 => FailureClass::Oom,
                 9 => FailureClass::Oom,
                 11 => FailureClass::Device,

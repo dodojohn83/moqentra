@@ -573,7 +573,7 @@ impl TrainingJob {
             ));
         }
         let names: BTreeMap<String, usize> = points.iter().fold(BTreeMap::new(), |mut acc, p| {
-            *acc.entry(p.name.clone()).or_insert(0) += 1;
+            acc.entry(p.name.clone()).and_modify(|c| *c = c.saturating_add(1)).or_insert(1);
             acc
         });
         if names.len() > max_cardinality {

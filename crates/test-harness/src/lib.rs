@@ -67,7 +67,7 @@ impl FakeS3Proxy {
     }
 
     pub fn get_object(&mut self, key: &str) -> Result<Vec<u8>, moqentra_types::Error> {
-        self.requests += 1;
+        self.requests = self.requests.saturating_add(1);
         if self.should_fault() {
             return Err(moqentra_types::Error::unavailable("injected s3 fault"));
         }
@@ -109,12 +109,12 @@ pub enum PodStatus {
 impl FakeKubernetesApi {
     pub fn apply_pod(&mut self, name: impl Into<String>, status: PodStatus) {
         self.pods.insert(name.into(), status);
-        self.resource_version += 1;
+        self.resource_version = self.resource_version.saturating_add(1);
     }
 
     pub fn delete_pod(&mut self, name: &str) {
         self.pods.remove(name);
-        self.resource_version += 1;
+        self.resource_version = self.resource_version.saturating_add(1);
     }
 
     pub fn emit_event(&mut self, message: impl Into<String>) {

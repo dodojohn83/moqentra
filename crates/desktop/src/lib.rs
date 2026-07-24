@@ -178,10 +178,13 @@ impl FileUpload {
         for i in 0..chunk_count {
             let i_u64 = u64::try_from(i)
                 .map_err(|_| moqentra_types::Error::internal("chunk index overflow"))?;
+            let offset = i_u64
+                .checked_mul(chunk_size)
+                .ok_or_else(|| moqentra_types::Error::internal("chunk offset overflow"))?;
             chunks.push(FileChunk {
                 chunk_index: i_u64,
-                offset: i_u64 * chunk_size,
-                size: chunk_size.min(total_size - i_u64 * chunk_size),
+                offset,
+                size: chunk_size.min(total_size.saturating_sub(offset)),
                 sha256: String::new(),
                 etag: None,
             });

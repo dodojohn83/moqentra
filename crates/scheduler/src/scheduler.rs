@@ -449,7 +449,7 @@ pub fn pick_tenant_drf<T: Ord + Clone>(
         let weight = u64::from(weights.get(t).copied().unwrap_or(1).max(1));
         let mut dominant = 0u64;
         for (u, c) in usage.iter().zip(capacity.iter()) {
-            let share = u.saturating_mul(weight) / c;
+            let share = u.saturating_mul(weight).checked_div(*c).unwrap_or(u64::MAX);
             dominant = dominant.max(share);
         }
         if best.as_ref().is_none_or(|(score, _)| dominant < *score) {
