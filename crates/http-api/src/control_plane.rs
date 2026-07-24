@@ -241,7 +241,9 @@ async fn emit_event(
         failure_reason: None,
         created_at: UtcTimestamp::now(),
     };
-    let _ = state.outbox.append(event).await;
+    if let Err(e) = state.outbox.append(event).await {
+        tracing::warn!(error = %e, "failed to append outbox event");
+    }
 }
 
 /// Best-effort write-through of a dataset aggregate when PostgreSQL is configured.
