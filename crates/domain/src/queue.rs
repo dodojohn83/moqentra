@@ -3,6 +3,16 @@
 use moqentra_types::{PriorityClassId, ProjectId, QueuePolicyId, TenantId, UtcTimestamp};
 use serde::{Deserialize, Serialize};
 
+/// Admission policy for a queue.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QueueAdmissionPolicy {
+    #[default]
+    AllowAny,
+    PriorityAllowlist,
+    QuotaRequired,
+}
+
 /// Weighted fair queue policy.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueuePolicy {
@@ -13,6 +23,8 @@ pub struct QueuePolicy {
     pub weight: u32,
     pub capacity: u32,
     pub max_running: u32,
+    pub priority_allowlist: Vec<String>,
+    pub admission_policy: QueueAdmissionPolicy,
     pub revision: u64,
     pub created_at: UtcTimestamp,
 }
@@ -55,6 +67,8 @@ impl QueuePolicy {
             weight,
             capacity,
             max_running,
+            priority_allowlist: Vec::new(),
+            admission_policy: QueueAdmissionPolicy::AllowAny,
             revision,
             created_at: UtcTimestamp::now(),
         })
@@ -70,8 +84,43 @@ pub struct PriorityClass {
     pub name: String,
     pub priority: i32,
     pub preemptible: bool,
+    pub max_wait_seconds: u32,
     pub revision: u64,
     pub created_at: UtcTimestamp,
+}
+
+impl PriorityClass {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        id: PriorityClassId,
+        tenant_id: TenantId,
+        project_id: Option<ProjectId>,
+        name: String,
+        priority: i32,
+        preemptible: bool,
+        max_wait_seconds: u32,
+        revision: u64,
+    ) -> Result<Self, moqentra_types::Error> {
+        if name.trim().is_empty() {
+            return Err(moqentra_types::Error::invalid_argument("name is required"));
+        }
+        if max_wait_seconds == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "max_wait_seconds must be > 0",
+            ));
+        }
+        Ok(Self {
+            id,
+            tenant_id,
+            project_id,
+            name,
+            priority,
+            preemptible,
+            max_wait_seconds,
+            revision,
+            created_at: UtcTimestamp::now(),
+        })
+    }
 }
 
 /// Recorded queue decision for audit and replay.
@@ -79,6 +128,7 @@ pub struct PriorityClass {
 pub struct QueueDecision {
     pub queue_id: QueuePolicyId,
     pub policy_revision: u64,
+    pub resource_snapshot: String,
     pub candidate_ids: Vec<String>,
     pub selected_id: String,
     pub explanation: String,
