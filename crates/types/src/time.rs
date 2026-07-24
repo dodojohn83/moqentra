@@ -234,4 +234,10 @@ mod tests {
         let rev = Revision::initial().next().next();
         assert_eq!(rev.as_u64(), 2);
     }
+
+    #[test]
+    fn revision_as_i64_roundtrip_and_overflow() {
+        assert_eq!(Revision::from_u64(42).as_i64().unwrap(), 42);
+        assert!(Revision::from_u64((i64::MAX as u64) + 1).as_i64().is_err());
+    }
 }
