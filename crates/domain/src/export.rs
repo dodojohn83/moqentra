@@ -520,4 +520,10 @@ mod tests {
         assert_eq!(value["annotations"][0]["id"], id);
         assert_eq!(value["labels"][0], "cat");
     }
+
+    #[test]
+    fn voc_export_rejects_out_of_range_bbox() {
+        let ann = make_annotation("cat", vec![1.0, 2.0, 1e200, 1e200]);
+        assert!(annotations_to_voc(&[ann], "img.jpg", (640, 480, 3)).is_err());
+    }
 }
