@@ -45,12 +45,10 @@ impl PgConversionRepository {
         Ok(())
     }
 
-    fn revision_from_i64(value: i64) -> Revision {
-        let mut r = Revision::initial();
-        for _ in 0..value {
-            r = r.next();
-        }
-        r
+    fn revision_from_i64(value: i64) -> Result<Revision, Error> {
+        let value =
+            u64::try_from(value).map_err(|_| Error::internal("negative revision in database"))?;
+        Ok(Revision::from_u64(value))
     }
 }
 
@@ -70,12 +68,10 @@ impl PgEvaluationRepository {
         Ok(())
     }
 
-    fn revision_from_i64(value: i64) -> Revision {
-        let mut r = Revision::initial();
-        for _ in 0..value {
-            r = r.next();
-        }
-        r
+    fn revision_from_i64(value: i64) -> Result<Revision, Error> {
+        let value =
+            u64::try_from(value).map_err(|_| Error::internal("negative revision in database"))?;
+        Ok(Revision::from_u64(value))
     }
 }
 
@@ -238,7 +234,7 @@ impl ConversionRepository for PgConversionRepository {
         .await
         .map_err(|e| Error::internal(format!("failed to create conversion job: {e}")))?;
 
-        Ok(Versioned::new(job, Self::revision_from_i64(revision)))
+        Ok(Versioned::new(job, Self::revision_from_i64(revision)?))
     }
 
     async fn get(
@@ -261,7 +257,7 @@ impl ConversionRepository for PgConversionRepository {
         .ok_or_else(|| Error::not_found("conversion job"))?;
 
         let job = conversion_row_to_domain(&row)?;
-        Ok(Versioned::new(job, Self::revision_from_i64(row.revision)))
+        Ok(Versioned::new(job, Self::revision_from_i64(row.revision)?))
     }
 
     async fn list(
@@ -303,7 +299,7 @@ impl ConversionRepository for PgConversionRepository {
             .map(|row| {
                 let revision = row.revision;
                 let job = conversion_row_to_domain(&row)?;
-                Ok(Versioned::new(job, Self::revision_from_i64(revision)))
+                Ok(Versioned::new(job, Self::revision_from_i64(revision)?))
             })
             .collect::<Result<_, Error>>()?;
 
@@ -409,7 +405,7 @@ impl EvaluationRepository for PgEvaluationRepository {
         .await
         .map_err(|e| Error::internal(format!("failed to create evaluation run: {e}")))?;
 
-        Ok(Versioned::new(run, Self::revision_from_i64(revision)))
+        Ok(Versioned::new(run, Self::revision_from_i64(revision)?))
     }
 
     async fn get(
@@ -432,7 +428,7 @@ impl EvaluationRepository for PgEvaluationRepository {
         .ok_or_else(|| Error::not_found("evaluation run"))?;
 
         let run = evaluation_row_to_domain(&row)?;
-        Ok(Versioned::new(run, Self::revision_from_i64(row.revision)))
+        Ok(Versioned::new(run, Self::revision_from_i64(row.revision)?))
     }
 
     async fn list(
@@ -474,7 +470,7 @@ impl EvaluationRepository for PgEvaluationRepository {
             .map(|row| {
                 let revision = row.revision;
                 let run = evaluation_row_to_domain(&row)?;
-                Ok(Versioned::new(run, Self::revision_from_i64(revision)))
+                Ok(Versioned::new(run, Self::revision_from_i64(revision)?))
             })
             .collect::<Result<_, Error>>()?;
 

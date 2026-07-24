@@ -37,12 +37,10 @@ impl PgAnnotationRepository {
         Ok(())
     }
 
-    fn revision_from_i64(value: i64) -> Revision {
-        let mut r = Revision::initial();
-        for _ in 0..value {
-            r = r.next();
-        }
-        r
+    fn revision_from_i64(value: i64) -> Result<Revision, Error> {
+        let value =
+            u64::try_from(value).map_err(|_| Error::internal("negative revision in database"))?;
+        Ok(Revision::from_u64(value))
     }
 }
 
@@ -181,7 +179,7 @@ impl AnnotationRepository for PgAnnotationRepository {
         .await
         .map_err(|e| Error::internal(format!("failed to create annotation project: {e}")))?;
 
-        Ok(Versioned::new(project, Self::revision_from_i64(revision)))
+        Ok(Versioned::new(project, Self::revision_from_i64(revision)?))
     }
 
     async fn get_project(
@@ -207,7 +205,7 @@ impl AnnotationRepository for PgAnnotationRepository {
         let project = project_row_to_domain(&row)?;
         Ok(Versioned::new(
             project,
-            Self::revision_from_i64(row.revision),
+            Self::revision_from_i64(row.revision)?,
         ))
     }
 
@@ -273,7 +271,7 @@ impl AnnotationRepository for PgAnnotationRepository {
             let project = project_row_to_domain(&row)?;
             items.push(Versioned::new(
                 project,
-                Self::revision_from_i64(row.revision),
+                Self::revision_from_i64(row.revision)?,
             ));
         }
 
@@ -375,7 +373,7 @@ impl AnnotationRepository for PgAnnotationRepository {
         .await
         .map_err(|e| Error::internal(format!("failed to create annotation task: {e}")))?;
 
-        Ok(Versioned::new(task, Self::revision_from_i64(revision)))
+        Ok(Versioned::new(task, Self::revision_from_i64(revision)?))
     }
 
     async fn get_task(
@@ -399,7 +397,7 @@ impl AnnotationRepository for PgAnnotationRepository {
         .ok_or_else(|| Error::not_found("annotation task"))?;
 
         let task = task_row_to_domain(&row)?;
-        Ok(Versioned::new(task, Self::revision_from_i64(row.revision)))
+        Ok(Versioned::new(task, Self::revision_from_i64(row.revision)?))
     }
 
     async fn list_tasks(
@@ -465,7 +463,7 @@ impl AnnotationRepository for PgAnnotationRepository {
         let mut items = Vec::with_capacity(rows.len());
         for row in rows {
             let task = task_row_to_domain(&row)?;
-            items.push(Versioned::new(task, Self::revision_from_i64(row.revision)));
+            items.push(Versioned::new(task, Self::revision_from_i64(row.revision)?));
         }
 
         Ok(Page::new(items, total as u64, page))

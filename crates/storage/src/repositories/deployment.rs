@@ -33,12 +33,10 @@ impl PgDeploymentRepository {
         Ok(())
     }
 
-    fn revision_from_i64(value: i64) -> Revision {
-        let mut r = Revision::initial();
-        for _ in 0..value {
-            r = r.next();
-        }
-        r
+    fn revision_from_i64(value: i64) -> Result<Revision, Error> {
+        let value =
+            u64::try_from(value).map_err(|_| Error::internal("negative revision in database"))?;
+        Ok(Revision::from_u64(value))
     }
 }
 
@@ -142,7 +140,7 @@ impl DeploymentRepository for PgDeploymentRepository {
 
         Ok(Versioned::new(
             deployment,
-            Self::revision_from_i64(revision),
+            Self::revision_from_i64(revision)?,
         ))
     }
 
@@ -169,7 +167,7 @@ impl DeploymentRepository for PgDeploymentRepository {
         let deployment = row_to_domain(&row)?;
         Ok(Versioned::new(
             deployment,
-            Self::revision_from_i64(row.revision),
+            Self::revision_from_i64(row.revision)?,
         ))
     }
 
@@ -235,7 +233,7 @@ impl DeploymentRepository for PgDeploymentRepository {
             let deployment = row_to_domain(&row)?;
             items.push(Versioned::new(
                 deployment,
-                Self::revision_from_i64(row.revision),
+                Self::revision_from_i64(row.revision)?,
             ));
         }
 
