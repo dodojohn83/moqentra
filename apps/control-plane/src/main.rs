@@ -14,7 +14,7 @@ use moqentra_application::{
 use moqentra_auth::InMemoryAuditLog;
 use moqentra_auth::{
     Authorizer, CompositeTokenValidator, HmacValidator, JwkSetValidator, OidcConfig,
-    ServiceAccountValidator,
+    SecurityLimits, ServiceAccountValidator,
 };
 use moqentra_http_api::control_plane::{
     app_router, spawn_outbox_dispatcher, AppState, DatabaseHealthCheck, ObjectStorageHealthCheck,
@@ -361,9 +361,12 @@ async fn main() -> anyhow::Result<()> {
     let worker_addr: SocketAddr = worker_listen.parse()?;
 
     tokio::spawn(async move {
-        let server = tonic::transport::Server::builder().add_service(
-            moqentra_worker_control::worker_service_server(worker_service),
-        );
+        let max_proto =
+            usize::try_from(SecurityLimits::default().max_proto_message_size).unwrap_or(usize::MAX);
+        let worker_server = moqentra_worker_control::worker_service_server(worker_service)
+            .max_decoding_message_size(max_proto)
+            .max_encoding_message_size(max_proto);
+        let server = tonic::transport::Server::builder().add_service(worker_server);
         tracing::info!(%worker_addr, "moqentra worker gRPC listening");
         if let Err(e) = server.serve(worker_addr).await {
             tracing::error!(error = %e, "worker gRPC server failed");
