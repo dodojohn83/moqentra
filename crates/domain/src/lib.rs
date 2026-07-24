@@ -9,6 +9,7 @@ pub mod checkpoint_manifest;
 pub mod conversion;
 pub mod dataset;
 pub mod export;
+pub mod hardware;
 pub mod import;
 pub mod inference;
 pub mod model_registry;
@@ -37,6 +38,9 @@ pub use conversion::{
 };
 pub use dataset::{
     compute_manifest_digest, AssetRef, Dataset, DatasetState, DatasetVersion, DatasetVersionState,
+};
+pub use hardware::{
+    Compatibility, HardwareCompatibility, HardwareRequirement, Vendor, WorkerCapability,
 };
 pub use import::{ImportJob, ImportJobFailure, ImportJobState};
 pub use inference::{
