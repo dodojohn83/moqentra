@@ -23,7 +23,7 @@ use moqentra_application::{
 };
 use moqentra_auth::{
     Action, AuditCategory, AuditEvent, AuditLog, AuditOutcome, Authorizer, CompositeTokenValidator,
-    Resource, Role, RoleStore, Scope,
+    Resource, Role, RoleStore, Scope, SecurityLimits,
 };
 use moqentra_domain::annotation::{AnnotationProject, Ontology, TaskType};
 use moqentra_domain::application::{ApplicationSpec, ArtifactBinding};
@@ -90,6 +90,8 @@ pub struct AppState {
     pub scheduler_url: Option<String>,
     pub node_agent_url: Option<String>,
     pub http: reqwest::Client,
+    /// Layered security limits (upload sizes, JSON/proto sizes, archive depth, etc.).
+    pub security_limits: SecurityLimits,
 }
 
 #[derive(Serialize)]
@@ -1752,6 +1754,7 @@ async fn create_upload_session(
         Error::invalid_argument("X-Project-Id is required when creating an upload session")
     })?;
     let ttl = req.ttl_seconds.unwrap_or(3600).clamp(60, 86400);
+    state.security_limits.check_upload_size(req.total_size)?;
     let target_key = ObjectKey::asset(
         ctx.tenant_id,
         project_id,
@@ -2907,6 +2910,7 @@ mod tests {
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .expect("test http client"),
+            security_limits: SecurityLimits::default(),
         }
     }
 

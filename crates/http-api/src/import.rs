@@ -152,6 +152,9 @@ async fn execute_import(
     if let Err(_e) = job.start_transfer() {
         return Err((ImportJobFailure::InvalidSource, false));
     }
+    if let Err(_e) = state.security_limits.check_upload_size(job.total_bytes) {
+        return Err((ImportJobFailure::Oversized, false));
+    }
 
     match download_and_store(state, job).await {
         Ok(digest) => {
