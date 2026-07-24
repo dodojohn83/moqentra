@@ -150,6 +150,11 @@ impl TrainingJobSpec {
                 "replicas must be greater than zero",
             ));
         }
+        if self.processes_per_replica == 0 {
+            return Err(moqentra_types::Error::invalid_argument(
+                "processes_per_replica must be greater than zero",
+            ));
+        }
         if self.resources.cpu_milli == 0 || self.resources.memory_mib == 0 {
             return Err(moqentra_types::Error::invalid_argument(
                 "cpu_milli and memory_mib must be greater than zero",
@@ -167,20 +172,30 @@ impl TrainingJobSpec {
                 "hyperparameters.argv must not be empty",
             ));
         }
-        let world_size = self.world_size();
-        if world_size == 0 {
+
+        let computed_world_size =
+            self.resources
+                .replicas
+                .checked_mul(self.processes_per_replica)
+                .ok_or_else(|| moqentra_types::Error::invalid_argument("world size overflow"))?;
+
+        if matches!(self.distributed, DistributedConfig::Single)
+            && (self.resources.replicas != 1 || self.processes_per_replica != 1)
+        {
             return Err(moqentra_types::Error::invalid_argument(
-                "computed world_size must be greater than zero",
+                "single-node training requires exactly one replica and one process per replica",
             ));
         }
+
         const MAX_WORLD_SIZE: u32 = 10_000;
-        if world_size > MAX_WORLD_SIZE {
+        if computed_world_size == 0 || computed_world_size > MAX_WORLD_SIZE {
             return Err(moqentra_types::Error::invalid_argument(
-                "world_size exceeds maximum allowed",
+                "computed world_size must be between 1 and 10000",
             ));
         }
+
         if let DistributedConfig::Ddp { world_size: stored } = self.distributed {
-            if stored != world_size {
+            if stored != computed_world_size {
                 return Err(moqentra_types::Error::invalid_argument(
                     "distributed.world_size must equal resources.replicas * processes_per_replica",
                 ));

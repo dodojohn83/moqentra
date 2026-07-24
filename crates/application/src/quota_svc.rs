@@ -71,14 +71,30 @@ impl<R: QuotaRepository> QuotaService<R> {
         if requested == 0 {
             return Err(Error::invalid_argument("requested quota must be > 0"));
         }
+        if ctx.tenant_id != tenant_id {
+            return Err(Error::permission_denied(
+                "tenant mismatch in quota admission",
+            ));
+        }
+        if ctx.project_id.is_some_and(|p| p != project_id) {
+            return Err(Error::permission_denied(
+                "project mismatch in quota admission",
+            ));
+        }
 
         let policy = self.repo.get_policy(ctx, policy_id).await?;
         let active = self.repo.active_reservations(ctx, dimension).await?;
 
         let effective = self.effective_limit(&policy.entity, tenant_id, project_id, dimension)?;
+        let now = UtcTimestamp::now();
         let used: u64 = active
             .iter()
-            .filter(|r| matches!(r.state, ReservationState::Active))
+            .filter(|r| {
+                r.tenant_id == tenant_id
+                    && (policy.entity.project_id.is_none() || r.project_id == project_id)
+                    && r.expires_at >= now
+                    && matches!(r.state, ReservationState::Active)
+            })
             .map(|r| r.requested)
             .fold(0u64, |a, b| a.saturating_add(b));
 
@@ -163,9 +179,17 @@ impl InMemoryQuotaRegistry {
 impl QuotaRepository for InMemoryQuotaRegistry {
     async fn create_policy(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         policy: QuotaPolicy,
     ) -> Result<Versioned<QuotaPolicy>, Error> {
+        if policy.tenant_id != ctx.tenant_id {
+            return Err(Error::permission_denied("quota policy tenant mismatch"));
+        }
+        if let (Some(cp), Some(pp)) = (ctx.project_id, policy.project_id) {
+            if cp != pp {
+                return Err(Error::permission_denied("quota policy project mismatch"));
+            }
+        }
         let mut reg = self.policies.lock().map_err(|e| Error::internal(e.to_string()))?;
         if reg.contains_key(&policy.id) {
             return Err(Error::conflict("quota policy already exists"));
@@ -178,11 +202,19 @@ impl QuotaRepository for InMemoryQuotaRegistry {
 
     async fn get_policy(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         id: QuotaPolicyId,
     ) -> Result<Versioned<QuotaPolicy>, Error> {
         let reg = self.policies.lock().map_err(|e| Error::internal(e.to_string()))?;
         let policy = reg.get(&id).ok_or_else(|| Error::not_found("quota policy"))?;
+        if policy.tenant_id != ctx.tenant_id {
+            return Err(Error::not_found("quota policy"));
+        }
+        if let (Some(cp), Some(pp)) = (ctx.project_id, policy.project_id) {
+            if cp != pp {
+                return Err(Error::not_found("quota policy"));
+            }
+        }
         let revs = self.revisions.lock().map_err(|e| Error::internal(e.to_string()))?;
         let rev = revs.get(&id).copied().unwrap_or(1);
         Ok(Versioned::new(policy.clone(), revision_from_u64(rev)))
@@ -190,7 +222,7 @@ impl QuotaRepository for InMemoryQuotaRegistry {
 
     async fn list_policies(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         _filter: ResourceListFilter,
         _page: PageRequest,
     ) -> Result<Page<Versioned<QuotaPolicy>>, Error> {
@@ -198,6 +230,8 @@ impl QuotaRepository for InMemoryQuotaRegistry {
         let revs = self.revisions.lock().map_err(|e| Error::internal(e.to_string()))?;
         let items: Vec<_> = reg
             .values()
+            .filter(|p| p.tenant_id == ctx.tenant_id)
+            .filter(|p| p.project_id.is_none_or(|pp| ctx.project_id.is_none_or(|cp| cp == pp)))
             .map(|p| {
                 let rev = revs.get(&p.id).copied().unwrap_or(1);
                 Versioned::new(p.clone(), revision_from_u64(rev))
@@ -209,9 +243,15 @@ impl QuotaRepository for InMemoryQuotaRegistry {
 
     async fn create_reservation(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         reservation: QuotaReservation,
     ) -> Result<Versioned<QuotaReservation>, Error> {
+        if reservation.tenant_id != ctx.tenant_id {
+            return Err(Error::permission_denied("reservation tenant mismatch"));
+        }
+        if ctx.project_id.is_some_and(|p| p != reservation.project_id) {
+            return Err(Error::permission_denied("reservation project mismatch"));
+        }
         let mut reg = self.reservations.lock().map_err(|e| Error::internal(e.to_string()))?;
         if reg.contains_key(&reservation.id) {
             return Err(Error::conflict("reservation already exists"));
@@ -226,11 +266,17 @@ impl QuotaRepository for InMemoryQuotaRegistry {
 
     async fn get_reservation(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         id: QuotaReservationId,
     ) -> Result<Versioned<QuotaReservation>, Error> {
         let reg = self.reservations.lock().map_err(|e| Error::internal(e.to_string()))?;
         let r = reg.get(&id).ok_or_else(|| Error::not_found("quota reservation"))?;
+        if r.tenant_id != ctx.tenant_id {
+            return Err(Error::not_found("quota reservation"));
+        }
+        if ctx.project_id.is_some_and(|p| p != r.project_id) {
+            return Err(Error::not_found("quota reservation"));
+        }
         let rev = self
             .reservation_revisions
             .lock()
@@ -243,7 +289,7 @@ impl QuotaRepository for InMemoryQuotaRegistry {
 
     async fn active_reservations(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         dimension: ResourceDimension,
     ) -> Result<Vec<QuotaReservation>, Error> {
         let reg = self.reservations.lock().map_err(|e| Error::internal(e.to_string()))?;
@@ -251,7 +297,8 @@ impl QuotaRepository for InMemoryQuotaRegistry {
         Ok(reg
             .values()
             .filter(|r| {
-                r.resource_dimension == dimension
+                r.tenant_id == ctx.tenant_id
+                    && r.resource_dimension == dimension
                     && matches!(r.state, ReservationState::Active)
                     && r.expires_at >= now
             })
@@ -261,14 +308,24 @@ impl QuotaRepository for InMemoryQuotaRegistry {
 
     async fn update_reservation(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         id: QuotaReservationId,
         reservation: QuotaReservation,
         expected: moqentra_types::Revision,
     ) -> Result<Versioned<QuotaReservation>, Error> {
+        if reservation.tenant_id != ctx.tenant_id {
+            return Err(Error::permission_denied("reservation tenant mismatch"));
+        }
+        if ctx.project_id.is_some_and(|p| p != reservation.project_id) {
+            return Err(Error::permission_denied("reservation project mismatch"));
+        }
         let mut reg = self.reservations.lock().map_err(|e| Error::internal(e.to_string()))?;
         let mut revs =
             self.reservation_revisions.lock().map_err(|e| Error::internal(e.to_string()))?;
+        let existing = reg.get(&id).ok_or_else(|| Error::not_found("quota reservation"))?;
+        if existing.tenant_id != ctx.tenant_id {
+            return Err(Error::not_found("quota reservation"));
+        }
         let current = revs.get(&id).copied().unwrap_or(1);
         if expected.as_u64() != current {
             return Err(Error::conflict("reservation revision mismatch"));

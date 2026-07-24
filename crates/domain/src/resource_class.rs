@@ -64,6 +64,9 @@ impl ResourceClass {
                 "name, vendor and family are required",
             ));
         }
+        let vendor = vendor.to_lowercase();
+        let runtime = runtime.to_lowercase();
+        let collective_backend = collective_backend.to_lowercase();
         if revision == 0 {
             return Err(moqentra_types::Error::invalid_argument(
                 "revision must be > 0",

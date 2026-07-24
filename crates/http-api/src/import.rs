@@ -9,7 +9,7 @@ use moqentra_domain::import::{ImportJob, ImportJobFailure, ImportJobState};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tracing;
 
 /// Port for import job persistence.
@@ -107,16 +107,23 @@ pub fn spawn_import_worker(state: AppState) {
                 for id in ids {
                     // Cursor before external transfer side effects.
                     cursor.advance(id.clone());
-                    if let Ok(Some(job)) = state.import_jobs.get(&id).await {
-                        let result = execute_import(&state, &job).await;
-                        let mut job = job;
-                        if let Err((reason, retryable)) = result {
-                            let _ = job.fail(reason);
-                            if retryable && job.retry_count < retry_budget {
-                                let _ = job.retry();
+                    if let Ok(Some(mut job)) = state.import_jobs.get(&id).await {
+                        if !matches!(job.state, ImportJobState::Pending | ImportJobState::Failed) {
+                            continue;
+                        }
+                        let result = execute_import(&state, &mut job).await;
+                        match result {
+                            Ok(()) => {
+                                if matches!(job.state, ImportJobState::Validating) {
+                                    let _ = job.complete();
+                                }
                             }
-                        } else {
-                            let _ = job.complete();
+                            Err((reason, retryable)) => {
+                                let _ = job.fail(reason);
+                                if retryable && job.retry_count < retry_budget {
+                                    let _ = job.retry();
+                                }
+                            }
                         }
                         let _ = state.import_jobs.save(&job).await;
                     }
@@ -127,75 +134,44 @@ pub fn spawn_import_worker(state: AppState) {
     });
 }
 
-async fn execute_import(state: &AppState, job: &ImportJob) -> Result<(), (ImportJobFailure, bool)> {
+async fn execute_import(
+    state: &AppState,
+    job: &mut ImportJob,
+) -> Result<(), (ImportJobFailure, bool)> {
     if !matches!(job.state, ImportJobState::Pending | ImportJobState::Failed) {
         return Ok(());
     }
-
-    // Transition to inspecting.
-    {
-        let mut current = state
-            .import_jobs
-            .get(&job.id)
-            .await
-            .ok()
-            .flatten()
-            .ok_or((ImportJobFailure::InvalidSource, false))?;
-        if let Err(_e) = current.start_inspection(job.total_bytes) {
+    if job.state == ImportJobState::Failed {
+        if let Err(_e) = job.retry() {
             return Err((ImportJobFailure::InvalidSource, false));
         }
-        let _ = state.import_jobs.save(&current).await;
+    }
+    if let Err(_e) = job.start_inspection(job.total_bytes) {
+        return Err((ImportJobFailure::InvalidSource, false));
+    }
+    if let Err(_e) = job.start_transfer() {
+        return Err((ImportJobFailure::InvalidSource, false));
     }
 
-    let deadline = Instant::now() + Duration::from_secs(job.deadline_seconds as u64);
-    let max_retries = 3;
-    let mut attempt = 0;
-    let mut last_error = ImportJobFailure::Network;
-
-    while attempt <= max_retries && Instant::now() < deadline {
-        attempt += 1;
-        match download_and_store(state, job).await {
-            Ok(digest) => {
-                let mut current = state
-                    .import_jobs
-                    .get(&job.id)
-                    .await
-                    .ok()
-                    .flatten()
-                    .ok_or((ImportJobFailure::InvalidSource, false))?;
-                if let Err(_e) = current.start_validation() {
-                    return Err((ImportJobFailure::ValidationFailed, false));
-                }
-                current.digest = Some(digest);
-                let _ = state.import_jobs.save(&current).await;
-                return Ok(());
+    match download_and_store(state, job).await {
+        Ok(digest) => {
+            if let Err(_e) = job.progress_transfer(job.total_bytes) {
+                return Err((ImportJobFailure::Oversized, false));
             }
-            Err(reason) => {
-                last_error = reason;
-                if Instant::now() >= deadline {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(200 * attempt as u64)).await;
+            job.digest = Some(digest);
+            if let Err(_e) = job.start_validation() {
+                return Err((ImportJobFailure::ValidationFailed, false));
             }
+            Ok(())
+        }
+        Err(reason) => {
+            let retryable = matches!(reason, ImportJobFailure::Network);
+            Err((reason, retryable))
         }
     }
-
-    Err((last_error, false))
 }
 
 async fn download_and_store(state: &AppState, job: &ImportJob) -> Result<String, ImportJobFailure> {
-    let mut current = state
-        .import_jobs
-        .get(&job.id)
-        .await
-        .ok()
-        .flatten()
-        .ok_or(ImportJobFailure::InvalidSource)?;
-    if current.start_transfer().is_err() {
-        return Err(ImportJobFailure::InvalidSource);
-    }
-    let _ = state.import_jobs.save(&current).await;
-
     // Check for existing object with same digest (deduplication).
     if let Ok((_, meta)) = state.object_store.get_object(&job.target_key).await {
         if let Some(existing_digest) = meta.digest {
@@ -204,8 +180,6 @@ async fn download_and_store(state: &AppState, job: &ImportJob) -> Result<String,
                 target_key = %job.target_key,
                 "skipping transfer: object already exists"
             );
-            let _ = current.progress_transfer(job.total_bytes);
-            let _ = state.import_jobs.save(&current).await;
             return Ok(existing_digest);
         }
     }
@@ -235,18 +209,6 @@ async fn download_and_store(state: &AppState, job: &ImportJob) -> Result<String,
     }
 
     let digest = format!("sha256:{:x}", Sha256::digest(&bytes));
-
-    let mut current = state
-        .import_jobs
-        .get(&job.id)
-        .await
-        .ok()
-        .flatten()
-        .ok_or(ImportJobFailure::InvalidSource)?;
-    if current.progress_transfer(bytes.len() as u64).is_err() {
-        return Err(ImportJobFailure::Oversized);
-    }
-    let _ = state.import_jobs.save(&current).await;
 
     state
         .object_store

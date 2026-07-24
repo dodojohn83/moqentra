@@ -34,12 +34,10 @@ impl PgDatasetRepository {
         Ok(())
     }
 
-    fn revision_from_i64(value: i64) -> Revision {
-        let mut r = Revision::initial();
-        for _ in 0..value {
-            r = r.next();
-        }
-        r
+    fn revision_from_i64(value: i64) -> Result<Revision, Error> {
+        let value =
+            u64::try_from(value).map_err(|_| Error::internal("negative revision in database"))?;
+        Ok(Revision::from_u64(value))
     }
 
     async fn load_versions(
@@ -95,7 +93,7 @@ impl DatasetRepository for PgDatasetRepository {
         .await
         .map_err(|e| Error::internal(format!("failed to create dataset: {e}")))?;
 
-        Ok(Versioned::new(dataset, Self::revision_from_i64(revision)))
+        Ok(Versioned::new(dataset, Self::revision_from_i64(revision)?))
     }
 
     async fn get(&self, ctx: &RequestContext, id: DatasetId) -> Result<Versioned<Dataset>, Error> {
@@ -117,7 +115,7 @@ impl DatasetRepository for PgDatasetRepository {
         let domain = dataset_row_to_domain(&row, versions)?;
         Ok(Versioned::new(
             domain,
-            Self::revision_from_i64(row.revision),
+            Self::revision_from_i64(row.revision)?,
         ))
     }
 
@@ -192,7 +190,7 @@ impl DatasetRepository for PgDatasetRepository {
             let domain = dataset_row_to_domain(&row, versions)?;
             items.push(Versioned::new(
                 domain,
-                Self::revision_from_i64(row.revision),
+                Self::revision_from_i64(row.revision)?,
             ));
         }
 
@@ -209,7 +207,7 @@ impl DatasetRepository for PgDatasetRepository {
         self.set_tenant(ctx.tenant_id).await?;
 
         let metadata = serde_json::json!({ "labels": dataset.labels });
-        let expected_rev = expected.as_u64() as i64;
+        let expected_rev = expected.as_i64()?;
 
         let result = sqlx::query(
             "UPDATE datasets
@@ -242,7 +240,7 @@ impl DatasetRepository for PgDatasetRepository {
     ) -> Result<(), Error> {
         self.set_tenant(ctx.tenant_id).await?;
 
-        let expected_rev = expected.as_u64() as i64;
+        let expected_rev = expected.as_i64()?;
         let result =
             sqlx::query("DELETE FROM datasets WHERE id = $1 AND tenant_id = $2 AND revision = $3")
                 .bind(id.as_uuid())

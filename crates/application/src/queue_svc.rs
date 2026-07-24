@@ -149,9 +149,17 @@ impl InMemoryQueuePolicyRegistry {
 impl QueuePolicyRepository for InMemoryQueuePolicyRegistry {
     async fn create_policy(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         policy: QueuePolicy,
     ) -> Result<Versioned<QueuePolicy>, Error> {
+        if policy.tenant_id != ctx.tenant_id {
+            return Err(Error::permission_denied("queue policy tenant mismatch"));
+        }
+        if let (Some(cp), Some(pp)) = (ctx.project_id, policy.project_id) {
+            if cp != pp {
+                return Err(Error::permission_denied("queue policy project mismatch"));
+            }
+        }
         let mut reg = self.policies.lock().map_err(|e| Error::internal(e.to_string()))?;
         if reg.contains_key(&policy.id) {
             return Err(Error::conflict("queue policy already exists"));
@@ -164,11 +172,19 @@ impl QueuePolicyRepository for InMemoryQueuePolicyRegistry {
 
     async fn get_policy(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         id: QueuePolicyId,
     ) -> Result<Versioned<QueuePolicy>, Error> {
         let reg = self.policies.lock().map_err(|e| Error::internal(e.to_string()))?;
         let policy = reg.get(&id).ok_or_else(|| Error::not_found("queue policy"))?;
+        if policy.tenant_id != ctx.tenant_id {
+            return Err(Error::not_found("queue policy"));
+        }
+        if let (Some(cp), Some(pp)) = (ctx.project_id, policy.project_id) {
+            if cp != pp {
+                return Err(Error::not_found("queue policy"));
+            }
+        }
         let rev = self
             .revisions
             .lock()
@@ -181,7 +197,7 @@ impl QueuePolicyRepository for InMemoryQueuePolicyRegistry {
 
     async fn list_policies(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         filter: ResourceListFilter,
         page: PageRequest,
     ) -> Result<Page<Versioned<QueuePolicy>>, Error> {
@@ -189,6 +205,8 @@ impl QueuePolicyRepository for InMemoryQueuePolicyRegistry {
         let revs = self.revisions.lock().map_err(|e| Error::internal(e.to_string()))?;
         let mut items: Vec<_> = reg
             .values()
+            .filter(|p| p.tenant_id == ctx.tenant_id)
+            .filter(|p| p.project_id.is_none_or(|pp| ctx.project_id.is_none_or(|cp| cp == pp)))
             .filter(|p| filter.name_prefix.as_ref().is_none_or(|prefix| p.name.starts_with(prefix)))
             .map(|p| {
                 let rev = revs.get(&p.id).copied().unwrap_or(1);
@@ -202,13 +220,25 @@ impl QueuePolicyRepository for InMemoryQueuePolicyRegistry {
 
     async fn update_policy(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         id: QueuePolicyId,
         policy: QueuePolicy,
         expected: Revision,
     ) -> Result<Versioned<QueuePolicy>, Error> {
+        if policy.tenant_id != ctx.tenant_id {
+            return Err(Error::permission_denied("queue policy tenant mismatch"));
+        }
+        if let (Some(cp), Some(pp)) = (ctx.project_id, policy.project_id) {
+            if cp != pp {
+                return Err(Error::permission_denied("queue policy project mismatch"));
+            }
+        }
         let mut reg = self.policies.lock().map_err(|e| Error::internal(e.to_string()))?;
         let mut revs = self.revisions.lock().map_err(|e| Error::internal(e.to_string()))?;
+        let existing = reg.get(&id).ok_or_else(|| Error::not_found("queue policy"))?;
+        if existing.tenant_id != ctx.tenant_id {
+            return Err(Error::not_found("queue policy"));
+        }
         let current = revs.get(&id).copied().unwrap_or(1);
         if expected.as_u64() != current {
             return Err(Error::conflict("queue policy revision mismatch"));
@@ -221,12 +251,21 @@ impl QueuePolicyRepository for InMemoryQueuePolicyRegistry {
 
     async fn delete_policy(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         id: QueuePolicyId,
         expected: Revision,
     ) -> Result<(), Error> {
         let mut reg = self.policies.lock().map_err(|e| Error::internal(e.to_string()))?;
         let mut revs = self.revisions.lock().map_err(|e| Error::internal(e.to_string()))?;
+        let existing = reg.get(&id).ok_or_else(|| Error::not_found("queue policy"))?;
+        if existing.tenant_id != ctx.tenant_id {
+            return Err(Error::not_found("queue policy"));
+        }
+        if let (Some(cp), Some(pp)) = (ctx.project_id, existing.project_id) {
+            if cp != pp {
+                return Err(Error::not_found("queue policy"));
+            }
+        }
         let current = revs.get(&id).copied().unwrap_or(1);
         if expected.as_u64() != current {
             return Err(Error::conflict("queue policy revision mismatch"));
@@ -255,9 +294,17 @@ impl InMemoryPriorityClassRegistry {
 impl PriorityClassRepository for InMemoryPriorityClassRegistry {
     async fn create_priority_class(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         class: PriorityClass,
     ) -> Result<Versioned<PriorityClass>, Error> {
+        if class.tenant_id != ctx.tenant_id {
+            return Err(Error::permission_denied("priority class tenant mismatch"));
+        }
+        if let (Some(cp), Some(pp)) = (ctx.project_id, class.project_id) {
+            if cp != pp {
+                return Err(Error::permission_denied("priority class project mismatch"));
+            }
+        }
         let mut reg = self.classes.lock().map_err(|e| Error::internal(e.to_string()))?;
         if reg.contains_key(&class.id) {
             return Err(Error::conflict("priority class already exists"));
@@ -270,11 +317,19 @@ impl PriorityClassRepository for InMemoryPriorityClassRegistry {
 
     async fn get_priority_class(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         id: PriorityClassId,
     ) -> Result<Versioned<PriorityClass>, Error> {
         let reg = self.classes.lock().map_err(|e| Error::internal(e.to_string()))?;
         let class = reg.get(&id).ok_or_else(|| Error::not_found("priority class"))?;
+        if class.tenant_id != ctx.tenant_id {
+            return Err(Error::not_found("priority class"));
+        }
+        if let (Some(cp), Some(pp)) = (ctx.project_id, class.project_id) {
+            if cp != pp {
+                return Err(Error::not_found("priority class"));
+            }
+        }
         let rev = self
             .revisions
             .lock()
@@ -287,7 +342,7 @@ impl PriorityClassRepository for InMemoryPriorityClassRegistry {
 
     async fn list_priority_classes(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         filter: ResourceListFilter,
         page: PageRequest,
     ) -> Result<Page<Versioned<PriorityClass>>, Error> {
@@ -295,6 +350,8 @@ impl PriorityClassRepository for InMemoryPriorityClassRegistry {
         let revs = self.revisions.lock().map_err(|e| Error::internal(e.to_string()))?;
         let mut items: Vec<_> = reg
             .values()
+            .filter(|c| c.tenant_id == ctx.tenant_id)
+            .filter(|c| c.project_id.is_none_or(|pp| ctx.project_id.is_none_or(|cp| cp == pp)))
             .filter(|c| filter.name_prefix.as_ref().is_none_or(|p| c.name.starts_with(p)))
             .map(|c| {
                 let rev = revs.get(&c.id).copied().unwrap_or(1);
@@ -308,13 +365,25 @@ impl PriorityClassRepository for InMemoryPriorityClassRegistry {
 
     async fn update_priority_class(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         id: PriorityClassId,
         class: PriorityClass,
         expected: Revision,
     ) -> Result<Versioned<PriorityClass>, Error> {
+        if class.tenant_id != ctx.tenant_id {
+            return Err(Error::permission_denied("priority class tenant mismatch"));
+        }
+        if let (Some(cp), Some(pp)) = (ctx.project_id, class.project_id) {
+            if cp != pp {
+                return Err(Error::permission_denied("priority class project mismatch"));
+            }
+        }
         let mut reg = self.classes.lock().map_err(|e| Error::internal(e.to_string()))?;
         let mut revs = self.revisions.lock().map_err(|e| Error::internal(e.to_string()))?;
+        let existing = reg.get(&id).ok_or_else(|| Error::not_found("priority class"))?;
+        if existing.tenant_id != ctx.tenant_id {
+            return Err(Error::not_found("priority class"));
+        }
         let current = revs.get(&id).copied().unwrap_or(1);
         if expected.as_u64() != current {
             return Err(Error::conflict("priority class revision mismatch"));
@@ -327,12 +396,21 @@ impl PriorityClassRepository for InMemoryPriorityClassRegistry {
 
     async fn delete_priority_class(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         id: PriorityClassId,
         expected: Revision,
     ) -> Result<(), Error> {
         let mut reg = self.classes.lock().map_err(|e| Error::internal(e.to_string()))?;
         let mut revs = self.revisions.lock().map_err(|e| Error::internal(e.to_string()))?;
+        let existing = reg.get(&id).ok_or_else(|| Error::not_found("priority class"))?;
+        if existing.tenant_id != ctx.tenant_id {
+            return Err(Error::not_found("priority class"));
+        }
+        if let (Some(cp), Some(pp)) = (ctx.project_id, existing.project_id) {
+            if cp != pp {
+                return Err(Error::not_found("priority class"));
+            }
+        }
         let current = revs.get(&id).copied().unwrap_or(1);
         if expected.as_u64() != current {
             return Err(Error::conflict("priority class revision mismatch"));

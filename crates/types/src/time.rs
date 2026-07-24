@@ -151,12 +151,23 @@ impl Revision {
         Self(0)
     }
 
+    pub const fn from_u64(value: u64) -> Self {
+        Self(value)
+    }
+
     pub const fn next(self) -> Self {
         Self(self.0.saturating_add(1))
     }
 
     pub const fn as_u64(&self) -> u64 {
         self.0
+    }
+
+    /// Returns the revision as an `i64` for PostgreSQL `BIGINT` columns.
+    /// Errors if the revision is larger than `i64::MAX`, which would wrap on cast.
+    pub fn as_i64(&self) -> Result<i64, crate::Error> {
+        i64::try_from(self.0)
+            .map_err(|_| crate::Error::invalid_argument("revision out of i64 range"))
     }
 }
 
@@ -222,5 +233,11 @@ mod tests {
     fn revision_increments() {
         let rev = Revision::initial().next().next();
         assert_eq!(rev.as_u64(), 2);
+    }
+
+    #[test]
+    fn revision_as_i64_roundtrip_and_overflow() {
+        assert_eq!(Revision::from_u64(42).as_i64().unwrap(), 42);
+        assert!(Revision::from_u64((i64::MAX as u64) + 1).as_i64().is_err());
     }
 }

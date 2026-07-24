@@ -33,12 +33,10 @@ impl PgDeploymentRepository {
         Ok(())
     }
 
-    fn revision_from_i64(value: i64) -> Revision {
-        let mut r = Revision::initial();
-        for _ in 0..value {
-            r = r.next();
-        }
-        r
+    fn revision_from_i64(value: i64) -> Result<Revision, Error> {
+        let value =
+            u64::try_from(value).map_err(|_| Error::internal("negative revision in database"))?;
+        Ok(Revision::from_u64(value))
     }
 }
 
@@ -142,7 +140,7 @@ impl DeploymentRepository for PgDeploymentRepository {
 
         Ok(Versioned::new(
             deployment,
-            Self::revision_from_i64(revision),
+            Self::revision_from_i64(revision)?,
         ))
     }
 
@@ -169,7 +167,7 @@ impl DeploymentRepository for PgDeploymentRepository {
         let deployment = row_to_domain(&row)?;
         Ok(Versioned::new(
             deployment,
-            Self::revision_from_i64(row.revision),
+            Self::revision_from_i64(row.revision)?,
         ))
     }
 
@@ -235,7 +233,7 @@ impl DeploymentRepository for PgDeploymentRepository {
             let deployment = row_to_domain(&row)?;
             items.push(Versioned::new(
                 deployment,
-                Self::revision_from_i64(row.revision),
+                Self::revision_from_i64(row.revision)?,
             ));
         }
 
@@ -255,7 +253,7 @@ impl DeploymentRepository for PgDeploymentRepository {
             .policy
             .validate()
             .map_err(|e| Error::invalid_argument(e.to_string()))?;
-        let expected_rev = expected.as_u64() as i64;
+        let expected_rev = expected.as_i64()?;
         let spec = deployment_spec(&deployment)?;
 
         let result = sqlx::query(
@@ -288,7 +286,7 @@ impl DeploymentRepository for PgDeploymentRepository {
         expected: Revision,
     ) -> Result<(), Error> {
         self.set_tenant(ctx.tenant_id).await?;
-        let expected_rev = expected.as_u64() as i64;
+        let expected_rev = expected.as_i64()?;
 
         let result = sqlx::query(
             "DELETE FROM deployments WHERE id = $1 AND tenant_id = $2 AND revision = $3",

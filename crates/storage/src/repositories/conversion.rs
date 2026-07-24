@@ -45,12 +45,10 @@ impl PgConversionRepository {
         Ok(())
     }
 
-    fn revision_from_i64(value: i64) -> Revision {
-        let mut r = Revision::initial();
-        for _ in 0..value {
-            r = r.next();
-        }
-        r
+    fn revision_from_i64(value: i64) -> Result<Revision, Error> {
+        let value =
+            u64::try_from(value).map_err(|_| Error::internal("negative revision in database"))?;
+        Ok(Revision::from_u64(value))
     }
 }
 
@@ -70,12 +68,10 @@ impl PgEvaluationRepository {
         Ok(())
     }
 
-    fn revision_from_i64(value: i64) -> Revision {
-        let mut r = Revision::initial();
-        for _ in 0..value {
-            r = r.next();
-        }
-        r
+    fn revision_from_i64(value: i64) -> Result<Revision, Error> {
+        let value =
+            u64::try_from(value).map_err(|_| Error::internal("negative revision in database"))?;
+        Ok(Revision::from_u64(value))
     }
 }
 
@@ -184,7 +180,8 @@ fn evaluation_row_to_domain(row: &EvaluationRunRow) -> Result<EvaluationRun, Err
         project_id: ProjectId::from_uuid(row.project_id),
         model_version_id: ModelVersionId::from_uuid(row.model_version_id),
         dataset_version_id: moqentra_types::DatasetVersionId::from_uuid(row.dataset_version_id),
-        seed: row.seed as u64,
+        seed: u64::try_from(row.seed)
+            .map_err(|_| Error::internal("negative seed in evaluation run row"))?,
         metrics,
         state,
         hardware_profile: row.hardware_profile.clone(),
@@ -238,7 +235,7 @@ impl ConversionRepository for PgConversionRepository {
         .await
         .map_err(|e| Error::internal(format!("failed to create conversion job: {e}")))?;
 
-        Ok(Versioned::new(job, Self::revision_from_i64(revision)))
+        Ok(Versioned::new(job, Self::revision_from_i64(revision)?))
     }
 
     async fn get(
@@ -261,7 +258,7 @@ impl ConversionRepository for PgConversionRepository {
         .ok_or_else(|| Error::not_found("conversion job"))?;
 
         let job = conversion_row_to_domain(&row)?;
-        Ok(Versioned::new(job, Self::revision_from_i64(row.revision)))
+        Ok(Versioned::new(job, Self::revision_from_i64(row.revision)?))
     }
 
     async fn list(
@@ -303,7 +300,7 @@ impl ConversionRepository for PgConversionRepository {
             .map(|row| {
                 let revision = row.revision;
                 let job = conversion_row_to_domain(&row)?;
-                Ok(Versioned::new(job, Self::revision_from_i64(revision)))
+                Ok(Versioned::new(job, Self::revision_from_i64(revision)?))
             })
             .collect::<Result<_, Error>>()?;
 
@@ -328,7 +325,7 @@ impl ConversionRepository for PgConversionRepository {
         )
         .bind(target)
         .bind(job.state.to_string())
-        .bind(expected.as_u64() as i64 + 1)
+        .bind(expected.as_i64()? + 1)
         .bind(profile)
         .bind(parameters)
         .bind(output_artifacts)
@@ -337,7 +334,7 @@ impl ConversionRepository for PgConversionRepository {
         .bind(job.updated_at.as_offset())
         .bind(id.as_uuid())
         .bind(ctx.tenant_id.as_uuid())
-        .bind(expected.as_u64() as i64)
+        .bind(expected.as_i64()?)
         .execute(&self.pool)
         .await
         .map_err(|e| Error::internal(format!("failed to update conversion job: {e}")))?;
@@ -362,7 +359,7 @@ impl ConversionRepository for PgConversionRepository {
         )
         .bind(id.as_uuid())
         .bind(ctx.tenant_id.as_uuid())
-        .bind(expected.as_u64() as i64)
+        .bind(expected.as_i64()?)
         .execute(&self.pool)
         .await
         .map_err(|e| Error::internal(format!("failed to delete conversion job: {e}")))?;
@@ -384,6 +381,8 @@ impl EvaluationRepository for PgEvaluationRepository {
         self.set_tenant(ctx.tenant_id).await?;
         let revision = 0i64;
         let (metrics, reference_outputs, state) = evaluation_run_to_values(&run)?;
+        let seed_i64 = i64::try_from(run.seed)
+            .map_err(|_| Error::invalid_argument(format!("seed {} exceeds i64 range", run.seed)))?;
 
         sqlx::query(
             "INSERT INTO evaluation_runs (id, tenant_id, project_id, model_version_id, dataset_version_id, seed, state, revision, metrics, hardware_profile, preprocess_version, postprocess_version, reference_outputs, created_at, updated_at)
@@ -395,7 +394,7 @@ impl EvaluationRepository for PgEvaluationRepository {
         .bind(run.project_id.as_uuid())
         .bind(run.model_version_id.as_uuid())
         .bind(run.dataset_version_id.as_uuid())
-        .bind(run.seed as i64)
+        .bind(seed_i64)
         .bind(state)
         .bind(revision)
         .bind(metrics)
@@ -409,7 +408,7 @@ impl EvaluationRepository for PgEvaluationRepository {
         .await
         .map_err(|e| Error::internal(format!("failed to create evaluation run: {e}")))?;
 
-        Ok(Versioned::new(run, Self::revision_from_i64(revision)))
+        Ok(Versioned::new(run, Self::revision_from_i64(revision)?))
     }
 
     async fn get(
@@ -432,7 +431,7 @@ impl EvaluationRepository for PgEvaluationRepository {
         .ok_or_else(|| Error::not_found("evaluation run"))?;
 
         let run = evaluation_row_to_domain(&row)?;
-        Ok(Versioned::new(run, Self::revision_from_i64(row.revision)))
+        Ok(Versioned::new(run, Self::revision_from_i64(row.revision)?))
     }
 
     async fn list(
@@ -474,7 +473,7 @@ impl EvaluationRepository for PgEvaluationRepository {
             .map(|row| {
                 let revision = row.revision;
                 let run = evaluation_row_to_domain(&row)?;
-                Ok(Versioned::new(run, Self::revision_from_i64(revision)))
+                Ok(Versioned::new(run, Self::revision_from_i64(revision)?))
             })
             .collect::<Result<_, Error>>()?;
 
@@ -498,7 +497,7 @@ impl EvaluationRepository for PgEvaluationRepository {
              WHERE id = $9 AND tenant_id = $10 AND revision = $11",
         )
         .bind(state)
-        .bind(expected.as_u64() as i64 + 1)
+        .bind(expected.as_i64()? + 1)
         .bind(metrics)
         .bind(&run.hardware_profile)
         .bind(&run.preprocess_version)
@@ -507,7 +506,7 @@ impl EvaluationRepository for PgEvaluationRepository {
         .bind(run.updated_at.as_offset())
         .bind(id.as_uuid())
         .bind(ctx.tenant_id.as_uuid())
-        .bind(expected.as_u64() as i64)
+        .bind(expected.as_i64()?)
         .execute(&self.pool)
         .await
         .map_err(|e| Error::internal(format!("failed to update evaluation run: {e}")))?;
@@ -532,7 +531,7 @@ impl EvaluationRepository for PgEvaluationRepository {
         )
         .bind(id.as_uuid())
         .bind(ctx.tenant_id.as_uuid())
-        .bind(expected.as_u64() as i64)
+        .bind(expected.as_i64()?)
         .execute(&self.pool)
         .await
         .map_err(|e| Error::internal(format!("failed to delete evaluation run: {e}")))?;
@@ -672,6 +671,8 @@ impl PgEvaluationRepository {
     pub async fn upsert_run(&self, run: &EvaluationRun) -> Result<(), Error> {
         self.set_tenant(run.tenant_id).await?;
         let (metrics, reference_outputs, state) = evaluation_run_to_values(run)?;
+        let seed_i64 = i64::try_from(run.seed)
+            .map_err(|_| Error::invalid_argument(format!("seed {} exceeds i64 range", run.seed)))?;
         sqlx::query(
             "INSERT INTO evaluation_runs (id, tenant_id, project_id, model_version_id, dataset_version_id, seed, state, revision, metrics, hardware_profile, preprocess_version, postprocess_version, reference_outputs, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, $10, $11, $12, $13, $14)
@@ -690,7 +691,7 @@ impl PgEvaluationRepository {
         .bind(run.project_id.as_uuid())
         .bind(run.model_version_id.as_uuid())
         .bind(run.dataset_version_id.as_uuid())
-        .bind(run.seed as i64)
+        .bind(seed_i64)
         .bind(state)
         .bind(metrics)
         .bind(&run.hardware_profile)

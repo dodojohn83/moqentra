@@ -38,7 +38,8 @@ impl TryFrom<OutboxRow> for OutboxEvent {
             event_type: row.event_type,
             payload: row.payload,
             status: parse_status(&row.status)?,
-            retry_count: row.retry_count as u32,
+            retry_count: u32::try_from(row.retry_count)
+                .map_err(|_| Error::internal("negative retry_count in database"))?,
             failure_reason: row.failure_reason,
             created_at: UtcTimestamp::new(row.created_at),
         })
@@ -118,7 +119,12 @@ impl PgOutboxStore {
         .bind(&event.event_type)
         .bind(payload)
         .bind(status)
-        .bind(i32::try_from(event.retry_count).unwrap_or(0))
+        .bind(i32::try_from(event.retry_count).map_err(|_| {
+            Error::internal(format!(
+                "retry_count {} exceeds i32 range",
+                event.retry_count
+            ))
+        })?)
         .bind(event.failure_reason.as_ref())
         .bind(created_at)
         .bind(3i32)

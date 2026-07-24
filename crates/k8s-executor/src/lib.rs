@@ -336,6 +336,7 @@ impl JobCompiler {
                 .filter(|(k, _)| k != "RANK" && k != "LOCAL_RANK")
                 .map(|(k, v)| json!({"name": k, "value": v}))
                 .collect();
+            env.push(json!({"name": "PET_NODE_RANK", "value": "$(VC_TASK_INDEX)"}));
         } else {
             command = if spec.hyperparameters.argv.is_empty() {
                 vec![
@@ -422,6 +423,9 @@ impl JobCompiler {
                 "spec": {
                     "minAvailable": replicas,
                     "schedulerName": "volcano",
+                    "plugins": {
+                        "env": []
+                    },
                     "tasks": [{
                         "name": "trainer",
                         "replicas": replicas,
