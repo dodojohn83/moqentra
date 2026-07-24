@@ -194,8 +194,14 @@ async fn validate_video(bytes: &[u8], declared: &str) -> Result<MediaInfo, Media
     if let Some(streams) = json.get("streams").and_then(|s| s.as_array()) {
         for stream in streams {
             if stream.get("codec_type").and_then(|c| c.as_str()) == Some("video") {
-                width = stream.get("width").and_then(|v| v.as_u64()).map(|v| v as u32);
-                height = stream.get("height").and_then(|v| v.as_u64()).map(|v| v as u32);
+                width = stream
+                    .get("width")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|v| u32::try_from(v).ok());
+                height = stream
+                    .get("height")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|v| u32::try_from(v).ok());
                 if let Some(codec) = stream.get("codec_name").and_then(|c| c.as_str()) {
                     detected = format!("video/{}", codec.to_lowercase());
                 }

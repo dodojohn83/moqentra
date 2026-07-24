@@ -218,8 +218,8 @@ impl AnnotationRepository for PgAnnotationRepository {
     ) -> Result<Page<Versioned<AnnotationProject>>, Error> {
         self.set_tenant(ctx.tenant_id).await?;
 
-        let limit = page.limit.clamp(1, 1000) as i64;
-        let offset = page.offset as i64;
+        let limit = i64::from(page.limit.clamp(1, 1000));
+        let offset = i64::from(page.offset);
 
         let mut conditions = vec!["tenant_id = $1".to_string(), "project_id = $2".to_string()];
         if filter.state.is_some() {
@@ -410,8 +410,8 @@ impl AnnotationRepository for PgAnnotationRepository {
     ) -> Result<Page<Versioned<AnnotationTask>>, Error> {
         self.set_tenant(ctx.tenant_id).await?;
 
-        let limit = page.limit.clamp(1, 1000) as i64;
-        let offset = page.offset as i64;
+        let limit = i64::from(page.limit.clamp(1, 1000));
+        let offset = i64::from(page.offset);
 
         let mut conditions = vec![
             "tenant_id = $1".to_string(),

@@ -118,8 +118,11 @@ impl OutboxStore for InMemoryOutbox {
             if entry.event.status == OutboxStatus::Pending && retry_ready {
                 entry.event.status = OutboxStatus::Processing;
                 entry.event.retry_count = entry.event.retry_count.saturating_add(1);
-                entry.lease_expires_at =
-                    Some(now + std::time::Duration::from_secs(IN_MEMORY_LEASE_SECS as u64));
+                entry.lease_expires_at = Some(
+                    now + std::time::Duration::from_secs(
+                        u64::try_from(IN_MEMORY_LEASE_SECS).unwrap_or(30),
+                    ),
+                );
                 entry.next_retry_at = None;
                 claimed.push(entry.event.clone());
             }

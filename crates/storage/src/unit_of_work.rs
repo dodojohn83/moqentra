@@ -38,9 +38,9 @@ pub struct Paginated<T> {
 /// Builds a pagination SQL clause from a `PageRequest`.
 ///
 /// The returned tuple is `(limit, offset)` suitable for `LIMIT $n OFFSET $n`.
-pub fn pagination_clause(req: PageRequest) -> (u64, u64) {
+pub fn pagination_clause(req: PageRequest) -> (i64, i64) {
     let limit = req.bounded_limit();
-    (u64::from(limit), u64::from(req.offset))
+    (i64::from(limit), i64::from(req.offset))
 }
 
 /// Trait for a transaction-scoped unit of work.

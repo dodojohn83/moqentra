@@ -118,6 +118,7 @@ impl AgentSession {
         }
     }
 
+    #[allow(clippy::as_conversions)]
     async fn handle_hello(&mut self, hello: Hello) -> Result<(), Status> {
         if hello.node_id != self.node_id {
             return Err(Status::permission_denied(format!(
@@ -605,6 +606,7 @@ impl moqentra_contracts::moqentra::worker::v1::worker_agent_service_server::Work
         >,
     >;
 
+    #[allow(clippy::as_conversions)]
     async fn open_stream(
         &self,
         request: Request<Streaming<WorkerAgentServiceOpenStreamRequest>>,

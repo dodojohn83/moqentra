@@ -480,7 +480,7 @@ pub(crate) fn check_rate_limit(state: &AppState, tenant_id: TenantId) -> Result<
     }
     let limiter = map.entry(tenant_id).or_insert_with(|| {
         TokenBucketLimiter::new(tenant_id, 100, 50.0, now)
-            .expect("static rate limit config is valid")
+            .unwrap_or_else(|_| unreachable!("static rate limit config is valid"))
     });
     let window = limiter.try_acquire(now, 1)?;
     if window.limited {
@@ -936,9 +936,10 @@ async fn list_datasets(
         b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
     });
 
-    let total = items.len() as u64;
-    let limit = page.bounded_limit() as usize;
-    let offset = (page.offset as usize).min(items.len());
+    let total =
+        u64::try_from(items.len()).unwrap_or_else(|_| unreachable!("item count fits in u64"));
+    let limit = usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX);
+    let offset = (usize::try_from(page.offset).unwrap_or(0)).min(items.len());
     let end = (offset + limit).min(items.len());
     let page_items = items[offset..end]
         .iter()
@@ -1159,9 +1160,10 @@ async fn list_experiments(
     items.sort_by(|a, b| {
         b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
     });
-    let total = items.len() as u64;
-    let limit = page.bounded_limit() as usize;
-    let offset = (page.offset as usize).min(items.len());
+    let total =
+        u64::try_from(items.len()).unwrap_or_else(|_| unreachable!("item count fits in u64"));
+    let limit = usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX);
+    let offset = (usize::try_from(page.offset).unwrap_or(0)).min(items.len());
     let end = (offset + limit).min(items.len());
     let page_items = items[offset..end]
         .iter()
@@ -1274,9 +1276,10 @@ async fn list_training_jobs(
     items.sort_by(|a, b| {
         b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
     });
-    let total = items.len() as u64;
-    let limit = page.bounded_limit() as usize;
-    let offset = (page.offset as usize).min(items.len());
+    let total =
+        u64::try_from(items.len()).unwrap_or_else(|_| unreachable!("item count fits in u64"));
+    let limit = usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX);
+    let offset = (usize::try_from(page.offset).unwrap_or(0)).min(items.len());
     let end = (offset + limit).min(items.len());
     let page_items = items[offset..end]
         .iter()
@@ -1719,7 +1722,8 @@ fn verify_part_upload(
     use hmac::Mac;
     let tag = hex::decode(sig_hex)
         .map_err(|_| Error::unauthenticated("invalid part upload signature"))?;
-    let now = UtcTimestamp::now().as_offset().unix_timestamp() as u64;
+    let now = u64::try_from(UtcTimestamp::now().as_offset().unix_timestamp())
+        .map_err(|_| Error::internal("timestamp overflow"))?;
     if now > expires_at {
         return Err(Error::unauthenticated("signed upload URL has expired"));
     }
@@ -1828,8 +1832,12 @@ async fn list_part_upload_urls(
         return Err(Error::not_found("upload session").into());
     }
     let ttl_seconds = 900_u64; // short-lived signed URLs
-    let max_expires = (UtcTimestamp::now().as_offset().unix_timestamp() as u64) + ttl_seconds;
-    let session_expires = (session.expires_at.as_offset().unix_timestamp() as u64).min(max_expires);
+    let max_expires = u64::try_from(UtcTimestamp::now().as_offset().unix_timestamp())
+        .map_err(|_| Error::internal("timestamp overflow"))?
+        .saturating_add(ttl_seconds);
+    let session_expires = u64::try_from(session.expires_at.as_offset().unix_timestamp())
+        .map_err(|_| Error::internal("session timestamp overflow"))?
+        .min(max_expires);
     let urls: Vec<PartUploadUrl> = session
         .parts
         .values()
@@ -1883,7 +1891,8 @@ async fn upload_part(
         .get(&part_number)
         .map(|p| p.size)
         .ok_or_else(|| Error::invalid_argument("invalid part number"))?;
-    let actual_size = body.len() as u64;
+    let actual_size =
+        u64::try_from(body.len()).map_err(|_| Error::internal("part size overflow"))?;
     if actual_size != expected_size {
         return Err(Error::invalid_argument(format!(
             "part {} size mismatch: expected {}, got {}",
@@ -2194,9 +2203,10 @@ async fn list_models(
     items.sort_by(|a, b| {
         b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
     });
-    let total = items.len() as u64;
-    let limit = page.bounded_limit() as usize;
-    let offset = (page.offset as usize).min(items.len());
+    let total =
+        u64::try_from(items.len()).unwrap_or_else(|_| unreachable!("item count fits in u64"));
+    let limit = usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX);
+    let offset = (usize::try_from(page.offset).unwrap_or(0)).min(items.len());
     let end = (offset + limit).min(items.len());
     let page_items = items[offset..end].iter().map(ModelResponse::from_model).collect();
     Ok(Json(Page::new(page_items, total, page)))
@@ -2442,9 +2452,11 @@ async fn list_outbox(
     pending.sort_by(|a, b| {
         b.created_at.cmp(&a.created_at).then(a.id.to_string().cmp(&b.id.to_string()))
     });
-    let total = pending.len() as u64;
-    let offset = (page.offset as usize).min(pending.len());
-    let end = (offset + page.bounded_limit() as usize).min(pending.len());
+    let total =
+        u64::try_from(pending.len()).unwrap_or_else(|_| unreachable!("item count fits in u64"));
+    let offset = (usize::try_from(page.offset).unwrap_or(0)).min(pending.len());
+    let end =
+        (offset + usize::try_from(page.bounded_limit()).unwrap_or(usize::MAX)).min(pending.len());
     let items = pending[offset..end]
         .iter()
         .map(|e| {
@@ -2682,7 +2694,7 @@ pub fn spawn_outbox_dispatcher(state: AppState) {
         },
     );
     let shutdown = ShutdownFlag::new();
-    let batch = limits.batch_size as u32;
+    let batch = u32::try_from(limits.batch_size).unwrap_or(0);
 
     tokio::spawn(async move {
         run_loop(shutdown, limits, || {

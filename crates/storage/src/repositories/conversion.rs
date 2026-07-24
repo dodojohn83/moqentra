@@ -289,8 +289,8 @@ impl ConversionRepository for PgConversionRepository {
         )
         .bind(ctx.tenant_id.as_uuid())
         .bind(project_id.as_uuid())
-        .bind(limit as i64)
-        .bind(offset as i64)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
         .await
         .map_err(|e| Error::internal(format!("failed to list conversion jobs: {e}")))?;
@@ -463,8 +463,8 @@ impl EvaluationRepository for PgEvaluationRepository {
         )
         .bind(ctx.tenant_id.as_uuid())
         .bind(project_id.as_uuid())
-        .bind(limit as i64)
-        .bind(offset as i64)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
         .await
         .map_err(|e| Error::internal(format!("failed to list evaluation runs: {e}")))?;

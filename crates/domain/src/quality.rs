@@ -373,6 +373,7 @@ fn parse_bbox(payload: &Value) -> Option<[f64; 4]> {
     Some([x, y, w, h])
 }
 
+#[allow(clippy::as_conversions)]
 fn resolve_image_size(
     asset_id: &str,
     ann: &Annotation,
@@ -654,7 +655,8 @@ fn sample_review_violations(
     if asset_ids.is_empty() {
         return Vec::new();
     }
-    let total = asset_ids.len() as u64;
+    let total =
+        u64::try_from(asset_ids.len()).unwrap_or_else(|_| unreachable!("asset count fits in u64"));
     let mut sample_count = total.saturating_mul(ratio_permille) / 1000;
     if sample_count == 0 {
         sample_count = 1;
@@ -675,7 +677,7 @@ fn sample_review_violations(
     scored.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(b.1)));
     scored
         .into_iter()
-        .take(sample_count as usize)
+        .take(usize::try_from(sample_count).unwrap_or(0))
         .map(|(_, asset_id)| QualityViolation {
             severity: Severity::Info,
             asset_id: asset_id.clone(),

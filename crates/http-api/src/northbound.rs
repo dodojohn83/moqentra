@@ -362,8 +362,16 @@ impl TokenBucketLimiter {
             return now;
         }
         let need = 1.0 - self.tokens;
-        let secs = (need / self.refill_per_sec).ceil().max(1.0) as u64;
-        now.add_std_duration(std::time::Duration::from_secs(secs)).unwrap_or(now)
+        let reset_duration =
+            std::time::Duration::from_secs_f64((need / self.refill_per_sec).ceil().max(1.0));
+        now.add_std_duration(reset_duration).unwrap_or(now)
+    }
+
+    fn remaining(&self) -> u32 {
+        #[allow(clippy::as_conversions)]
+        {
+            self.tokens.floor().max(0.0) as u32
+        }
     }
 
     /// Try to consume `n` tokens. On success returns a window with `limited=false`.
@@ -379,7 +387,7 @@ impl TokenBucketLimiter {
         if self.tokens + f64::EPSILON < need {
             return Ok(RateLimitWindow {
                 tenant_id: self.tenant_id,
-                remaining: self.tokens.floor().max(0.0) as u32,
+                remaining: self.remaining(),
                 reset_at: self.reset_at(now),
                 limited: true,
             });
@@ -387,7 +395,7 @@ impl TokenBucketLimiter {
         self.tokens -= need;
         Ok(RateLimitWindow {
             tenant_id: self.tenant_id,
-            remaining: self.tokens.floor().max(0.0) as u32,
+            remaining: self.remaining(),
             reset_at: self.reset_at(now),
             limited: false,
         })
