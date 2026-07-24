@@ -13,6 +13,27 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
+/// Maximum response body accepted from OIDC discovery / JWKS endpoints (1 MiB).
+const MAX_OIDC_RESPONSE_BYTES: usize = 1024 * 1024;
+
+/// Read a `reqwest` response body with an upper byte limit to avoid OOM from
+/// a misbehaving or compromised OIDC issuer.
+async fn read_limited_response(resp: reqwest::Response, max: usize) -> Result<Vec<u8>, Error> {
+    let mut resp = resp;
+    let mut buf = Vec::new();
+    while let Some(chunk) = resp
+        .chunk()
+        .await
+        .map_err(|e| Error::unauthenticated(format!("OIDC response read failed: {e}")))?
+    {
+        if buf.len().saturating_add(chunk.len()) > max {
+            return Err(Error::unauthenticated("OIDC response exceeds size limit"));
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    Ok(buf)
+}
+
 /// OIDC configuration used to validate browser-issued ID tokens.
 #[derive(Debug, Clone)]
 pub struct OidcConfig {
@@ -123,9 +144,8 @@ impl JwkSetValidator {
             .send()
             .await
             .map_err(|e| Error::unauthenticated(format!("OIDC discovery failed: {e}")))?;
-        let doc: OidcDiscovery = resp
-            .json()
-            .await
+        let body = read_limited_response(resp, MAX_OIDC_RESPONSE_BYTES).await?;
+        let doc: OidcDiscovery = serde_json::from_slice(&body)
             .map_err(|e| Error::unauthenticated(format!("OIDC discovery parse failed: {e}")))?;
         if doc.jwks_uri.is_empty() {
             return Err(Error::unauthenticated("OIDC discovery missing jwks_uri"));
@@ -141,9 +161,8 @@ impl JwkSetValidator {
             .send()
             .await
             .map_err(|e| Error::unauthenticated(format!("JWKS fetch failed: {e}")))?;
-        let jwks: Jwks = resp
-            .json()
-            .await
+        let body = read_limited_response(resp, MAX_OIDC_RESPONSE_BYTES).await?;
+        let jwks: Jwks = serde_json::from_slice(&body)
             .map_err(|e| Error::unauthenticated(format!("JWKS parse failed: {e}")))?;
 
         let mut keys = HashMap::new();

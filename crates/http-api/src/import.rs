@@ -5,6 +5,7 @@
 //! deadline, retry, and digest-based deduplication.
 
 use crate::control_plane::AppState;
+use bytes::BytesMut;
 use moqentra_domain::import::{ImportJob, ImportJobFailure, ImportJobState};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -191,7 +192,7 @@ async fn download_and_store(state: &AppState, job: &ImportJob) -> Result<String,
     }
 
     let timeout = Duration::from_secs(u64::from(job.deadline_seconds.clamp(30, 300)));
-    let resp = state
+    let mut resp = state
         .http
         .get(&job.source_url)
         .timeout(timeout)
@@ -203,19 +204,26 @@ async fn download_and_store(state: &AppState, job: &ImportJob) -> Result<String,
         return Err(ImportJobFailure::InvalidSource);
     }
 
-    let content_length = resp.content_length().unwrap_or(0);
-    if content_length > job.total_bytes {
+    if resp.content_length().is_some_and(|len| len > job.total_bytes) {
         return Err(ImportJobFailure::Oversized);
     }
 
-    let bytes = resp.bytes().await.map_err(|_| ImportJobFailure::Network)?;
+    // Stream the body so a missing/malicious Content-Length cannot cause OOM.
+    let max_bytes = usize::try_from(job.total_bytes).unwrap_or(usize::MAX);
+    let mut buf = BytesMut::new();
+    while let Some(chunk) = resp.chunk().await.map_err(|_| ImportJobFailure::Network)? {
+        if buf.len().saturating_add(chunk.len()) > max_bytes {
+            return Err(ImportJobFailure::Oversized);
+        }
+        buf.extend_from_slice(&chunk);
+    }
 
-    if u64::try_from(bytes.len()).map_err(|_| ImportJobFailure::ValidationFailed)?
-        != job.total_bytes
+    if u64::try_from(buf.len()).map_err(|_| ImportJobFailure::ValidationFailed)? != job.total_bytes
     {
         return Err(ImportJobFailure::ValidationFailed);
     }
 
+    let bytes = buf.freeze();
     let digest = format!("sha256:{:x}", Sha256::digest(&bytes));
 
     state
