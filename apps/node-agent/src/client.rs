@@ -34,7 +34,8 @@ fn to_worker_capabilities(caps: &NodeCapabilities, agent_version: &str) -> Worke
             continue;
         }
         device_labels.push(d.uuid.clone());
-        device_memory_bytes += d.memory_mib * 1024 * 1024;
+        device_memory_bytes =
+            device_memory_bytes.saturating_add(d.memory_mib.saturating_mul(1024 * 1024));
         match d.kind {
             AcceleratorKind::Nvidia | AcceleratorKind::Amd => supports_gpu = true,
             AcceleratorKind::Ascend => supports_npu = true,
@@ -426,7 +427,7 @@ async fn prepare_workspace_mounts(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     for mount in &container.bind_mounts {
         let src = Path::new(&mount.source);
-        if !src.is_absolute() || !is_within_workspace(src, workspace) {
+        if !src.is_absolute() || !is_within_workspace(src, workspace).await {
             return Err(format!("bind mount {} escapes workspace", mount.source).into());
         }
     }
@@ -451,15 +452,20 @@ async fn prepare_workspace_mounts(
     Ok(())
 }
 
-fn is_within_workspace(path: &Path, workspace: &Path) -> bool {
-    let mut components = path.components();
-    for wc in workspace.components() {
-        match components.next() {
-            Some(c) if c == wc => continue,
-            _ => return false,
-        }
+async fn is_within_workspace(path: &Path, workspace: &Path) -> bool {
+    if !path.is_absolute() {
+        return false;
     }
-    true
+    if path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return false;
+    }
+    let Ok(workspace) = tokio::fs::canonicalize(workspace).await else {
+        return false;
+    };
+    let Ok(target) = tokio::fs::canonicalize(path).await else {
+        return false;
+    };
+    target.starts_with(&workspace)
 }
 
 async fn stream_lines<R>(

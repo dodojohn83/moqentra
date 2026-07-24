@@ -216,8 +216,9 @@ impl HardwareCompatibility {
             return Compatibility::Incompatible;
         }
 
+        let resource_memory_bytes = resource_class.memory_mib.saturating_mul(1024 * 1024);
         if capability.device_memory_bytes < requirement.min_device_memory_bytes
-            || resource_class.memory_mib * 1024 * 1024 < requirement.min_device_memory_bytes
+            || resource_memory_bytes < requirement.min_device_memory_bytes
         {
             return Compatibility::Incompatible;
         }
