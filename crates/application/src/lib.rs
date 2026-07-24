@@ -24,7 +24,9 @@ pub mod ports;
 pub use annotation_svc::InMemoryAnnotationRegistry;
 pub use approval_svc::{ApprovalService, InMemoryApprovalRegistry};
 pub use coco::{CocoAnnotation, CocoCategory, CocoDataset, CocoImage};
-pub use conversion_svc::{InMemoryConversionRegistry, InMemoryEvaluationRegistry};
+pub use conversion_svc::{
+    ConversionService, InMemoryConversionRegistry, InMemoryEvaluationRegistry,
+};
 pub use dispatch::{plan_dispatch, DispatchAction};
 pub use hardware_svc::{HardwareAdmission, HardwareCompatibilityService};
 pub use labelu::{LabelUAnnotation, LabelUDataset, LabelUProjectConfig, LabelUToolConfig};
