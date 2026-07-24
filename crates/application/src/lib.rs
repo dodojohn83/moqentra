@@ -8,6 +8,7 @@
 
 mod annotation_svc;
 mod approval_svc;
+mod checkpoint_svc;
 mod conversion_svc;
 mod dispatch;
 mod model_svc;
@@ -22,6 +23,7 @@ pub mod ports;
 
 pub use annotation_svc::InMemoryAnnotationRegistry;
 pub use approval_svc::{ApprovalService, InMemoryApprovalRegistry};
+pub use checkpoint_svc::CheckpointService;
 pub use coco::{CocoAnnotation, CocoCategory, CocoDataset, CocoImage};
 pub use conversion_svc::{InMemoryConversionRegistry, InMemoryEvaluationRegistry};
 pub use dispatch::{plan_dispatch, DispatchAction};
