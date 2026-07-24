@@ -490,12 +490,21 @@ pub struct PromotionPolicy {
 }
 
 impl PromotionPolicy {
+    /// Evaluate whether an evaluation run satisfies the promotion policy for
+    /// a specific conversion target and model signature.
     pub fn evaluate(
         &self,
         run: &EvaluationRun,
+        target: ConversionTarget,
+        signature: &ModelSignature,
         approved: bool,
         scanned: bool,
     ) -> Result<(), moqentra_types::Error> {
+        if run.state != EvaluationRunState::Succeeded {
+            return Err(moqentra_types::Error::invalid_argument(
+                "evaluation run did not succeed",
+            ));
+        }
         if self.require_approval && !approved {
             return Err(moqentra_types::Error::permission_denied(
                 "approval required",
@@ -504,6 +513,18 @@ impl PromotionPolicy {
         if self.require_security_scan && !scanned {
             return Err(moqentra_types::Error::permission_denied(
                 "security scan required",
+            ));
+        }
+        if !self.allowed_targets.is_empty() && !self.allowed_targets.contains(&target) {
+            return Err(moqentra_types::Error::invalid_argument(
+                "conversion target is not allowed by promotion policy",
+            ));
+        }
+        if !self.compatibility_signatures.is_empty()
+            && !self.compatibility_signatures.contains(signature)
+        {
+            return Err(moqentra_types::Error::invalid_argument(
+                "model signature is not compatible with promotion policy",
             ));
         }
         for (name, (min, tol)) in &self.required_metrics {
@@ -532,6 +553,7 @@ impl PromotionPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model_registry::TensorSpec;
     use moqentra_types::{AssetId, RandomIdGenerator};
 
     fn make_profile() -> ConversionProfile {
@@ -650,14 +672,31 @@ mod tests {
         let mut required = BTreeMap::new();
         required.insert("accuracy".to_string(), (0.90, 0.01));
         required.insert("mAP".to_string(), (0.85, 0.01));
+        let signature = ModelSignature {
+            inputs: vec![TensorSpec {
+                name: "input".to_string(),
+                dtype: "fp32".to_string(),
+                shape: vec![
+                    "batch".to_string(),
+                    "3".to_string(),
+                    "224".to_string(),
+                    "224".to_string(),
+                ],
+            }],
+            outputs: vec![TensorSpec {
+                name: "output".to_string(),
+                dtype: "fp32".to_string(),
+                shape: vec!["batch".to_string(), "1000".to_string()],
+            }],
+        };
         let policy = PromotionPolicy {
             required_metrics: required,
             require_approval: true,
             require_security_scan: true,
             allowed_targets: vec![ConversionTarget::Onnx],
-            compatibility_signatures: vec![],
+            compatibility_signatures: vec![signature.clone()],
         };
-        assert!(policy.evaluate(&run, true, true).is_ok());
-        assert!(policy.evaluate(&run, false, true).is_err());
+        assert!(policy.evaluate(&run, ConversionTarget::Onnx, &signature, true, true).is_ok());
+        assert!(policy.evaluate(&run, ConversionTarget::Onnx, &signature, false, true).is_err());
     }
 }

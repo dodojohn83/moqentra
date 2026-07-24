@@ -519,8 +519,12 @@ pub(crate) async fn authorize(
         resource: format!("{resource:?}"),
         outcome,
         reason: None,
+        policy_revision: 1,
         correlation_id: ctx.request_id.clone(),
+        request_id: Some(ctx.request_id.clone()),
+        trace_id: None,
         occurred_at: UtcTimestamp::now(),
+        integrity_hash: String::new(),
     };
     state
         .audit
@@ -557,8 +561,12 @@ pub(crate) async fn audit_write(
         resource,
         outcome,
         reason: None,
+        policy_revision: 1,
         correlation_id: ctx.request_id.clone(),
+        request_id: Some(ctx.request_id.clone()),
+        trace_id: None,
         occurred_at: UtcTimestamp::now(),
+        integrity_hash: String::new(),
     };
     state
         .audit

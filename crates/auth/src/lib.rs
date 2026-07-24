@@ -3,13 +3,17 @@
 #![allow(missing_docs)]
 
 pub mod audit;
+pub mod identity;
 pub mod jwt;
 pub mod oidc;
 pub mod rbac;
 pub mod role_store;
 pub mod secrets;
 
-pub use audit::{AuditCategory, AuditEvent, AuditLog, AuditOutcome, InMemoryAuditLog};
+pub use audit::{
+    AuditCategory, AuditChain, AuditEvent, AuditExporter, AuditLog, AuditOutcome, InMemoryAuditLog,
+};
+pub use identity::ServiceIdentity;
 pub use jwt::{
     map_roles, AuthSession, CompositeTokenValidator, HmacValidator, ServiceAccountValidator,
     TokenClaims, TokenValidator,
