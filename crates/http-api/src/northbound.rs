@@ -1,6 +1,7 @@
 //! Northbound API primitives: problem details, idempotency, cursors and webhooks.
 
 use hmac::{Hmac, Mac};
+use moqentra_auth::SecurityLimits;
 use moqentra_types::{Error, RequestContext, UtcTimestamp};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -137,6 +138,7 @@ impl WebhookSubscription {
 /// Validates a URL for outbound HTTP(S) calls. Blocks internal/private hosts,
 /// localhost, link-local, and metadata endpoints to mitigate SSRF.
 pub(crate) fn validate_url(url: &str) -> Result<(), Error> {
+    SecurityLimits::default().check_url_length(url.len())?;
     let parsed = url::Url::parse(url).map_err(|_| Error::invalid_argument("invalid url"))?;
     if parsed.scheme() != "http" && parsed.scheme() != "https" {
         return Err(Error::invalid_argument("url scheme must be http or https"));

@@ -14,7 +14,7 @@ use moqentra_application::{
 use moqentra_auth::InMemoryAuditLog;
 use moqentra_auth::{
     Authorizer, CompositeTokenValidator, HmacValidator, JwkSetValidator, OidcConfig,
-    ServiceAccountValidator,
+    SecurityLimits, ServiceAccountValidator,
 };
 use moqentra_http_api::control_plane::{
     app_router, spawn_outbox_dispatcher, AppState, DatabaseHealthCheck, ObjectStorageHealthCheck,
@@ -218,6 +218,7 @@ fn build_state_from_env() -> anyhow::Result<AppState> {
         scheduler_url: std::env::var("MOQENTRA_SCHEDULER_URL").ok().filter(|s| !s.is_empty()),
         node_agent_url: std::env::var("MOQENTRA_NODE_AGENT_URL").ok().filter(|s| !s.is_empty()),
         http,
+        security_limits: SecurityLimits::default(),
     })
 }
 

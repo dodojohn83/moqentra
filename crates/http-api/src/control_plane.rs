@@ -23,7 +23,7 @@ use moqentra_application::{
 };
 use moqentra_auth::{
     Action, AuditCategory, AuditEvent, AuditLog, AuditOutcome, Authorizer, CompositeTokenValidator,
-    Resource, Role, RoleStore, Scope,
+    Resource, Role, RoleStore, Scope, SecurityLimits,
 };
 use moqentra_domain::annotation::{AnnotationProject, Ontology, TaskType};
 use moqentra_domain::application::{ApplicationSpec, ArtifactBinding};
@@ -90,6 +90,8 @@ pub struct AppState {
     pub scheduler_url: Option<String>,
     pub node_agent_url: Option<String>,
     pub http: reqwest::Client,
+    /// Layered security limits (upload sizes, JSON/proto sizes, archive depth, etc.).
+    pub security_limits: SecurityLimits,
 }
 
 #[derive(Serialize)]
@@ -1703,6 +1705,9 @@ struct PartUploadUrl {
     expires_at: String,
 }
 
+/// Maximum request body size accepted for a single multipart upload part.
+const UPLOAD_PART_BODY_LIMIT: usize = 64 * 1024 * 1024;
+
 type HmacSha256 = hmac::Hmac<sha2::Sha256>;
 
 fn sign_part_upload(
@@ -1752,6 +1757,13 @@ async fn create_upload_session(
         Error::invalid_argument("X-Project-Id is required when creating an upload session")
     })?;
     let ttl = req.ttl_seconds.unwrap_or(3600).clamp(60, 86400);
+    state.security_limits.check_upload_size(req.total_size)?;
+    if req.part_size > u64::try_from(UPLOAD_PART_BODY_LIMIT).unwrap_or(u64::MAX) {
+        return Err(Error::invalid_argument(
+            "part_size exceeds the configured per-part body limit",
+        )
+        .into());
+    }
     let target_key = ObjectKey::asset(
         ctx.tenant_id,
         project_id,
@@ -2084,6 +2096,7 @@ async fn create_import_job(
     })?;
     ObjectKey::from_str(ctx.tenant_id, project_id, &req.target_key)?;
     crate::northbound::validate_url(&req.source_url)?;
+    state.security_limits.check_upload_size(req.total_bytes)?;
     let id = Uuid::new_v4().to_string();
     let job = ImportJob::new_v1(
         id.clone(),
@@ -2580,7 +2593,7 @@ pub fn app_router(state: AppState) -> Router {
         )
         .route(
             "/v1/upload-sessions/{id}/parts/{partNumber}",
-            post(upload_part),
+            post(upload_part).layer(DefaultBodyLimit::max(UPLOAD_PART_BODY_LIMIT)),
         )
         .route(
             "/v1/upload-sessions/{id}/complete",
@@ -2907,6 +2920,7 @@ mod tests {
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .expect("test http client"),
+            security_limits: SecurityLimits::default(),
         }
     }
 
