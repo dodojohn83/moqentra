@@ -238,6 +238,11 @@ impl DatasetVersion {
                 "version has no assets to split",
             ));
         }
+        if !train.is_finite() || !val.is_finite() || !test.is_finite() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "train/val/test fractions must be finite",
+            ));
+        }
         let sum = train + val + test;
         if (sum - 1.0).abs() > 1e-9 || train < 0.0 || val < 0.0 || test < 0.0 {
             return Err(moqentra_types::Error::invalid_argument(
