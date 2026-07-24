@@ -107,7 +107,7 @@ impl ArtifactValidator for AppArtifactValidator {
         // 4. Locate the training job and finalize it atomically.
         let gen = RandomIdGenerator;
         let (job_id, tenant_id, project_id, lineage) = {
-            let mut training = self.training.lock().unwrap();
+            let mut training = self.training.lock().unwrap_or_else(|e| e.into_inner());
             let job = training
                 .find_by_attempt_id_mut(attempt_id)
                 .ok_or_else(|| moqentra_types::Error::not_found("training job for attempt"))?;
@@ -161,7 +161,7 @@ impl ArtifactValidator for AppArtifactValidator {
 
         // 5. Check for an existing ModelVersion from the same (tenant, attempt, artifact digest)
         //    before creating a new one.
-        let mut models = self.models.lock().unwrap();
+        let mut models = self.models.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(existing) =
             models.find_duplicate_version(tenant_id, attempt_id, &model_artifact_digest)
         {
