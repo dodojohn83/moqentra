@@ -473,8 +473,9 @@ pub(crate) fn check_rate_limit(state: &AppState, tenant_id: TenantId) -> Result<
     let mut map = state.rate_limiters.lock().unwrap_or_else(|e| e.into_inner());
     if map.len() > RATE_LIMITER_MAX_TENANTS {
         map.retain(|_, limiter| {
-            (now.as_offset() - limiter.last_used.as_offset()).whole_seconds()
-                < RATE_LIMITER_RETENTION.as_secs() as i64
+            let retention_secs =
+                i64::try_from(RATE_LIMITER_RETENTION.as_secs()).unwrap_or(i64::MAX);
+            (now.as_offset() - limiter.last_used.as_offset()).whole_seconds() < retention_secs
         });
     }
     let limiter = map.entry(tenant_id).or_insert_with(|| {
@@ -1695,12 +1696,17 @@ struct PartUploadUrl {
 
 type HmacSha256 = hmac::Hmac<sha2::Sha256>;
 
-fn sign_part_upload(secret: &str, session_id: &str, part_number: i32, expires_at: u64) -> String {
+fn sign_part_upload(
+    secret: &str,
+    session_id: &str,
+    part_number: i32,
+    expires_at: u64,
+) -> Result<String, Error> {
     use hmac::Mac;
-    let mut mac =
-        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take a key of any size");
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|_| Error::internal("failed to initialize HMAC"))?;
     mac.update(format!("{}:{}:{}", session_id, part_number, expires_at).as_bytes());
-    hex::encode(mac.finalize().into_bytes())
+    Ok(hex::encode(mac.finalize().into_bytes()))
 }
 
 fn verify_part_upload(
@@ -1717,8 +1723,8 @@ fn verify_part_upload(
     if now > expires_at {
         return Err(Error::unauthenticated("signed upload URL has expired"));
     }
-    let mut mac =
-        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take a key of any size");
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|_| Error::internal("failed to initialize HMAC"))?;
     mac.update(format!("{}:{}:{}", session_id, part_number, expires_at).as_bytes());
     mac.verify_slice(&tag)
         .map_err(|_| Error::unauthenticated("invalid part upload signature"))
@@ -1830,17 +1836,17 @@ async fn list_part_upload_urls(
         .filter(|p| !p.completed)
         .map(|p| {
             let n = p.part_number;
-            let sig = sign_part_upload(&state.upload_sig_secret, &session_id, n, session_expires);
-            PartUploadUrl {
+            let sig = sign_part_upload(&state.upload_sig_secret, &session_id, n, session_expires)?;
+            Ok(PartUploadUrl {
                 part_number: n,
                 upload_url: format!(
                     "/v1/upload-sessions/{}/parts/{}?sig={}&expires={}",
                     session_id, n, sig, session_expires
                 ),
                 expires_at: session_expires.to_string(),
-            }
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, Error>>()?;
     Ok(Json(urls))
 }
 
@@ -1862,15 +1868,16 @@ async fn upload_part(
     if session.tenant_id != ctx.tenant_id {
         return Err(Error::not_found("upload session").into());
     }
-    if let (Some(sig), Some(expires)) = (q.sig, q.expires) {
-        verify_part_upload(
-            &state.upload_sig_secret,
-            &session_id,
-            part_number,
-            expires,
-            &sig,
-        )?;
-    }
+    let (Some(sig), Some(expires)) = (q.sig, q.expires) else {
+        return Err(Error::unauthenticated("missing upload part signature").into());
+    };
+    verify_part_upload(
+        &state.upload_sig_secret,
+        &session_id,
+        part_number,
+        expires,
+        &sig,
+    )?;
     let expected_size = session
         .parts
         .get(&part_number)
@@ -2457,15 +2464,21 @@ async fn list_outbox(
 async fn security_headers(req: Request, next: Next) -> Response {
     let mut response = next.run(req).await;
     let headers = response.headers_mut();
-    headers.insert("x-content-type-options", "nosniff".parse().unwrap());
-    headers.insert("x-frame-options", "DENY".parse().unwrap());
+    headers.insert(
+        "x-content-type-options",
+        axum::http::header::HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        "x-frame-options",
+        axum::http::header::HeaderValue::from_static("DENY"),
+    );
     headers.insert(
         "content-security-policy",
-        "default-src 'self'".parse().unwrap(),
+        axum::http::header::HeaderValue::from_static("default-src 'self'"),
     );
     headers.insert(
         "referrer-policy",
-        "strict-origin-when-cross-origin".parse().unwrap(),
+        axum::http::header::HeaderValue::from_static("strict-origin-when-cross-origin"),
     );
     response
 }
@@ -2867,6 +2880,7 @@ mod tests {
             http: reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(5))
                 .timeout(Duration::from_secs(30))
+                .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .expect("test http client"),
         }
@@ -3223,16 +3237,36 @@ mod tests {
         let session_id = session["id"].as_str().unwrap().to_string();
         assert_eq!(session["total_size"].as_u64().unwrap(), 12);
 
-        // Upload 3 parts.
+        // Fetch signed part upload URLs before uploading.
+        let list_urls_before = Request::builder()
+            .method("GET")
+            .uri(format!("/v1/upload-sessions/{session_id}/part-urls"))
+            .header("x-tenant-id", tenant.to_string())
+            .header("x-project-id", project.to_string())
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(list_urls_before).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let urls: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(urls.len(), 3);
+
+        // Upload 3 parts using signed URLs.
         for n in 1..=3 {
             let payload = match n {
                 1 => "12345",
                 2 => "67890",
                 _ => "ab",
             };
+            let upload_url = urls
+                .iter()
+                .find(|u| u["part_number"].as_i64().unwrap() == i64::from(n))
+                .map(|u| u["upload_url"].as_str().unwrap().to_string())
+                .unwrap();
             let upload = Request::builder()
                 .method("POST")
-                .uri(format!("/v1/upload-sessions/{session_id}/parts/{n}"))
+                .uri(upload_url)
                 .header("content-type", "application/octet-stream")
                 .header("x-tenant-id", tenant.to_string())
                 .header("x-project-id", project.to_string())

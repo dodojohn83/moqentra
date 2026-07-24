@@ -142,7 +142,7 @@ impl MetricsRegistry {
     }
 
     fn maybe_bump_rejected(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         inner.rejected += 1;
     }
 
@@ -165,7 +165,7 @@ impl MetricsRegistry {
             name: name.to_string(),
             labels: LabelSet::new(labels),
         };
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if !inner.counters.contains_key(&key) {
             let series = inner.counters.len() + inner.gauges.len() + inner.histograms.len();
             if series >= self.max_series {
@@ -198,7 +198,7 @@ impl MetricsRegistry {
             name: name.to_string(),
             labels: LabelSet::new(labels),
         };
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if !inner.gauges.contains_key(&key) {
             let series = inner.counters.len() + inner.gauges.len() + inner.histograms.len();
             if series >= self.max_series {
@@ -231,7 +231,7 @@ impl MetricsRegistry {
             name: name.to_string(),
             labels: LabelSet::new(labels),
         };
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if !inner.histograms.contains_key(&key) {
             let series = inner.counters.len() + inner.gauges.len() + inner.histograms.len();
             if series >= self.max_series {
@@ -245,7 +245,7 @@ impl MetricsRegistry {
 
     /// Render all metrics in Prometheus exposition format.
     pub fn prometheus(&self) -> String {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let mut out = String::new();
 
         if !inner.counters.is_empty() {
@@ -349,7 +349,9 @@ fn validate_metric_name(name: &str) -> Result<(), MetricError> {
         return Err(MetricError::InvalidName("empty".into()));
     }
     let mut chars = name.chars();
-    let first = chars.next().unwrap();
+    let Some(first) = chars.next() else {
+        return Err(MetricError::InvalidName("empty".into()));
+    };
     if !(first.is_ascii_alphabetic() || first == '_' || first == ':') {
         return Err(MetricError::InvalidName(name.to_string()));
     }
@@ -367,7 +369,9 @@ fn validate_label_name(name: &str, max_len: usize) -> Result<(), MetricError> {
         return Err(MetricError::ReservedLabel(name.to_string()));
     }
     let mut chars = name.chars();
-    let first = chars.next().unwrap();
+    let Some(first) = chars.next() else {
+        return Err(MetricError::InvalidLabelName("empty".into()));
+    };
     if !(first.is_ascii_alphabetic() || first == '_') {
         return Err(MetricError::InvalidLabelName(name.to_string()));
     }

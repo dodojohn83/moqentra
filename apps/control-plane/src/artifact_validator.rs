@@ -28,9 +28,13 @@ impl AppArtifactValidator {
         format!("sha256:{:x}", hasher.finalize())
     }
 
-    fn compute_hyperparameter_digest(hp: &moqentra_domain::training::ParameterSchema) -> String {
-        let json = serde_json::to_vec(hp).unwrap_or_default();
-        Self::compute_sha256(&json)
+    fn compute_hyperparameter_digest(
+        hp: &moqentra_domain::training::ParameterSchema,
+    ) -> Result<String, moqentra_types::Error> {
+        let json = serde_json::to_vec(hp).map_err(|e| {
+            moqentra_types::Error::internal(format!("failed to serialize hyperparameters: {e}"))
+        })?;
+        Ok(Self::compute_sha256(&json))
     }
 }
 
@@ -96,6 +100,9 @@ impl ArtifactValidator for AppArtifactValidator {
             metric_digest: Some(metric_digest.clone()),
             log_digest: None,
         };
+        // Validate the manifest before mutating job state so a malformed payload
+        // does not leave the job stuck in Finalizing.
+        output_manifest.validate()?;
 
         // 4. Locate the training job and finalize it atomically.
         let gen = RandomIdGenerator;
@@ -139,7 +146,7 @@ impl ArtifactValidator for AppArtifactValidator {
                 image_digest: job.spec.image_digest.clone(),
                 hyperparameter_digest: Self::compute_hyperparameter_digest(
                     &job.spec.hyperparameters,
-                ),
+                )?,
                 dataset_manifest_digest: None,
                 framework: None,
                 template: None,
@@ -206,7 +213,8 @@ impl ArtifactValidator for AppArtifactValidator {
         version.artifacts.push(Artifact {
             asset_id,
             digest: model_artifact_digest,
-            size_bytes: manifest_json.len() as u64,
+            size_bytes: u64::try_from(manifest_json.len())
+                .map_err(|_| moqentra_types::Error::internal("manifest size exceeds u64 range"))?,
             media_type: "application/json".to_string(),
             scan_status: "clean".to_string(),
             object_key: Some(object_key.to_string()),
