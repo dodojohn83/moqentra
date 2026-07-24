@@ -2096,6 +2096,7 @@ async fn create_import_job(
     })?;
     ObjectKey::from_str(ctx.tenant_id, project_id, &req.target_key)?;
     crate::northbound::validate_url(&req.source_url)?;
+    state.security_limits.check_upload_size(req.total_bytes)?;
     let id = Uuid::new_v4().to_string();
     let job = ImportJob::new_v1(
         id.clone(),
