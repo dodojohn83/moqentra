@@ -23,7 +23,7 @@ use moqentra_application::{
 };
 use moqentra_auth::{
     Action, AuditCategory, AuditEvent, AuditLog, AuditOutcome, Authorizer, CompositeTokenValidator,
-    Resource, Role, RoleStore, Scope,
+    Resource, Role, RoleStore, Scope, SecurityLimits,
 };
 use moqentra_domain::annotation::{AnnotationProject, Ontology, TaskType};
 use moqentra_domain::application::{ApplicationSpec, ArtifactBinding};
@@ -2675,7 +2675,9 @@ pub fn app_router(state: AppState) -> Router {
         )
         .route("/v1/outbox", get(list_outbox))
         .with_state(state.clone())
-        .layer(DefaultBodyLimit::max(1024 * 1024))
+        .layer(DefaultBodyLimit::max(
+            usize::try_from(SecurityLimits::default().max_json_size).unwrap_or(usize::MAX),
+        ))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_auth_middleware,
