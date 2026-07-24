@@ -286,7 +286,7 @@ impl AnnotationRepository for PgAnnotationRepository {
         project: AnnotationProject,
     ) -> Result<Versioned<AnnotationProject>, Error> {
         self.set_tenant(ctx.tenant_id).await?;
-        let expected_rev = expected.as_u64() as i64;
+        let expected_rev = expected.as_i64()?;
         let ontology =
             serde_json::to_value(&project.ontology).map_err(|e| Error::internal(e.to_string()))?;
 
@@ -323,7 +323,7 @@ impl AnnotationRepository for PgAnnotationRepository {
         expected: Revision,
     ) -> Result<(), Error> {
         self.set_tenant(ctx.tenant_id).await?;
-        let expected_rev = expected.as_u64() as i64;
+        let expected_rev = expected.as_i64()?;
 
         let result = sqlx::query(
             "DELETE FROM annotation_projects WHERE id = $1 AND tenant_id = $2 AND revision = $3",
@@ -477,7 +477,7 @@ impl AnnotationRepository for PgAnnotationRepository {
         task: AnnotationTask,
     ) -> Result<Versioned<AnnotationTask>, Error> {
         self.set_tenant(ctx.tenant_id).await?;
-        let expected_rev = expected.as_u64() as i64;
+        let expected_rev = expected.as_i64()?;
         let result = serde_json::to_value(AnnotationTaskResult::from_task(&task))
             .map_err(|e| Error::internal(e.to_string()))?;
 

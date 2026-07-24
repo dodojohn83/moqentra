@@ -207,7 +207,7 @@ impl DatasetRepository for PgDatasetRepository {
         self.set_tenant(ctx.tenant_id).await?;
 
         let metadata = serde_json::json!({ "labels": dataset.labels });
-        let expected_rev = expected.as_u64() as i64;
+        let expected_rev = expected.as_i64()?;
 
         let result = sqlx::query(
             "UPDATE datasets
@@ -240,7 +240,7 @@ impl DatasetRepository for PgDatasetRepository {
     ) -> Result<(), Error> {
         self.set_tenant(ctx.tenant_id).await?;
 
-        let expected_rev = expected.as_u64() as i64;
+        let expected_rev = expected.as_i64()?;
         let result =
             sqlx::query("DELETE FROM datasets WHERE id = $1 AND tenant_id = $2 AND revision = $3")
                 .bind(id.as_uuid())

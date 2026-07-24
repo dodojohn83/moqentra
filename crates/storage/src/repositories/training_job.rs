@@ -304,7 +304,7 @@ impl TrainingJobRepository for PgTrainingJobRepository {
         })?;
         let spec = serde_json::to_value(&job.spec)
             .map_err(|e| Error::internal(format!("failed to serialize training job spec: {e}")))?;
-        let expected_rev = expected.as_u64() as i64;
+        let expected_rev = expected.as_i64()?;
 
         let result = sqlx::query(
             "UPDATE training_jobs
@@ -341,7 +341,7 @@ impl TrainingJobRepository for PgTrainingJobRepository {
     ) -> Result<(), Error> {
         self.set_tenant(ctx.tenant_id).await?;
 
-        let expected_rev = expected.as_u64() as i64;
+        let expected_rev = expected.as_i64()?;
         let result = sqlx::query(
             "DELETE FROM training_jobs WHERE id = $1 AND tenant_id = $2 AND revision = $3",
         )

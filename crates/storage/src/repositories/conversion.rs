@@ -324,7 +324,7 @@ impl ConversionRepository for PgConversionRepository {
         )
         .bind(target)
         .bind(job.state.to_string())
-        .bind(expected.as_u64() as i64 + 1)
+        .bind(expected.as_i64()? + 1)
         .bind(profile)
         .bind(parameters)
         .bind(output_artifacts)
@@ -333,7 +333,7 @@ impl ConversionRepository for PgConversionRepository {
         .bind(job.updated_at.as_offset())
         .bind(id.as_uuid())
         .bind(ctx.tenant_id.as_uuid())
-        .bind(expected.as_u64() as i64)
+        .bind(expected.as_i64()?)
         .execute(&self.pool)
         .await
         .map_err(|e| Error::internal(format!("failed to update conversion job: {e}")))?;
@@ -358,7 +358,7 @@ impl ConversionRepository for PgConversionRepository {
         )
         .bind(id.as_uuid())
         .bind(ctx.tenant_id.as_uuid())
-        .bind(expected.as_u64() as i64)
+        .bind(expected.as_i64()?)
         .execute(&self.pool)
         .await
         .map_err(|e| Error::internal(format!("failed to delete conversion job: {e}")))?;
@@ -494,7 +494,7 @@ impl EvaluationRepository for PgEvaluationRepository {
              WHERE id = $9 AND tenant_id = $10 AND revision = $11",
         )
         .bind(state)
-        .bind(expected.as_u64() as i64 + 1)
+        .bind(expected.as_i64()? + 1)
         .bind(metrics)
         .bind(&run.hardware_profile)
         .bind(&run.preprocess_version)
@@ -503,7 +503,7 @@ impl EvaluationRepository for PgEvaluationRepository {
         .bind(run.updated_at.as_offset())
         .bind(id.as_uuid())
         .bind(ctx.tenant_id.as_uuid())
-        .bind(expected.as_u64() as i64)
+        .bind(expected.as_i64()?)
         .execute(&self.pool)
         .await
         .map_err(|e| Error::internal(format!("failed to update evaluation run: {e}")))?;
@@ -528,7 +528,7 @@ impl EvaluationRepository for PgEvaluationRepository {
         )
         .bind(id.as_uuid())
         .bind(ctx.tenant_id.as_uuid())
-        .bind(expected.as_u64() as i64)
+        .bind(expected.as_i64()?)
         .execute(&self.pool)
         .await
         .map_err(|e| Error::internal(format!("failed to delete evaluation run: {e}")))?;

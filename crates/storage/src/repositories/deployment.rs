@@ -253,7 +253,7 @@ impl DeploymentRepository for PgDeploymentRepository {
             .policy
             .validate()
             .map_err(|e| Error::invalid_argument(e.to_string()))?;
-        let expected_rev = expected.as_u64() as i64;
+        let expected_rev = expected.as_i64()?;
         let spec = deployment_spec(&deployment)?;
 
         let result = sqlx::query(
@@ -286,7 +286,7 @@ impl DeploymentRepository for PgDeploymentRepository {
         expected: Revision,
     ) -> Result<(), Error> {
         self.set_tenant(ctx.tenant_id).await?;
-        let expected_rev = expected.as_u64() as i64;
+        let expected_rev = expected.as_i64()?;
 
         let result = sqlx::query(
             "DELETE FROM deployments WHERE id = $1 AND tenant_id = $2 AND revision = $3",

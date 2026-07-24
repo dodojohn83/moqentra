@@ -298,7 +298,7 @@ impl ApplicationRepository for PgApplicationRepository {
         application: Application,
     ) -> Result<Versioned<Application>, Error> {
         self.set_tenant(ctx.tenant_id).await?;
-        let expected_rev = expected.as_u64() as i64;
+        let expected_rev = expected.as_i64()?;
         let metadata = serde_json::to_value(app_metadata(&application))
             .map_err(|e| Error::internal(e.to_string()))?;
 
@@ -331,7 +331,7 @@ impl ApplicationRepository for PgApplicationRepository {
         expected: Revision,
     ) -> Result<(), Error> {
         self.set_tenant(ctx.tenant_id).await?;
-        let expected_rev = expected.as_u64() as i64;
+        let expected_rev = expected.as_i64()?;
 
         let result = sqlx::query(
             "DELETE FROM applications WHERE id = $1 AND tenant_id = $2 AND revision = $3",

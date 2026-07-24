@@ -162,6 +162,13 @@ impl Revision {
     pub const fn as_u64(&self) -> u64 {
         self.0
     }
+
+    /// Returns the revision as an `i64` for PostgreSQL `BIGINT` columns.
+    /// Errors if the revision is larger than `i64::MAX`, which would wrap on cast.
+    pub fn as_i64(&self) -> Result<i64, crate::Error> {
+        i64::try_from(self.0)
+            .map_err(|_| crate::Error::invalid_argument("revision out of i64 range"))
+    }
 }
 
 impl Default for Revision {
