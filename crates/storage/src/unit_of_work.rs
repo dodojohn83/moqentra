@@ -309,8 +309,12 @@ mod tests {
             resource: "dataset/uow-test".to_string(),
             outcome: AuditOutcome::Success,
             reason: None,
+            policy_revision: 1,
             correlation_id: Uuid::new_v4().to_string(),
+            request_id: None,
+            trace_id: None,
             occurred_at: UtcTimestamp::now(),
+            integrity_hash: String::new(),
         };
         uow.record_audit(audit).await.unwrap();
 
