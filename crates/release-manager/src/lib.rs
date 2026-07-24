@@ -2,6 +2,10 @@
 
 #![allow(missing_docs)]
 
+pub mod r2_gate;
+
+pub use r2_gate::{R2EvidenceBundle, R2PlatformTier, R2ReleaseGate};
+
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
