@@ -153,9 +153,17 @@ impl InMemoryApprovalRegistry {
 impl ApprovalRepository for InMemoryApprovalRegistry {
     async fn create_request(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         request: ApprovalRequest,
     ) -> Result<Versioned<ApprovalRequest>, Error> {
+        if request.tenant_id != ctx.tenant_id {
+            return Err(Error::permission_denied("approval request tenant mismatch"));
+        }
+        if ctx.project_id.is_some_and(|p| p != request.project_id) {
+            return Err(Error::permission_denied(
+                "approval request project mismatch",
+            ));
+        }
         let mut reg = self.requests.lock().map_err(|e| Error::internal(e.to_string()))?;
         if reg.contains_key(&request.id) {
             return Err(Error::conflict("approval request already exists"));
@@ -170,11 +178,17 @@ impl ApprovalRepository for InMemoryApprovalRegistry {
 
     async fn get_request(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         id: ApprovalRequestId,
     ) -> Result<Versioned<ApprovalRequest>, Error> {
         let reg = self.requests.lock().map_err(|e| Error::internal(e.to_string()))?;
         let req = reg.get(&id).ok_or_else(|| Error::not_found("approval request"))?;
+        if req.tenant_id != ctx.tenant_id {
+            return Err(Error::not_found("approval request"));
+        }
+        if ctx.project_id.is_some_and(|p| p != req.project_id) {
+            return Err(Error::not_found("approval request"));
+        }
         let rev = self
             .revisions
             .lock()
@@ -187,7 +201,7 @@ impl ApprovalRepository for InMemoryApprovalRegistry {
 
     async fn list_requests(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         _filter: ResourceListFilter,
         _page: PageRequest,
     ) -> Result<Page<Versioned<ApprovalRequest>>, Error> {
@@ -195,6 +209,8 @@ impl ApprovalRepository for InMemoryApprovalRegistry {
         let revs = self.revisions.lock().map_err(|e| Error::internal(e.to_string()))?;
         let items: Vec<_> = reg
             .values()
+            .filter(|r| r.tenant_id == ctx.tenant_id)
+            .filter(|r| ctx.project_id.is_none_or(|p| p == r.project_id))
             .map(|r| {
                 let rev = revs.get(&r.id).copied().unwrap_or(1);
                 Versioned::new(r.clone(), revision_from_u64(rev))
@@ -206,13 +222,25 @@ impl ApprovalRepository for InMemoryApprovalRegistry {
 
     async fn update_request(
         &self,
-        _ctx: &RequestContext,
+        ctx: &RequestContext,
         id: ApprovalRequestId,
         request: ApprovalRequest,
         expected: moqentra_types::Revision,
     ) -> Result<Versioned<ApprovalRequest>, Error> {
+        if request.tenant_id != ctx.tenant_id {
+            return Err(Error::permission_denied("approval request tenant mismatch"));
+        }
+        if ctx.project_id.is_some_and(|p| p != request.project_id) {
+            return Err(Error::permission_denied(
+                "approval request project mismatch",
+            ));
+        }
         let mut reg = self.requests.lock().map_err(|e| Error::internal(e.to_string()))?;
         let mut revs = self.revisions.lock().map_err(|e| Error::internal(e.to_string()))?;
+        let existing = reg.get(&id).ok_or_else(|| Error::not_found("approval request"))?;
+        if existing.tenant_id != ctx.tenant_id {
+            return Err(Error::not_found("approval request"));
+        }
         let current = revs.get(&id).copied().unwrap_or(1);
         if expected.as_u64() != current {
             return Err(Error::conflict("approval request revision mismatch"));
