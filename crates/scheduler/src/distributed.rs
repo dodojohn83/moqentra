@@ -555,7 +555,7 @@ mod tests {
         job.submit().unwrap();
         job.admit().unwrap();
 
-        let mut ranks = Vec::with_capacity(world_size as usize);
+        let mut ranks = Vec::with_capacity(usize::try_from(world_size).unwrap());
         for _ in 0..world_size {
             ranks.push(Rank {
                 id: RankId::new_v7(&gen),

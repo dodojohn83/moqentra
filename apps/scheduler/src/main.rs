@@ -169,7 +169,7 @@ fn spawn_control_loop(state: SchedulerState) {
                         state.fencing_counter.clone(),
                     );
                     let processed = pg.poll(16).await;
-                    state.admitted.fetch_add(processed as u64, Ordering::Relaxed);
+                    state.admitted.fetch_add(u64::from(processed), Ordering::Relaxed);
                 } else {
                     // In-memory fallback for local-only demos.
                     process_in_memory_job(&state, &control_plane_url, &service_token).await;

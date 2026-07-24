@@ -102,6 +102,7 @@ fn heartbeat_request(seq: u64) -> WorkerAgentServiceOpenStreamRequest {
     }
 }
 
+#[allow(clippy::as_conversions)]
 fn ack_request(command_id: &str, status: AckStatus) -> WorkerAgentServiceOpenStreamRequest {
     WorkerAgentServiceOpenStreamRequest {
         payload: Some(InPayload::Ack(Ack {
