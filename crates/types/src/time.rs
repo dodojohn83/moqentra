@@ -151,6 +151,10 @@ impl Revision {
         Self(0)
     }
 
+    pub const fn from_u64(value: u64) -> Self {
+        Self(value)
+    }
+
     pub const fn next(self) -> Self {
         Self(self.0.saturating_add(1))
     }

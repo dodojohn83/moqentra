@@ -67,17 +67,15 @@ impl PgTrainingJobRepository {
         let mut items = Vec::with_capacity(rows.len());
         for row in rows {
             let job = row_to_domain(&row)?;
-            items.push(Versioned::new(job, Self::revision_from_i64(row.revision)));
+            items.push(Versioned::new(job, Self::revision_from_i64(row.revision)?));
         }
         Ok(items)
     }
 
-    fn revision_from_i64(value: i64) -> Revision {
-        let mut r = Revision::initial();
-        for _ in 0..value {
-            r = r.next();
-        }
-        r
+    fn revision_from_i64(value: i64) -> Result<Revision, Error> {
+        let value =
+            u64::try_from(value).map_err(|_| Error::internal("negative revision in database"))?;
+        Ok(Revision::from_u64(value))
     }
 }
 
@@ -189,7 +187,7 @@ impl TrainingJobRepository for PgTrainingJobRepository {
         .await
         .map_err(|e| Error::internal(format!("failed to create training job: {e}")))?;
 
-        Ok(Versioned::new(job, Self::revision_from_i64(revision)))
+        Ok(Versioned::new(job, Self::revision_from_i64(revision)?))
     }
 
     async fn get(
@@ -213,7 +211,7 @@ impl TrainingJobRepository for PgTrainingJobRepository {
         .ok_or_else(|| Error::not_found("training job"))?;
 
         let job = row_to_domain(&row)?;
-        Ok(Versioned::new(job, Self::revision_from_i64(row.revision)))
+        Ok(Versioned::new(job, Self::revision_from_i64(row.revision)?))
     }
 
     async fn list(
@@ -285,7 +283,7 @@ impl TrainingJobRepository for PgTrainingJobRepository {
         let mut items = Vec::with_capacity(rows.len());
         for row in rows {
             let job = row_to_domain(&row)?;
-            items.push(Versioned::new(job, Self::revision_from_i64(row.revision)));
+            items.push(Versioned::new(job, Self::revision_from_i64(row.revision)?));
         }
 
         Ok(Page::new(items, total as u64, page))

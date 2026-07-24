@@ -5,8 +5,10 @@
 //! This gate prevents mock/simulator results from being treated as production
 //! evidence.
 
+use moqentra_types::UtcTimestamp;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use time::{Date, Duration, Month, OffsetDateTime, PrimitiveDateTime, Time};
 
 /// Capability state used in the R1 release tracking matrix.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -50,6 +52,33 @@ pub struct R1ExitGate {
     pub unresolved_blockers: BTreeSet<String>,
 }
 
+fn parse_expiry(s: &str) -> Result<OffsetDateTime, moqentra_types::Error> {
+    if let Ok(dt) = OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339) {
+        return Ok(dt);
+    }
+    let parts: Vec<&str> = s.split('-').collect();
+    if parts.len() == 3 {
+        if let (Ok(year), Ok(month), Ok(day)) = (
+            parts[0].parse::<i32>(),
+            parts[1].parse::<u8>(),
+            parts[2].parse::<u8>(),
+        ) {
+            if let Ok(month) = Month::try_from(month) {
+                if let Ok(date) = Date::from_calendar_date(year, month, day) {
+                    let end = PrimitiveDateTime::new(date, Time::MIDNIGHT)
+                        .assume_utc()
+                        .checked_add(Duration::days(1))
+                        .ok_or_else(|| moqentra_types::Error::internal("expiry overflow"))?;
+                    return Ok(end);
+                }
+            }
+        }
+    }
+    Err(moqentra_types::Error::invalid_argument(
+        "accepted risk expires_at must be RFC3339 or YYYY-MM-DD",
+    ))
+}
+
 impl R1ExitGate {
     pub fn is_ready(&self) -> Result<(), moqentra_types::Error> {
         if !self.release_manifest_generated {
@@ -87,11 +116,19 @@ impl R1ExitGate {
             }
         }
 
+        let now = UtcTimestamp::now().as_offset();
         for risk in &self.accepted_risks {
             if risk.id.is_empty() || risk.owner.is_empty() || risk.expires_at.trim().is_empty() {
                 return Err(moqentra_types::Error::invalid_argument(
                     "accepted risk must have id, owner and expiry",
                 ));
+            }
+            let expiry = parse_expiry(&risk.expires_at)?;
+            if now >= expiry {
+                return Err(moqentra_types::Error::invalid_argument(format!(
+                    "accepted risk {} has expired",
+                    risk.id
+                )));
             }
         }
 
@@ -152,6 +189,20 @@ mod tests {
     fn r1_exit_rejects_malformed_risk() {
         let mut gate = ready_gate();
         gate.accepted_risks[0].owner = String::new();
+        assert!(gate.is_ready().is_err());
+    }
+
+    #[test]
+    fn r1_exit_rejects_expired_risk() {
+        let mut gate = ready_gate();
+        gate.accepted_risks[0].expires_at = "2000-01-01".to_string();
+        assert!(gate.is_ready().is_err());
+    }
+
+    #[test]
+    fn r1_exit_rejects_invalid_expiry() {
+        let mut gate = ready_gate();
+        gate.accepted_risks[0].expires_at = "not-a-date".to_string();
         assert!(gate.is_ready().is_err());
     }
 }
