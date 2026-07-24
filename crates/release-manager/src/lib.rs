@@ -2,8 +2,10 @@
 
 #![allow(missing_docs)]
 
+pub mod r1_exit_gate;
 pub mod r2_gate;
 
+pub use r1_exit_gate::{AcceptedRisk, CapabilityState, R1ExitGate};
 pub use r2_gate::{R2EvidenceBundle, R2PlatformTier, R2ReleaseGate};
 
 use serde::{Deserialize, Serialize};
