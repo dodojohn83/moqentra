@@ -1705,6 +1705,9 @@ struct PartUploadUrl {
     expires_at: String,
 }
 
+/// Maximum request body size accepted for a single multipart upload part.
+const UPLOAD_PART_BODY_LIMIT: usize = 64 * 1024 * 1024;
+
 type HmacSha256 = hmac::Hmac<sha2::Sha256>;
 
 fn sign_part_upload(
@@ -1755,6 +1758,12 @@ async fn create_upload_session(
     })?;
     let ttl = req.ttl_seconds.unwrap_or(3600).clamp(60, 86400);
     state.security_limits.check_upload_size(req.total_size)?;
+    if req.part_size > u64::try_from(UPLOAD_PART_BODY_LIMIT).unwrap_or(u64::MAX) {
+        return Err(Error::invalid_argument(
+            "part_size exceeds the configured per-part body limit",
+        )
+        .into());
+    }
     let target_key = ObjectKey::asset(
         ctx.tenant_id,
         project_id,
@@ -2583,7 +2592,7 @@ pub fn app_router(state: AppState) -> Router {
         )
         .route(
             "/v1/upload-sessions/{id}/parts/{partNumber}",
-            post(upload_part),
+            post(upload_part).layer(DefaultBodyLimit::max(UPLOAD_PART_BODY_LIMIT)),
         )
         .route(
             "/v1/upload-sessions/{id}/complete",
