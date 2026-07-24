@@ -190,7 +190,7 @@ async fn download_and_store(state: &AppState, job: &ImportJob) -> Result<String,
         }
     }
 
-    let timeout = Duration::from_secs((job.deadline_seconds as u64).clamp(30, 300));
+    let timeout = Duration::from_secs(u64::from(job.deadline_seconds.clamp(30, 300)));
     let resp = state
         .http
         .get(&job.source_url)

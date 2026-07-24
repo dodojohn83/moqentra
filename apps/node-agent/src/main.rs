@@ -112,7 +112,9 @@ fn discover_capabilities() -> NodeCapabilities {
 
     NodeCapabilities {
         node_id: NodeId::new_v7(&gen),
-        cpu_cores: std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(1),
+        cpu_cores: std::thread::available_parallelism()
+            .map(|n| u32::try_from(n.get()).unwrap_or(u32::MAX))
+            .unwrap_or(1),
         memory_mib: 8192,
         disk_mib: 102_400,
         container_runtime: detect_container_runtime(),
