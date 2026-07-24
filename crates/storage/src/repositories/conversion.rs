@@ -180,7 +180,8 @@ fn evaluation_row_to_domain(row: &EvaluationRunRow) -> Result<EvaluationRun, Err
         project_id: ProjectId::from_uuid(row.project_id),
         model_version_id: ModelVersionId::from_uuid(row.model_version_id),
         dataset_version_id: moqentra_types::DatasetVersionId::from_uuid(row.dataset_version_id),
-        seed: row.seed as u64,
+        seed: u64::try_from(row.seed)
+            .map_err(|_| Error::internal("negative seed in evaluation run row"))?,
         metrics,
         state,
         hardware_profile: row.hardware_profile.clone(),
@@ -380,6 +381,8 @@ impl EvaluationRepository for PgEvaluationRepository {
         self.set_tenant(ctx.tenant_id).await?;
         let revision = 0i64;
         let (metrics, reference_outputs, state) = evaluation_run_to_values(&run)?;
+        let seed_i64 = i64::try_from(run.seed)
+            .map_err(|_| Error::invalid_argument(format!("seed {} exceeds i64 range", run.seed)))?;
 
         sqlx::query(
             "INSERT INTO evaluation_runs (id, tenant_id, project_id, model_version_id, dataset_version_id, seed, state, revision, metrics, hardware_profile, preprocess_version, postprocess_version, reference_outputs, created_at, updated_at)
@@ -391,7 +394,7 @@ impl EvaluationRepository for PgEvaluationRepository {
         .bind(run.project_id.as_uuid())
         .bind(run.model_version_id.as_uuid())
         .bind(run.dataset_version_id.as_uuid())
-        .bind(run.seed as i64)
+        .bind(seed_i64)
         .bind(state)
         .bind(revision)
         .bind(metrics)
@@ -668,6 +671,8 @@ impl PgEvaluationRepository {
     pub async fn upsert_run(&self, run: &EvaluationRun) -> Result<(), Error> {
         self.set_tenant(run.tenant_id).await?;
         let (metrics, reference_outputs, state) = evaluation_run_to_values(run)?;
+        let seed_i64 = i64::try_from(run.seed)
+            .map_err(|_| Error::invalid_argument(format!("seed {} exceeds i64 range", run.seed)))?;
         sqlx::query(
             "INSERT INTO evaluation_runs (id, tenant_id, project_id, model_version_id, dataset_version_id, seed, state, revision, metrics, hardware_profile, preprocess_version, postprocess_version, reference_outputs, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, $10, $11, $12, $13, $14)
@@ -686,7 +691,7 @@ impl PgEvaluationRepository {
         .bind(run.project_id.as_uuid())
         .bind(run.model_version_id.as_uuid())
         .bind(run.dataset_version_id.as_uuid())
-        .bind(run.seed as i64)
+        .bind(seed_i64)
         .bind(state)
         .bind(metrics)
         .bind(&run.hardware_profile)
