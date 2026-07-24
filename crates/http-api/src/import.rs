@@ -172,6 +172,12 @@ async fn execute_import(
 }
 
 async fn download_and_store(state: &AppState, job: &ImportJob) -> Result<String, ImportJobFailure> {
+    // Prevent SSRF through user-supplied import URLs.
+    if let Err(e) = crate::northbound::validate_url(&job.source_url) {
+        tracing::warn!(job_id = %job.id, source_url = %job.source_url, error = %e, "import source URL rejected");
+        return Err(ImportJobFailure::InvalidSource);
+    }
+
     // Check for existing object with same digest (deduplication).
     if let Ok((_, meta)) = state.object_store.get_object(&job.target_key).await {
         if let Some(existing_digest) = meta.digest {
@@ -184,7 +190,7 @@ async fn download_and_store(state: &AppState, job: &ImportJob) -> Result<String,
         }
     }
 
-    let timeout = Duration::from_secs((job.deadline_seconds as u64).clamp(30, 300));
+    let timeout = Duration::from_secs(u64::from(job.deadline_seconds.clamp(30, 300)));
     let resp = state
         .http
         .get(&job.source_url)

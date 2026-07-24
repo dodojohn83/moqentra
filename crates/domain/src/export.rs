@@ -213,6 +213,21 @@ pub fn annotation_to_yolo_line(
     ))
 }
 
+/// Convert a finite f64 coordinate to i64, rejecting NaN/inf/out-of-range values.
+fn f64_to_i64(v: f64) -> Result<i64, moqentra_types::Error> {
+    if !v.is_finite() {
+        return Err(moqentra_types::Error::invalid_argument(
+            "coordinate must be finite",
+        ));
+    }
+    if v < i64::MIN as f64 || v > i64::MAX as f64 {
+        return Err(moqentra_types::Error::invalid_argument(
+            "coordinate out of i64 range",
+        ));
+    }
+    Ok(v as i64)
+}
+
 /// Escape text for inclusion in XML element content or attributes.
 fn xml_escape(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -281,10 +296,17 @@ pub fn annotations_to_voc(
                 "bbox width and height must be positive",
             ));
         }
-        let xmin = x.floor() as i64;
-        let ymin = y.floor() as i64;
-        let xmax = (x + w).ceil() as i64;
-        let ymax = (y + h).ceil() as i64;
+        let xmax_f = x + w;
+        let ymax_f = y + h;
+        if !xmax_f.is_finite() || !ymax_f.is_finite() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "bbox coordinate overflow",
+            ));
+        }
+        let xmin = f64_to_i64(x.floor())?;
+        let ymin = f64_to_i64(y.floor())?;
+        let xmax = f64_to_i64(xmax_f.ceil())?;
+        let ymax = f64_to_i64(ymax_f.ceil())?;
         objects.push_str(&format!(
             r#"  <object>
     <name>{name}</name>
@@ -497,5 +519,11 @@ mod tests {
         assert_eq!(value["schema"], "moqentra.annotation.export/v1");
         assert_eq!(value["annotations"][0]["id"], id);
         assert_eq!(value["labels"][0], "cat");
+    }
+
+    #[test]
+    fn voc_export_rejects_out_of_range_bbox() {
+        let ann = make_annotation("cat", vec![1.0, 2.0, 1e200, 1e200]);
+        assert!(annotations_to_voc(&[ann], "img.jpg", (640, 480, 3)).is_err());
     }
 }

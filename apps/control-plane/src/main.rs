@@ -160,6 +160,7 @@ fn build_state_from_env() -> anyhow::Result<AppState> {
     let http = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| anyhow::anyhow!("failed to build http client: {e}"))?;
 

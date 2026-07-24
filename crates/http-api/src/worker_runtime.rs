@@ -66,7 +66,11 @@ impl WorkerLimits {
             ),
             retry_budget: parse_u32("RETRY_BUDGET", defaults.retry_budget).clamp(0, 32),
             idle_sleep: Duration::from_millis(
-                parse_secs("IDLE_MS", defaults.idle_sleep.as_millis() as u64).clamp(50, 60_000),
+                parse_secs(
+                    "IDLE_MS",
+                    u64::try_from(defaults.idle_sleep.as_millis()).unwrap_or(60_000),
+                )
+                .clamp(50, 60_000),
             ),
         }
     }

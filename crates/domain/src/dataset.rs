@@ -238,6 +238,11 @@ impl DatasetVersion {
                 "version has no assets to split",
             ));
         }
+        if !train.is_finite() || !val.is_finite() || !test.is_finite() {
+            return Err(moqentra_types::Error::invalid_argument(
+                "train/val/test fractions must be finite",
+            ));
+        }
         let sum = train + val + test;
         if (sum - 1.0).abs() > 1e-9 || train < 0.0 || val < 0.0 || test < 0.0 {
             return Err(moqentra_types::Error::invalid_argument(
@@ -498,5 +503,30 @@ mod tests {
         version.mark_asset_valid(&asset_a_id).unwrap();
         version.publish().unwrap();
         assert!(version.set_splits(serde_json::json!({})).is_err());
+    }
+
+    #[test]
+    fn generate_splits_rejects_non_finite_fractions() {
+        let gen = RandomIdGenerator;
+        let tenant = TenantId::new_v7(&gen);
+        let project = ProjectId::new_v7(&gen);
+        let dataset = DatasetId::new_v7(&gen);
+        let mut version =
+            DatasetVersion::new(DatasetVersionId::new_v7(&gen), dataset, tenant, project);
+        let asset = AssetRef {
+            id: AssetId::new_v7(&gen),
+            name: "a.bin".to_string(),
+            object_key: "a".to_string(),
+            digest: "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+                .to_string(),
+            size: 1,
+            media_type: "application/octet-stream".to_string(),
+            metadata: serde_json::json!({}),
+        };
+        version.add_asset(asset).unwrap();
+
+        assert!(version.generate_splits(1, f64::NAN, 0.5, 0.5).is_err());
+        assert!(version.generate_splits(1, f64::INFINITY, 0.0, 0.0).is_err());
+        assert!(version.generate_splits(1, 0.5, f64::NEG_INFINITY, 0.5).is_err());
     }
 }

@@ -304,7 +304,8 @@ impl ConversionRepository for PgConversionRepository {
             })
             .collect::<Result<_, Error>>()?;
 
-        Ok(Page::new(items, total as u64, page))
+        let total = u64::try_from(total).map_err(|_| Error::internal("negative database count"))?;
+        Ok(Page::new(items, total, page))
     }
 
     async fn update(
@@ -477,7 +478,8 @@ impl EvaluationRepository for PgEvaluationRepository {
             })
             .collect::<Result<_, Error>>()?;
 
-        Ok(Page::new(items, total as u64, page))
+        let total = u64::try_from(total).map_err(|_| Error::internal("negative database count"))?;
+        Ok(Page::new(items, total, page))
     }
 
     async fn update(
