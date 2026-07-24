@@ -1,8 +1,10 @@
 //! Kubernetes/Volcano scheduling policy and execution plan compiler.
 
+use moqentra_domain::queue::{PriorityClass, QueueDecision, QueuePolicy};
 use moqentra_domain::training::{ResourceRequest, TrainingJob};
-use moqentra_types::{AttemptId, TenantId};
+use moqentra_types::{AttemptId, QueuePolicyId, TenantId};
 use serde::{Deserialize, Serialize};
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 /// Scheduling queue with fairness and tenant/project quotas.
@@ -11,10 +13,12 @@ pub struct SchedulingQueue {
     pub name: String,
     pub tenant_id: TenantId,
     pub max_jobs: usize,
-    pub priority_weights: BTreeMap<String, u32>,
+    pub priority_classes: BTreeMap<String, PriorityClass>,
     pub entries: VecDeque<QueueEntry>,
     pub tenant_quota: u64,
     pub project_quota: BTreeMap<String, u64>,
+    pub queue_policy: Option<QueuePolicy>,
+    pub resource_snapshot: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,7 +27,12 @@ pub struct QueueEntry {
     /// Tenant that owns the job (opaque string form of TenantId).
     pub tenant_id: String,
     pub project_id: String,
+    /// Numeric priority used when no priority class is set.
     pub priority: u32,
+    /// Optional named priority class.
+    pub priority_class_name: Option<String>,
+    /// Resource request used for dominant-resource fair sharing.
+    pub resource_request: Option<ResourceRequest>,
     pub submitted_at: moqentra_types::UtcTimestamp,
     /// Number of failed admit/dispatch attempts.
     pub retry_count: u32,
@@ -43,10 +52,22 @@ impl QueueEntry {
             tenant_id: tenant_id.into(),
             project_id: project_id.into(),
             priority,
+            priority_class_name: None,
+            resource_request: None,
             submitted_at: moqentra_types::UtcTimestamp::now(),
             retry_count: 0,
             next_attempt_at: None,
         }
+    }
+
+    pub fn with_priority_class(mut self, name: impl Into<String>) -> Self {
+        self.priority_class_name = Some(name.into());
+        self
+    }
+
+    pub fn with_resource_request(mut self, request: ResourceRequest) -> Self {
+        self.resource_request = Some(request);
+        self
     }
 }
 
@@ -61,10 +82,12 @@ impl SchedulingQueue {
             name: name.into(),
             tenant_id,
             max_jobs,
-            priority_weights: BTreeMap::new(),
+            priority_classes: BTreeMap::new(),
             entries: VecDeque::new(),
             tenant_quota,
             project_quota: BTreeMap::new(),
+            queue_policy: None,
+            resource_snapshot: None,
         }
     }
 
@@ -87,6 +110,7 @@ impl SchedulingQueue {
         Ok(())
     }
 
+    /// Select and remove the best entry using priority class + aging + stable tiebreakers.
     pub fn pop(&mut self) -> Option<QueueEntry> {
         let now = moqentra_types::UtcTimestamp::now();
         let mut best_idx = 0usize;
@@ -95,14 +119,70 @@ impl SchedulingQueue {
             if e.next_attempt_at.is_some_and(|t| t > now) {
                 continue;
             }
-            let score = (u64::from(e.priority), std::cmp::Reverse(e.submitted_at));
-            if best_score.as_ref().is_none_or(|s: &(u64, _)| score > *s) {
+            let score = self.score(e, now);
+            if best_score.as_ref().is_none_or(|s| score > *s) {
                 best_score = Some(score);
                 best_idx = idx;
             }
         }
         best_score?;
         self.entries.remove(best_idx)
+    }
+
+    /// Select the best entry and return an auditable [QueueDecision].
+    pub fn pop_decision(
+        &mut self,
+        queue_id: QueuePolicyId,
+        policy_revision: u64,
+    ) -> Option<(QueueEntry, QueueDecision)> {
+        let candidate_ids: Vec<_> = self.entries.iter().map(|e| e.job_id.clone()).collect();
+        let selected = self.pop()?;
+        let decision = QueueDecision {
+            queue_id,
+            policy_revision,
+            resource_snapshot: self.resource_snapshot.clone().unwrap_or_default(),
+            candidate_ids,
+            selected_id: selected.job_id.clone(),
+            explanation: self.explain_selection(&selected),
+            created_at: moqentra_types::UtcTimestamp::now(),
+        };
+        Some((selected, decision))
+    }
+
+    fn score(
+        &self,
+        entry: &QueueEntry,
+        now: moqentra_types::UtcTimestamp,
+    ) -> (i32, u64, Reverse<moqentra_types::UtcTimestamp>, String) {
+        let class = entry.priority_class_name.as_ref().and_then(|n| self.priority_classes.get(n));
+        let class_priority = class.map_or(i32::try_from(entry.priority).unwrap_or(i32::MAX), |c| {
+            c.priority
+        });
+        let max_wait = class.map_or(3600u64, |c| u64::from(c.max_wait_seconds));
+        let wait_millis = now.unix_millis().saturating_sub(entry.submitted_at.unix_millis());
+        let wait_secs = u64::try_from(wait_millis / 1000).unwrap_or(0);
+        let aging = wait_secs.min(max_wait);
+        (
+            class_priority,
+            aging,
+            Reverse(entry.submitted_at),
+            entry.job_id.clone(),
+        )
+    }
+
+    fn explain_selection(&self, entry: &QueueEntry) -> String {
+        let class = entry.priority_class_name.as_ref().and_then(|n| self.priority_classes.get(n));
+        if let Some(c) = class {
+            format!(
+                "selected job {} with priority class {} (priority {}, preemptible {})",
+                entry.job_id, c.name, c.priority, c.preemptible
+            )
+        } else {
+            format!(
+                "selected job {} with numeric priority {}",
+                entry.job_id, entry.priority
+            )
+        }
     }
 
     /// Maximum admit retries before the entry is dropped (dead-letter).
@@ -251,6 +331,37 @@ pub struct NodeCapacity {
     pub accelerators: Vec<AcceleratorCapability>,
     pub taints: BTreeSet<String>,
     pub labels: BTreeMap<String, String>,
+    pub healthy: bool,
+    pub observed_at: moqentra_types::UtcTimestamp,
+}
+
+impl NodeCapacity {
+    pub fn new(cpu_cores: u32, memory_mib: u64, accelerators: Vec<AcceleratorCapability>) -> Self {
+        Self {
+            cpu_cores,
+            memory_mib,
+            accelerators,
+            taints: BTreeSet::new(),
+            labels: BTreeMap::new(),
+            healthy: true,
+            observed_at: moqentra_types::UtcTimestamp::now(),
+        }
+    }
+
+    pub fn with_taint(mut self, taint: impl Into<String>) -> Self {
+        self.taints.insert(taint.into());
+        self
+    }
+
+    pub fn with_label(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.labels.insert(key.into(), value.into());
+        self
+    }
+
+    pub fn unhealthy(mut self) -> Self {
+        self.healthy = false;
+        self
+    }
 }
 
 impl ClusterTopology {
@@ -265,6 +376,9 @@ impl ClusterTopology {
             .checked_mul(request.memory_mib)
             .ok_or_else(|| moqentra_types::Error::invalid_argument("memory request overflow"))?;
         for (name, node) in &self.nodes {
+            if !node.healthy {
+                continue;
+            }
             if u64::from(node.cpu_cores).checked_mul(1000).is_none_or(|c| c < total_cpu_milli) {
                 continue;
             }
@@ -295,6 +409,54 @@ impl ClusterTopology {
         }
         Err(moqentra_types::Error::unavailable("no matching node"))
     }
+
+    /// Total cluster capacity across healthy nodes, dimension order: CPU milli, memory MiB,
+    /// accelerator count.
+    pub fn total_capacity(&self) -> (u64, u64, u64) {
+        let mut cpu: u64 = 0;
+        let mut mem: u64 = 0;
+        let mut accel: u64 = 0;
+        for node in self.nodes.values().filter(|n| n.healthy) {
+            cpu = cpu.saturating_add(u64::from(node.cpu_cores).saturating_mul(1000));
+            mem = mem.saturating_add(node.memory_mib);
+            accel = accel.saturating_add(u64::try_from(node.accelerators.len()).unwrap_or(0));
+        }
+        (cpu, mem, accel)
+    }
+}
+
+/// Weighted dominant-resource fair-share selection across tenants.
+///
+/// `tenant_usage` maps each tenant to a vector of used resources with the same
+/// dimension order as `capacity`. `weights` maps a tenant to a scheduling weight
+/// (default 1). The tenant with the smallest weighted maximum share is returned,
+/// preventing a single tenant from monopolizing a scarce resource.
+pub fn pick_tenant_drf<T: Ord + Clone>(
+    tenants: &[T],
+    tenant_usage: &BTreeMap<T, Vec<u64>>,
+    capacity: &[u64],
+    weights: &BTreeMap<T, u32>,
+) -> Option<T> {
+    if capacity.is_empty() || capacity.contains(&0) {
+        return None;
+    }
+    let mut best: Option<(u64, T)> = None;
+    for t in tenants {
+        let usage = tenant_usage.get(t)?;
+        if usage.len() != capacity.len() {
+            continue;
+        }
+        let weight = u64::from(weights.get(t).copied().unwrap_or(1).max(1));
+        let mut dominant = 0u64;
+        for (u, c) in usage.iter().zip(capacity.iter()) {
+            let share = u.saturating_mul(weight) / c;
+            dominant = dominant.max(share);
+        }
+        if best.as_ref().is_none_or(|(score, _)| dominant < *score) {
+            best = Some((dominant, t.clone()));
+        }
+    }
+    best.map(|(_, t)| t)
 }
 
 /// Watcher event with resourceVersion for resume and revision idempotency.
@@ -312,7 +474,8 @@ mod tests {
     use super::*;
     use moqentra_domain::training::{DistributedConfig, TrainingJob, TrainingJobSpec};
     use moqentra_types::{
-        DatasetVersionId, ExperimentId, ProjectId, RandomIdGenerator, TenantId, TrainingJobId,
+        DatasetVersionId, ExperimentId, ProjectId, QueuePolicyId, RandomIdGenerator, TenantId,
+        TrainingJobId,
     };
 
     fn make_job(replicas: u32, kind: Option<&str>) -> TrainingJob {
@@ -420,29 +583,21 @@ mod tests {
         let mut nodes = BTreeMap::new();
         nodes.insert(
             "node-a".to_string(),
-            NodeCapacity {
-                cpu_cores: 8,
-                memory_mib: 32768,
-                accelerators: vec![AcceleratorCapability {
+            NodeCapacity::new(
+                8,
+                32768,
+                vec![AcceleratorCapability {
                     kind: "nvidia".to_string(),
                     memory_mib: 24576,
                     compute_units: 80,
                     supported_collectives: vec!["nccl".to_string()],
                     runtime_labels: BTreeMap::new(),
                 }],
-                taints: BTreeSet::new(),
-                labels: BTreeMap::new(),
-            },
+            ),
         );
         nodes.insert(
             "node-b".to_string(),
-            NodeCapacity {
-                cpu_cores: 8,
-                memory_mib: 32768,
-                accelerators: vec![],
-                taints: ["no-nvidia".to_string()].iter().cloned().collect(),
-                labels: BTreeMap::new(),
-            },
+            NodeCapacity::new(8, 32768, vec![]).with_taint("no-nvidia"),
         );
         let topology = ClusterTopology { nodes };
         let request = ResourceRequest {
@@ -455,5 +610,88 @@ mod tests {
             topology: None,
         };
         assert_eq!(topology.find_placement(&request).unwrap(), "node-a");
+    }
+
+    #[test]
+    fn unhealthy_node_is_skipped() {
+        let mut nodes = BTreeMap::new();
+        nodes.insert(
+            "node-healthy".to_string(),
+            NodeCapacity::new(8, 32768, vec![]),
+        );
+        nodes.insert(
+            "node-unhealthy".to_string(),
+            NodeCapacity::new(16, 65536, vec![]).unhealthy(),
+        );
+        let topology = ClusterTopology { nodes };
+        let request = ResourceRequest {
+            replicas: 1,
+            cpu_milli: 1000,
+            memory_mib: 8192,
+            ephemeral_storage_mib: 1024,
+            accelerator_kind: None,
+            accelerator_count: 0,
+            topology: None,
+        };
+        assert_eq!(topology.find_placement(&request).unwrap(), "node-healthy");
+    }
+
+    #[test]
+    fn queue_priority_class_outranks_numeric_priority() {
+        let gen = RandomIdGenerator;
+        let _queue_id = QueuePolicyId::new_v7(&gen);
+        let tenant = TenantId::new_v7(&gen);
+        let mut queue = SchedulingQueue::new("default", tenant, 10, 10);
+        queue.priority_classes.insert(
+            "production".to_string(),
+            PriorityClass {
+                id: moqentra_types::PriorityClassId::new_v7(&gen),
+                tenant_id: tenant,
+                project_id: None,
+                name: "production".to_string(),
+                priority: 100,
+                preemptible: false,
+                max_wait_seconds: 3600,
+                revision: 1,
+                created_at: moqentra_types::UtcTimestamp::now(),
+            },
+        );
+        let low = QueueEntry::new("job-low", "t1", "p1", 1);
+        let high = QueueEntry::new("job-high", "t1", "p1", 1).with_priority_class("production");
+        queue.enqueue(low).unwrap();
+        queue.enqueue(high).unwrap();
+        let popped = queue.pop().unwrap();
+        assert_eq!(popped.job_id, "job-high");
+    }
+
+    #[test]
+    fn pop_decision_records_explanation() {
+        let gen = RandomIdGenerator;
+        let queue_id = QueuePolicyId::new_v7(&gen);
+        let tenant = TenantId::new_v7(&gen);
+        let mut queue = SchedulingQueue::new("default", tenant, 10, 10);
+        queue.resource_snapshot = Some("cpu=8000m,mem=64Gi".to_string());
+        queue.enqueue(QueueEntry::new("job-1", "t1", "p1", 1)).unwrap();
+        let (entry, decision) = queue.pop_decision(queue_id, 1).unwrap();
+        assert_eq!(entry.job_id, "job-1");
+        assert_eq!(decision.selected_id, "job-1");
+        assert!(!decision.explanation.is_empty());
+        assert_eq!(decision.resource_snapshot, "cpu=8000m,mem=64Gi");
+    }
+
+    #[test]
+    fn drf_selects_lowest_max_share_tenant() {
+        let tenants = vec!["tenant-a".to_string(), "tenant-b".to_string()];
+        let mut usage = BTreeMap::new();
+        // Dimension order: cpu, memory, accel.
+        usage.insert("tenant-a".to_string(), vec![1000u64, 8192, 0]);
+        usage.insert("tenant-b".to_string(), vec![1000u64, 8192, 1]);
+        let capacity = vec![2000u64, 16384, 1];
+        let mut weights = BTreeMap::new();
+        weights.insert("tenant-a".to_string(), 1u32);
+        weights.insert("tenant-b".to_string(), 1u32);
+        let selected = pick_tenant_drf(&tenants, &usage, &capacity, &weights);
+        // tenant-b dominates the single accelerator and has higher max share.
+        assert_eq!(selected, Some("tenant-a".to_string()));
     }
 }

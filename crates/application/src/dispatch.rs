@@ -42,7 +42,11 @@ pub fn plan_dispatch(event_type: &str, payload: &Value) -> DispatchAction {
                     "training_job.queued requires job_id and tenant_id".into(),
                 );
             }
-            let priority = payload.get("priority").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            let priority = payload
+                .get("priority")
+                .and_then(|v| v.as_u64())
+                .and_then(|v| u32::try_from(v).ok())
+                .unwrap_or(0);
             DispatchAction::EnqueueTrainingJob {
                 job_id,
                 tenant_id,
@@ -75,14 +79,21 @@ pub fn plan_dispatch(event_type: &str, payload: &Value) -> DispatchAction {
                 }
                 return DispatchAction::AllocateNode {
                     attempt_id: job_id,
-                    cpu_cores: payload.get("cpu_cores").and_then(|v| v.as_u64()).unwrap_or(2)
-                        as u32,
+                    cpu_cores: payload
+                        .get("cpu_cores")
+                        .and_then(|v| v.as_u64())
+                        .and_then(|v| u32::try_from(v).ok())
+                        .unwrap_or(2),
                     memory_mib: payload.get("memory_mib").and_then(|v| v.as_u64()).unwrap_or(4096),
                 };
             }
             DispatchAction::AllocateNode {
                 attempt_id,
-                cpu_cores: payload.get("cpu_cores").and_then(|v| v.as_u64()).unwrap_or(2) as u32,
+                cpu_cores: payload
+                    .get("cpu_cores")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|v| u32::try_from(v).ok())
+                    .unwrap_or(2),
                 memory_mib: payload.get("memory_mib").and_then(|v| v.as_u64()).unwrap_or(4096),
             }
         }

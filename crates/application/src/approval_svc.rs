@@ -200,7 +200,7 @@ impl ApprovalRepository for InMemoryApprovalRegistry {
                 Versioned::new(r.clone(), revision_from_u64(rev))
             })
             .collect();
-        let total = items.len() as u64;
+        let total = u64::try_from(items.len()).unwrap_or(u64::MAX);
         Ok(Page::new(items, total, _page))
     }
 
